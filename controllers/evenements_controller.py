@@ -1073,9 +1073,10 @@ class EvenementsController:
         s_dep = self._ZONE_STYLES[0]  # bleu déploiement
         dep_header = QtWidgets.QLabel(f"  {self.translate('DÉPLOIEMENT', 'DEPLOYMENT').upper()}")
         dep_header.setStyleSheet(
-            f"background-color: {s_dep['header_bg']}; color: {s_dep['header_fg']};"
-            f" font-size: 9px; font-weight: bold; border-radius: 3px;"
-            f" border: 1px solid {s_dep['btn_border']}; padding: 2px 6px;"
+            f"background-color: transparent; color: {s_dep['header_fg']};"
+            f" font-size: 9px; font-weight: bold; letter-spacing: 1px;"
+            f" border: none; border-left: 3px solid {s_dep['btn_border']};"
+            f" padding: 2px 6px;"
         )
         layout.insertWidget(layout.count() - 1, dep_header)
 
@@ -1172,9 +1173,10 @@ class EvenementsController:
             # En-tête de catégorie
             lbl = QtWidgets.QLabel(f"  {cat_label.upper()}")
             lbl.setStyleSheet(
-                f"background-color: {s['header_bg']}; color: {s['header_fg']};"
-                f" font-size: 9px; font-weight: bold; border-radius: 3px;"
-                f" border: 1px solid {s['btn_border']}; padding: 2px 6px;"
+                f"background-color: transparent; color: {s['header_fg']};"
+                f" font-size: 9px; font-weight: bold; letter-spacing: 1px;"
+                f" border: none; border-left: 3px solid {s['btn_border']};"
+                f" padding: 2px 6px;"
             )
             layout.insertWidget(layout.count() - 1, lbl)
 
