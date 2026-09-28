@@ -594,6 +594,7 @@ class ValidationController:
         if self._on_video_focused:
             self._on_video_focused(item.text())
 
+        csv_system = os.path.join(video_dir, "systemEvent.csv")
         detected_events = []
         if self.current_json_path and os.path.isfile(self.current_json_path):
             try:
@@ -663,7 +664,7 @@ class ValidationController:
         if hasattr(self.player, 'btn_x1'):
             self.player.btn_x1.setChecked(True)
         if os.path.exists(csv_system):
-            self._load_sector_view(selected_video_path, csv_system)
+            self._load_sector_view(selected_video_path, csv_system, self.current_json_path)
             # Ardoise déjà saisie → afficher directement la mosaïque des secteurs
             if _has_ardoise:
                 self._toggle_sector_view()
@@ -685,7 +686,7 @@ class ValidationController:
         if self._sector_view_active:
             self.player.pause()
 
-    def _load_sector_view(self, video_path: str, csv_path: str):
+    def _load_sector_view(self, video_path: str, csv_path: str, json_path: str = None):
         """Construit la grille de photos de rotation moteur — même logique que la page
         Qualification (update_camera_views), adaptée à la page Validation."""
         while self._sector_layout.count():
@@ -700,7 +701,27 @@ class ValidationController:
             self._sector_worker.wait(400)
 
         try:
-            motor_events = get_motor_stable_timestamps(csv_path, delay=6.0)
+            motor_events = []
+            if json_path and os.path.isfile(json_path):
+                import re as _re
+                with open(json_path, 'r', encoding='utf-8') as _f:
+                    _jdata = json.load(_f)
+                for _entry in (_jdata.get("video_observation", {}).get("events_motor") or []):
+                    if not isinstance(_entry, dict):
+                        continue
+                    _ms = int(_entry.get("start_ms", 0))
+                    _desc = _entry.get("description_fr", "")
+                    _m = _re.search(r'\((\d+)°\)', _desc)
+                    _angle = int(_m.group(1)) if _m else 0
+                    _etype = "rotation_360°" if _angle == 360 else f"rotation_{_angle}°"
+                    motor_events.append({
+                        "timestamp": _ms / 1000.0,
+                        "angle": _angle,
+                        "type": _etype,
+                        "start": _ms,
+                    })
+            if not motor_events:
+                motor_events = get_motor_stable_timestamps(csv_path, delay=6.0)
             if not motor_events:
                 lbl = QtWidgets.QLabel(self.translate(
                     "Aucune rotation moteur trouvée dans le fichier CSV.",

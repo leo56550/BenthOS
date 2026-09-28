@@ -1982,3 +1982,11 @@ Traceback (most recent call last):
     QtCore.QPoint(x_start + 4, RH + 7),
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 OverflowError: argument 1 overflowed: value must be in the range -2147483648 to 2147483647
+
+============================================================
+2026-09-28 14:53:10.028966
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\validation_controller.py", line 665, in on_video_selected
+    if os.path.exists(csv_system):
+                      ^^^^^^^^^^
+NameError: name 'csv_system' is not defined

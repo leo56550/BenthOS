@@ -175,20 +175,7 @@ def persist_motor_events_from_csv(video_path: str, json_path: str, fps: float = 
     if not os.path.isfile(csv_path) or not os.path.isfile(json_path):
         return 0
 
-    # Chercher le fichier .txt de PTS de frames (même nom que la vidéo, sans extension)
-    stem = os.path.splitext(os.path.basename(video_path))[0]
-    txt_path = os.path.join(video_dir, stem + ".txt")
-    txt_path = txt_path if os.path.isfile(txt_path) else None
-
-    try:
-        motor_data = get_motor_stable_timestamps(csv_path, delay=6.0, txt_path=txt_path)
-    except Exception as e:
-        print(f"[MOTOR] Erreur lecture CSV {os.path.basename(csv_path)}: {e}")
-        return 0
-
-    if not motor_data:
-        return 0
-
+    # ── Lire le JSON EN PREMIER pour décider si le calcul est nécessaire ──────
     try:
         with open(json_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
@@ -201,12 +188,25 @@ def persist_motor_events_from_csv(video_path: str, json_path: str, fps: float = 
         e for e in (obs.get("events_motor") or [])
         if isinstance(e, dict) and (e.get("event_id") is not None or e.get("frame_number") is not None)
     ]
-
     manual_entries = [e for e in existing if not _is_csv_auto_event(e)]
     csv_entries    = [e for e in existing if _is_csv_auto_event(e)]
 
-    if not force and existing:
-        return 0  # déjà rempli (entrées manuelles ou CSV) → pas de réécriture
+    if not force and csv_entries:
+        return 0  # entrées CSV auto déjà présentes → saut sans aucun calcul
+
+    # ── Calcul uniquement si nécessaire ──────────────────────────────────────
+    stem = os.path.splitext(os.path.basename(video_path))[0]
+    txt_path = os.path.join(video_dir, stem + ".txt")
+    txt_path = txt_path if os.path.isfile(txt_path) else None
+
+    try:
+        motor_data = get_motor_stable_timestamps(csv_path, delay=6.0, txt_path=txt_path)
+    except Exception as e:
+        print(f"[MOTOR] Erreur lecture CSV {os.path.basename(csv_path)}: {e}")
+        return 0
+
+    if not motor_data:
+        return 0
 
     # Avec force=True : remplacer les entrées CSV auto mais garder les entrées manuelles
     new_csv_entries = []

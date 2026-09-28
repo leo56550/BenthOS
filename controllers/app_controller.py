@@ -416,6 +416,30 @@ class AppController(QtCore.QObject):
         if hasattr(self.metadonnees_ctrl, '_rebuild_ft_table'):
             self.metadonnees_ctrl._rebuild_ft_table()
 
+        # Vider la timeline de chaque page dont le temp.json vient d'être supprimé
+        for ctrl_name, player_attr in [
+            ('validation_ctrl', 'player'),
+            ('evenements_ctrl', 'event_player'),
+            ('extraction_ctrl', 'player'),
+        ]:
+            ctrl = getattr(self, ctrl_name, None)
+            if not ctrl:
+                continue
+            ctrl_json = getattr(ctrl, 'current_json_path', None)
+            if not ctrl_json or os.path.exists(ctrl_json):
+                continue  # pas de vidéo chargée, ou le fichier existe encore
+            player = getattr(ctrl, player_attr, None)
+            if not player:
+                continue
+            tl = getattr(player, 'timeline', None)
+            if tl is not None:
+                tl.events = []
+                tl.set_selected_event(None)
+                tl.update()
+            mc = getattr(player, '_motor_card', None)
+            if mc is not None:
+                mc.setVisible(False)
+
     def _load_historical_data(self):
         """Ouvre un CSV/XLSX infostation et l'affiche directement dans le tableau métadonnées."""
         start_dir = getattr(self.qualif_ctrl, 'current_campaign_folder', '') or self.working_dir or ""
@@ -584,8 +608,8 @@ class AppController(QtCore.QObject):
                     ctrl.set_working_dir(working_dir)
 
         self._campaign_ready = True
-        # Écrire (ou recalculer) les rotations moteur dans les _temp.json dès l'ouverture
-        self._persist_motor_events_for_all_videos(force=True)
+        # Écrire les rotations moteur dans les _temp.json si pas encore fait (force=False : saut si déjà présentes)
+        self._persist_motor_events_for_all_videos(force=False)
         # Sync immédiat si le répertoire de travail est déjà connu
         self._sync_all_to_working_dir()
 

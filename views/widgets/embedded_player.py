@@ -367,6 +367,43 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.time_layout.addWidget(self.lbl_frame_number)
         self.time_layout.addStretch()
 
+        # ── Cadran rotation moteur (caché par défaut) ─────────────────────
+        self._motor_card = QtWidgets.QFrame()
+        self._motor_card.setVisible(False)
+        self._motor_card.setStyleSheet(
+            "QFrame {"
+            "  background-color: #1a1000;"
+            "  border: 1px solid #ff8c1a;"
+            "  border-radius: 5px;"
+            "  padding: 0px;"
+            "}"
+        )
+        _mc_layout = QtWidgets.QHBoxLayout(self._motor_card)
+        _mc_layout.setContentsMargins(8, 3, 8, 3)
+        _mc_layout.setSpacing(8)
+
+        _lbl_icon = QtWidgets.QLabel("⟳")
+        _lbl_icon.setStyleSheet("color: #ff8c1a; font-size: 16px; font-weight: bold; border: none;")
+        _mc_layout.addWidget(_lbl_icon)
+
+        self._motor_card_lbl = QtWidgets.QLabel("")
+        self._motor_card_lbl.setStyleSheet(
+            "color: #ffd080; font-size: 11px; font-weight: bold;"
+            " font-family: 'Segoe UI', sans-serif; border: none;"
+        )
+        _mc_layout.addWidget(self._motor_card_lbl)
+
+        _btn_close_card = QtWidgets.QPushButton("✕")
+        _btn_close_card.setFixedSize(16, 16)
+        _btn_close_card.setStyleSheet(
+            "QPushButton { background: transparent; color: #ff8c1a; border: none;"
+            " font-size: 10px; padding: 0; }"
+            "QPushButton:hover { color: #ffffff; }"
+        )
+        _btn_close_card.clicked.connect(lambda: self._motor_card.setVisible(False))
+        _mc_layout.addWidget(_btn_close_card)
+
+        self.time_layout.addWidget(self._motor_card)
 
         # Timeline
         self.scroll_area_timeline = QtWidgets.QScrollArea()
@@ -574,6 +611,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.timeline.timeChanged.connect(self.on_timeline_pressed)
         self.timeline.sliderMoved.connect(self.on_timeline_released)
         self.player.playbackStateChanged.connect(self._on_playback_state_changed)
+        self.timeline.eventSelected.connect(self._on_motor_event_selected)
 
         self.df_telemetry = None
         self._update_corrections_enabled(is_playing=False)
@@ -1013,6 +1051,26 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         except Exception:
             return 0.0
 
+    def _on_motor_event_selected(self, event_dict):
+        """Affiche ou masque le cadran d'info rotation moteur selon l'événement sélectionné."""
+        if event_dict is None:
+            self._motor_card.setVisible(False)
+            return
+        evt_type = event_dict.get("type", "")
+        is_motor = (evt_type == "rotation_manual" or evt_type.startswith("rotation_"))
+        if not is_motor:
+            self._motor_card.setVisible(False)
+            return
+        title = event_dict.get("title", "Rotation moteur")
+        ms = int(event_dict.get("start", 0))
+        h = ms // 3600000
+        m = (ms % 3600000) // 60000
+        s = (ms % 60000) // 1000
+        ms_sub = ms % 1000
+        ts = f"{h:02d}:{m:02d}:{s:02d}.{ms_sub:03d}" if h else f"{m:02d}:{s:02d}.{ms_sub:03d}"
+        self._motor_card_lbl.setText(f"{title}  ·  {ts}")
+        self._motor_card.setVisible(True)
+
     def load_video_and_events(self, video_data, events: list, is_stereo: bool = False):
         """Charge une vidéo (mono ou stéréo), configure la timeline et démarre la lecture."""
         if self._fs_window is not None:
@@ -1024,6 +1082,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self._last_raw_frame = None
         self.timeline.events = events
         self.timeline.set_depth_profile([])
+        # Masquer le cadran moteur lors du chargement d'une nouvelle vidéo
+        self._motor_card.setVisible(False)
 
         has_video = False
 
