@@ -1,5 +1,85 @@
-from PyQt6 import QtWidgets, QtCore
+from PyQt6 import QtWidgets, QtCore, QtGui
 import json
+
+
+class _CampaignLoadingOverlay(QtWidgets.QWidget):
+    """Overlay plein-écran affiché pendant le chargement d'une campagne."""
+
+    _SPINNER = ["◜ ", " ◝", " ◞", "◟ "]
+
+    def __init__(self, parent: QtWidgets.QWidget):
+        super().__init__(parent)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+        self.resize(parent.size())
+
+        # Carte centrale
+        self._card = QtWidgets.QFrame(self)
+        self._card.setFixedSize(340, 130)
+        self._card.setStyleSheet(
+            "QFrame { background-color: #0d1e2e; border: 1px solid #2778a2;"
+            " border-radius: 12px; }"
+        )
+        card_layout = QtWidgets.QVBoxLayout(self._card)
+        card_layout.setContentsMargins(24, 18, 24, 16)
+        card_layout.setSpacing(10)
+
+        self._lbl_icon = QtWidgets.QLabel(self._SPINNER[0])
+        self._lbl_icon.setStyleSheet(
+            "color: #5bb8f5; font-size: 28px; background: transparent; border: none;")
+        self._lbl_icon.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(self._lbl_icon)
+
+        self._lbl_msg = QtWidgets.QLabel("")
+        self._lbl_msg.setStyleSheet(
+            "color: #d0e8f8; font-size: 12px; font-weight: bold;"
+            " background: transparent; border: none;")
+        self._lbl_msg.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self._lbl_msg.setWordWrap(True)
+        card_layout.addWidget(self._lbl_msg)
+
+        self._bar = QtWidgets.QProgressBar()
+        self._bar.setRange(0, 0)
+        self._bar.setFixedHeight(5)
+        self._bar.setTextVisible(False)
+        self._bar.setStyleSheet(
+            "QProgressBar { background: #1a3a4a; border: none; border-radius: 2px; }"
+            "QProgressBar::chunk { background: #5bb8f5; border-radius: 2px; }"
+        )
+        card_layout.addWidget(self._bar)
+
+        self._fi = 0
+        self._timer = QtCore.QTimer(self)
+        self._timer.setInterval(120)
+        self._timer.timeout.connect(self._tick)
+
+    def paintEvent(self, _event):
+        p = QtGui.QPainter(self)
+        p.fillRect(self.rect(), QtGui.QColor(8, 16, 26, 215))
+        p.end()
+        # Recentrer la carte si la fenêtre a été redimensionnée
+        self._card.move(
+            (self.width() - self._card.width()) // 2,
+            (self.height() - self._card.height()) // 2,
+        )
+
+    def set_message(self, msg: str):
+        self._lbl_msg.setText(msg)
+
+    def _tick(self):
+        self._fi = (self._fi + 1) % len(self._SPINNER)
+        self._lbl_icon.setText(self._SPINNER[self._fi])
+
+    def start(self):
+        self.resize(self.parent().size())
+        self._timer.start()
+        self.show()
+        self.raise_()
+        QtWidgets.QApplication.processEvents()
+
+    def stop(self):
+        self._timer.stop()
+        self.hide()
+        self.deleteLater()
 
 from services.campaign_service import (get_campaign_json_data, get_video_json_path,
                                        get_working_video_json_path)
@@ -565,86 +645,110 @@ class AppController(QtCore.QObject):
         w = self.window
         self._current_campaign_mode = ""
         self._current_derusher_name = nom_derusher
-        self.lock_navigation(False)  # remet actionValidation/Metadonnees/Evenements à disabled
+        self.lock_navigation(False)
 
-        # Charger la campagne — directement si le dossier est fourni par le dialog
-        if campaign_folder:
-            self.qualif_ctrl.load_campaign_folder(campaign_folder, nom_derusher)
-        else:
-            self.qualif_ctrl.open_system_explorer(nom_derusher)
-
-        self._refresh_all_page_models()
-        self._detect_campaign_mode()
-        self.refresh_status_bar()
-
-        dossier = getattr(self.qualif_ctrl, 'current_campaign_folder', None)
-        if not dossier:
-            return
-
-        if hasattr(self.window, 'btn_notes'):
-            self.window.btn_notes.setEnabled(True)
-        session = os.path.basename(os.path.normpath(dossier))
-        parent = os.path.basename(os.path.dirname(os.path.normpath(dossier)))
-        self._current_campaign_name = f"{parent} / {session}" if parent else session
-        self._update_info_labels(w.translations.get(w.current_language, w.translations['fr']))
-        get_sound_service().play("campaign_open")
+        # ── Overlay de chargement ────────────────────────────────────────────
+        _overlay = _CampaignLoadingOverlay(self.window)
+        _overlay.set_message(self.translate(
+            "Analyse des vidéos de la campagne…",
+            "Scanning campaign videos…"))
+        _overlay.start()
 
         try:
-            from services.recent_campaigns_service import add_recent_campaign
-            add_recent_campaign(dossier, working_dir or self.working_dir,
-                                self._current_campaign_name, nom_derusher)
-        except Exception:
-            pass
+            # Étape 1 — Charger le dossier
+            if campaign_folder:
+                self.qualif_ctrl.load_campaign_folder(campaign_folder, nom_derusher)
+            else:
+                _overlay.stop()          # laisser le dialog de sélection s'ouvrir proprement
+                self.qualif_ctrl.open_system_explorer(nom_derusher)
+                _overlay = _CampaignLoadingOverlay(self.window)
+                _overlay.set_message(self.translate(
+                    "Analyse des vidéos de la campagne…",
+                    "Scanning campaign videos…"))
+                _overlay.start()
 
-        data_systeme = get_campaign_json_data(dossier, extract_system=True)
-        data_complete = get_campaign_json_data(dossier, extract_system=False)
+            self._refresh_all_page_models()
+            self._detect_campaign_mode()
+            self.refresh_status_bar()
 
-        # Répertoire de travail fourni par le dialog → propager immédiatement
-        if working_dir:
-            self.working_dir = working_dir
-            for ctrl in [self.qualif_ctrl, self.validation_ctrl, self.evenements_ctrl,
-                         self.metadonnees_ctrl, self.extraction_ctrl]:
-                if hasattr(ctrl, 'set_working_dir'):
-                    ctrl.set_working_dir(working_dir)
+            dossier = getattr(self.qualif_ctrl, 'current_campaign_folder', None)
+            if not dossier:
+                return
 
-        self._campaign_ready = True
-        # Écrire les rotations moteur dans les _temp.json si pas encore fait (force=False : saut si déjà présentes)
-        self._persist_motor_events_for_all_videos(force=False)
-        # Sync immédiat si le répertoire de travail est déjà connu
-        self._sync_all_to_working_dir()
-
-        if data_systeme:
-            if self.working_dir:
-                self.lock_navigation(False)
-            self.metadonnees_ctrl.load_global_campaign_metadata(dossier)
+            if hasattr(self.window, 'btn_notes'):
+                self.window.btn_notes.setEnabled(True)
+            session = os.path.basename(os.path.normpath(dossier))
+            parent = os.path.basename(os.path.dirname(os.path.normpath(dossier)))
+            self._current_campaign_name = f"{parent} / {session}" if parent else session
+            self._update_info_labels(w.translations.get(w.current_language, w.translations['fr']))
+            get_sound_service().play("campaign_open")
 
             try:
-                lat = lon = None
-                if data_complete and "video_observation" in data_complete:
-                    block = data_complete["video_observation"]
-                    lat = block.get("latitude", {}).get("value")
-                    lon = block.get("longitude", {}).get("value")
+                from services.recent_campaigns_service import add_recent_campaign
+                add_recent_campaign(dossier, working_dir or self.working_dir,
+                                    self._current_campaign_name, nom_derusher)
+            except Exception:
+                pass
 
-                if lat is not None and lon is not None:
-                    self.weather_thread = WeatherWorker(lat, lon)
-                    self.weather_thread.weather_fetched.connect(self.metadonnees_ctrl.inject_weather_data)
-                    self.weather_thread.start()
-                else:
+            data_systeme = get_campaign_json_data(dossier, extract_system=True)
+            data_complete = get_campaign_json_data(dossier, extract_system=False)
+
+            # Répertoire de travail fourni par le dialog → propager immédiatement
+            if working_dir:
+                self.working_dir = working_dir
+                for ctrl in [self.qualif_ctrl, self.validation_ctrl, self.evenements_ctrl,
+                             self.metadonnees_ctrl, self.extraction_ctrl]:
+                    if hasattr(ctrl, 'set_working_dir'):
+                        ctrl.set_working_dir(working_dir)
+
+            # Étape 2 — Rotations moteur
+            _overlay.set_message(self.translate(
+                "Calcul des événements moteur…",
+                "Computing motor events…"))
+            QtWidgets.QApplication.processEvents()
+            self._campaign_ready = True
+            self._persist_motor_events_for_all_videos(force=False)
+
+            # Étape 3 — Sync répertoire de travail
+            _overlay.set_message(self.translate(
+                "Synchronisation des données…",
+                "Syncing data…"))
+            QtWidgets.QApplication.processEvents()
+            self._sync_all_to_working_dir()
+
+            if data_systeme:
+                if self.working_dir:
+                    self.lock_navigation(False)
+                self.metadonnees_ctrl.load_global_campaign_metadata(dossier)
+
+                try:
+                    lat = lon = None
+                    if data_complete and "video_observation" in data_complete:
+                        block = data_complete["video_observation"]
+                        lat = block.get("latitude", {}).get("value")
+                        lon = block.get("longitude", {}).get("value")
+
+                    if lat is not None and lon is not None:
+                        self.weather_thread = WeatherWorker(lat, lon)
+                        self.weather_thread.weather_fetched.connect(self.metadonnees_ctrl.inject_weather_data)
+                        self.weather_thread.start()
+                    else:
+                        self.metadonnees_ctrl.inject_weather_data({})
+                except Exception as e:
+                    print(f"[METEO] Error: {e}")
                     self.metadonnees_ctrl.inject_weather_data({})
-            except Exception as e:
-                print(f"[METEO] Error: {e}")
-                self.metadonnees_ctrl.inject_weather_data({})
 
-            self.switch_page(w.page_qualification)
-        else:
-            # Pas de JSON système trouvé (campagne fraîche) — déverrouiller quand même
-            # Qualification si des vidéos ont été chargées, sinon tout garder verrouillé.
-            has_videos = self.qualif_ctrl.video_model.rowCount() > 0
-            if has_videos and self.working_dir:
-                self.lock_navigation(False)
                 self.switch_page(w.page_qualification)
             else:
-                self.lock_navigation(True)
+                has_videos = self.qualif_ctrl.video_model.rowCount() > 0
+                if has_videos and self.working_dir:
+                    self.lock_navigation(False)
+                    self.switch_page(w.page_qualification)
+                else:
+                    self.lock_navigation(True)
+
+        finally:
+            _overlay.stop()
 
     def _detect_campaign_mode(self):
         """Détermine le mode et les systèmes de la campagne en scannant toutes les vidéos."""

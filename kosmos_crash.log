@@ -1990,3 +1990,11 @@ Traceback (most recent call last):
     if os.path.exists(csv_system):
                       ^^^^^^^^^^
 NameError: name 'csv_system' is not defined
+
+============================================================
+2026-09-28 15:40:28.595129
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\app_controller.py", line 906, in eventFilter
+    def eventFilter(self, obj, event):
+    
+KeyboardInterrupt

@@ -197,18 +197,6 @@ class QualifController:
             self.dynamic_form_container = QtWidgets.QWidget()
             self.scroll_campaign.setWidget(self.dynamic_form_container)
             layout.addWidget(self.scroll_campaign)
-            self.btn_save_campaign = QtWidgets.QPushButton(
-                self.translate("Sauvegarder", "Save"))
-            self.btn_save_campaign.setFixedHeight(28)
-            self.btn_save_campaign.setStyleSheet(
-                "QPushButton { background-color: #1a3a4a; color: #7ec8e3;"
-                " border: 1px solid #2778a2; border-radius: 4px; font-size: 11px;"
-                " font-weight: bold; }"
-                "QPushButton:hover { background-color: #2778a2; color: white; }"
-                "QPushButton:pressed { background-color: #1a5a7a; }"
-            )
-            self.btn_save_campaign.clicked.connect(self.save_all_campaign_fields)
-            layout.addWidget(self.btn_save_campaign)
 
         self._init_video_list()
         self._init_trash_list()
@@ -233,8 +221,6 @@ class QualifController:
         if hasattr(self, 'map_dialog'):
             self.map_dialog.set_language(language)
         self.map_initialized = False
-        if hasattr(self, 'lbl_section_title'):
-            self.lbl_section_title.setText(self.translate("Propriétés de campagne", "Campaign Properties"))
         if hasattr(self, 'lbl_videos_title'):
             self.lbl_videos_title.setText(self.translate("Vidéos de campagne", "Campaign Videos"))
         if hasattr(self, 'lbl_trash_title'):
@@ -246,8 +232,7 @@ class QualifController:
         ]
         self.video_model.setHorizontalHeaderLabels(header_labels)
         self.trash_model.setHorizontalHeaderLabels(header_labels)
-        if hasattr(self, 'btn_save_campaign'):
-            self.btn_save_campaign.setText(self.translate("Sauvegarder", "Save"))
+        self._update_campaign_save_indicator()
         if hasattr(self, '_video_row_widgets'):
             self._rebuild_video_rows()
         if getattr(self, '_campaign_properties_json_path', None):
@@ -1198,6 +1183,7 @@ class QualifController:
                 lbl = QtWidgets.QLabel(f"{display_name} :")
                 lbl.setStyleSheet("font-size: 11px; font-weight: bold; color: #a0b8c8;")
                 form_layout.addRow(lbl, input_field)
+            self._update_campaign_save_indicator()
             return
 
         fallback_layout = QtWidgets.QVBoxLayout(self.dynamic_form_container)
@@ -1233,39 +1219,64 @@ class QualifController:
         if self._on_qualification_changed:
             self._on_qualification_changed()
 
-        if hasattr(self, 'btn_save_campaign'):
-            self.btn_save_campaign.setText(self.translate("✓ Sauvegardé", "✓ Saved"))
-            QtCore.QTimer.singleShot(2000, lambda: self.btn_save_campaign.setText(
-                self.translate("Sauvegarder", "Save")))
+        self._update_campaign_save_indicator()
 
-        if self.frame_campaign:
-            self.frame_campaign.setStyleSheet(
-                "background-color: rgb(32, 65, 93);"
-                "border-radius: 10px;"
-                "border: 2px solid #5bb8f5;"
-            )
-            QtCore.QTimer.singleShot(2000, lambda: self.frame_campaign.setStyleSheet(
-                "background-color: rgb(32, 65, 93);"
-                "border-radius: 10px;"
-                "border: 1px solid #152d42;"
-            ))
+    def _update_campaign_save_indicator(self):
+        """Met à jour la surbrillance du titre 'Propriétés de campagne' selon l'état de remplissage."""
+        has_value = any(
+            bool(w.text().strip())
+            for w in self.campaign_fields.values()
+            if hasattr(w, 'text')
+        )
+        if has_value:
+            if hasattr(self, 'lbl_section_title'):
+                self.lbl_section_title.setText(
+                    self.translate("✓ Propriétés de campagne", "✓ Campaign Properties"))
+                self.lbl_section_title.setStyleSheet(
+                    "font-size: 13px; font-weight: bold; color: #4caf50;"
+                    " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif; padding-bottom: 5px;"
+                )
+            if self.frame_campaign:
+                self.frame_campaign.setStyleSheet(
+                    "background-color: rgb(32, 65, 93);"
+                    "border-radius: 10px;"
+                    "border: 2px solid #4caf50;"
+                )
+        else:
+            if hasattr(self, 'lbl_section_title'):
+                self.lbl_section_title.setText(
+                    self.translate("Propriétés de campagne", "Campaign Properties"))
+                self.lbl_section_title.setStyleSheet(
+                    "font-size: 13px; font-weight: bold; color: #F2BFB4;"
+                    " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif; padding-bottom: 5px;"
+                )
+            if self.frame_campaign:
+                self.frame_campaign.setStyleSheet(
+                    "background-color: rgb(32, 65, 93);"
+                    "border-radius: 10px;"
+                    "border: 1px solid #152d42;"
+                )
 
     def synchronize_campaign_field(self, key: str, value: str):
         """Écrit value dans le champ key de la section survey de chaque _temp.json vidéo."""
-        # Un champ vide reste "non renseigné" (null), jamais une chaîne vide : sinon
-        # "Sauvegarder" écrase le null d'origine par "" pour tous les champs jamais
-        # remplis, ce qui casse les vérifications type "if not value" ailleurs dans
-        # le code qui s'attendent à une absence de donnée cohérente.
+        # Un champ vide reste "non renseigné" (null), jamais une chaîne vide
         normalized_value = value if value else None
-        for row in range(self.video_model.rowCount()):
+        n_videos = self.video_model.rowCount()
+        n_ok = 0
+        n_skip = 0
+        print(f"[CAMPAIGN] Synchronisation survey.{key!r} = {normalized_value!r} → {n_videos} vidéo(s)")
+        for row in range(n_videos):
             item = self.video_model.item(row, 0)
             if not item:
                 continue
             video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
             if not video_path or not os.path.exists(video_path):
+                n_skip += 1
                 continue
             json_path = get_temp_json_path(str(video_path))
             if not os.path.isfile(json_path):
+                print(f"[CAMPAIGN]   ✗ {os.path.basename(json_path)} introuvable — ignoré")
+                n_skip += 1
                 continue
             try:
                 with open(json_path, 'r', encoding='utf-8') as f:
@@ -1275,11 +1286,15 @@ class QualifController:
                     survey[key]["value"] = normalized_value
                 else:
                     survey[key] = {"value": normalized_value}
-                print(f"[TEMP_JSON] {os.path.basename(json_path)} ← survey.{key} = {normalized_value!r}")
                 with open(json_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=4, ensure_ascii=False)
+                print(f"[TEMP_JSON]   ✓ {os.path.basename(json_path)} ← survey.{key} = {normalized_value!r}")
+                n_ok += 1
             except Exception as e:
-                print(f"[CAMPAIGN SYNC] {key} → {os.path.basename(json_path)} : {e}")
+                print(f"[CAMPAIGN]   ✗ {os.path.basename(json_path)} : {e}")
+                n_skip += 1
+        print(f"[CAMPAIGN] {n_ok} écrit(s), {n_skip} ignoré(s)")
+        self._update_campaign_save_indicator()
 
     # --- Video selection ---
 

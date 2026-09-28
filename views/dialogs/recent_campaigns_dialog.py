@@ -217,12 +217,13 @@ class RecentCampaignsDialog(QtWidgets.QDialog):
         if not (0 <= row < len(self._recents)):
             return
         e = self._recents[row]
-        self.campaign_selected.emit(
-            e.get('campaign_folder', ''),
-            e.get('working_dir', ''),
-            e.get('derusher_name', ''),
-        )
+        folder  = e.get('campaign_folder', '')
+        wdir    = e.get('working_dir', '')
+        derus   = e.get('derusher_name', '')
+        # Fermer le dialog EN PREMIER pour que l'overlay de chargement soit visible
         self.accept()
+        QtWidgets.QApplication.processEvents()
+        self.campaign_selected.emit(folder, wdir, derus)
 
     def _remove_selected(self):
         if self._list is None:
