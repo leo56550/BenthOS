@@ -1727,13 +1727,6 @@ class EvenementsController:
                 if _cache_key not in self._motor_cache:
                     self._motor_cache[_cache_key] = get_motor_stable_timestamps(csv_system, delay=6.0)
                 motor_data = self._motor_cache[_cache_key]
-                for motor_item in motor_data:
-                    start_ms = int(motor_item["timestamp"] * 1000)
-                    timeline_events.append({
-                        "start": start_ms, "end": start_ms + 3000,
-                        "title": f"Rot #{motor_item['rotation_index']} ({motor_item['angle']}°)",
-                        "type": motor_item["type"]
-                    })
 
                 # Persister dans le JSON si events_motor est encore vide (première détection)
                 if motor_data and self.current_json_path and os.path.isfile(self.current_json_path):
@@ -1813,33 +1806,30 @@ class EvenementsController:
                         else:
                             value = val.get("value", "")
                         json_comment = val.get("comment", "")
-                        start_ms = int(((frame_start - 1) / fps) * 1000) if frame_start and fps else 0
-                        end_ms = int(((frame_end - 1) / fps) * 1000) if frame_end and fps else 0
+
+                        if json_key == "events_motor":
+                            # Priorité : start_ms (ms bruts, précis) > time_code > frame_number
+                            # Évite tout problème de conversion fps (OpenCV vs valeur stockée)
+                            if "start_ms" in val:
+                                start_ms = int(val["start_ms"])
+                            else:
+                                tc = val.get("time_code", "")
+                                try:
+                                    tc_clean = tc.split(".")[0]  # enlever .mmm si présent
+                                    parts = tc_clean.split(":")
+                                    start_ms = (int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])) * 1000
+                                except Exception:
+                                    start_ms = int(((frame_start - 1) / fps) * 1000) if frame_start and fps else 0
+                            end_ms = start_ms
+                        else:
+                            start_ms = int(((frame_start - 1) / fps) * 1000) if frame_start and fps else 0
+                            end_ms = int(((frame_end - 1) / fps) * 1000) if frame_end and fps else 0
                         is_pic = (json_key == "events_interesting_images" or start_ms == end_ms)
                         timeline_title = f"Pic: {value}" if is_pic else value
                         zone_index = self._zone_index_for_event_type(json_key)
 
-                        # events_motor : si une barre CSV existe déjà à ±2 s → c'est un doublon
-                        # auto-détecté, on ne l'ajoute pas à la timeline (déjà représenté).
-                        # Sinon (ajout manuel) → barre jaune pointillée via "rotation_manual".
                         if json_key == "events_motor":
-                            already_in_csv = any(
-                                abs(e.get("start", 0) - start_ms) <= 2000
-                                for e in timeline_events
-                                if e.get("type", "").startswith("rotation")
-                            )
-                            if already_in_csv:
-                                # Doublon CSV/JSON : ignorer pour la timeline, mais garder dans le tree
-                                txt_start = self.event_player.timeline._format_ms(start_ms)
-                                if hasattr(self, 'tree_captures') and self.tree_captures:
-                                    category_name_local = self._get_label_from_json_key(json_key)
-                                    _ti = QtWidgets.QTreeWidgetItem(
-                                        [txt_start, "-", category_name_local, value, json_comment, ""])
-                                    _ti.setFlags(_ti.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
-                                    _ti.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778A2")))
-                                    self.tree_captures.addTopLevelItem(_ti)
-                                continue
-                            # Rotation manuelle : barre jaune pointillée
+                            # Toutes les rotations moteur (CSV auto ou manuelles) → barre orange
                             event_dict = {
                                 "start": start_ms, "end": start_ms,
                                 "title": timeline_title,

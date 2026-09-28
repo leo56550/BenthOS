@@ -179,6 +179,24 @@ class AppController(QtCore.QObject):
         if self._current_derusher_name:
             self._write_derusher_to_working_copies(video_paths, self._current_derusher_name)
 
+
+    def _persist_motor_events_for_all_videos(self, force: bool = False) -> None:
+        """Écrit (ou recalcule) les rotations moteur dans chaque _temp.json au chargement."""
+        from services.motor_service import persist_motor_events_from_csv
+        from services.campaign_service import get_temp_json_path
+        model = self.qualif_ctrl.video_model
+        total = 0
+        for row in range(model.rowCount()):
+            item = model.item(row, 0)
+            video_path = item.data(QtCore.Qt.ItemDataRole.UserRole) if item else None
+            if not video_path:
+                continue
+            json_path = get_temp_json_path(video_path)
+            if os.path.isfile(json_path):
+                total += persist_motor_events_from_csv(video_path, json_path, force=force)
+        if total:
+            print(f"[MOTOR] {total} rotation(s) moteur inscrites dans les _temp.json au chargement.")
+
     def _write_derusher_to_working_copies(self, video_paths: list, derusher_name: str) -> None:
         """Écrit le nom du dérusher dans les copies de travail des JSONs vidéo."""
         import json as _json
@@ -566,6 +584,8 @@ class AppController(QtCore.QObject):
                     ctrl.set_working_dir(working_dir)
 
         self._campaign_ready = True
+        # Écrire (ou recalculer) les rotations moteur dans les _temp.json dès l'ouverture
+        self._persist_motor_events_for_all_videos(force=True)
         # Sync immédiat si le répertoire de travail est déjà connu
         self._sync_all_to_working_dir()
 
