@@ -2472,10 +2472,12 @@ class MetadonneesController:
     # ── Feature : import GPX ─────────────────────────────────────────────
 
     @staticmethod
-    def _parse_gpx_waypoints(gpx_path: str) -> dict[str, tuple[float, float]]:
-        """Retourne {name: (lat, lon)} depuis les waypoints d'un fichier GPX (XML).
+    @staticmethod
+    def _parse_gpx_waypoints(gpx_path: str) -> dict[str, tuple[float, float, str | None]]:
+        """Retourne {name: (lat, lon, heure_hhmm)} depuis les waypoints d'un fichier GPX (XML).
 
-        Lit les éléments <wpt>, <trkpt> et <rtept> ; extrait la balise <name>.
+        Lit les éléments <wpt>, <trkpt> et <rtept> ; extrait <name> et <time>.
+        L'heure est extraite en HH:MM depuis la balise <time> ISO-8601 (UTC Garmin).
         """
         tree = ET.parse(gpx_path)
         root = tree.getroot()
@@ -2485,7 +2487,7 @@ class MetadonneesController:
         if tag.startswith("{"):
             ns = tag[:tag.index("}") + 1]
 
-        result: dict[str, tuple[float, float]] = {}
+        result: dict[str, tuple[float, float, str | None]] = {}
         for tag_name in (f"{ns}wpt", f"{ns}trkpt", f"{ns}rtept"):
             for pt in root.iter(tag_name):
                 try:
@@ -2495,15 +2497,27 @@ class MetadonneesController:
                     if name_elem is None or not name_elem.text:
                         continue
                     name = name_elem.text.strip()
-                    if name:
-                        result[name] = (lat, lon)
+                    if not name:
+                        continue
+                    # Extraire HH:MM depuis <time>2026-07-23T09:21:21Z</time>
+                    hhmm = None
+                    time_elem = pt.find(f"{ns}time")
+                    if time_elem is not None and time_elem.text:
+                        t = time_elem.text.strip()
+                        # Format ISO-8601 : YYYY-MM-DDTHH:MM:SS[Z|+...]
+                        if "T" in t:
+                            time_part = t.split("T", 1)[1]
+                            parts = time_part.replace("Z", "").split(":")
+                            if len(parts) >= 2:
+                                hhmm = f"{parts[0]}:{parts[1]}"
+                    result[name] = (lat, lon, hhmm)
                 except (ValueError, TypeError):
                     continue
         return result
 
     def _import_gpx(self):
         """Ouvre un explorateur pour choisir un .gpx et applique les coordonnées aux vidéos
-        en matchant la balise <name> du waypoint avec le champ 'point_name' de chaque vidéo."""
+        en matchant la balise <name> du waypoint avec le champ 'gps_waypoint' de chaque vidéo."""
         if not self._working_dir:
             QtWidgets.QMessageBox.warning(
                 self.widget,
@@ -2513,9 +2527,8 @@ class MetadonneesController:
             )
             return
 
-        # ── Étape 1 : vérifier que tous les point_name sont renseignés ──────
-        missing_point: list[str] = []
-        video_point_map: dict[str, str] = {}   # video_path → point_name
+        # ── Étape 1 : collecter le Pt GPS Garmin de chaque vidéo ────────────
+        video_gps_map: dict[str, str] = {}   # video_path → gps_waypoint
 
         for row in range(self.video_model.rowCount()):
             item = self.video_model.item(row, 0)
@@ -2525,32 +2538,28 @@ class MetadonneesController:
             if not video_path:
                 continue
             json_path = get_working_video_json_path(self._working_dir, video_path)
-            point_name = ''
-            if os.path.isfile(json_path):
-                try:
-                    with open(json_path, 'r', encoding='utf-8') as _f:
-                        _jd = json.load(_f)
-                    point_name = str(
-                        (_jd.get("video_observation") or {}).get("point_name", {}).get("value") or ''
-                    ).strip()
-                except Exception:
-                    pass
-            if not point_name:
-                missing_point.append(os.path.basename(video_path))
-            else:
-                video_point_map[video_path] = point_name
+            if not os.path.isfile(json_path):
+                continue
+            try:
+                with open(json_path, 'r', encoding='utf-8') as _f:
+                    _jd = json.load(_f)
+                gps_wpt = str(
+                    (_jd.get("video_observation") or {}).get("gps_waypoint", {}).get("value") or ''
+                ).strip()
+                if gps_wpt and gps_wpt.lower() not in ("none", "null"):
+                    video_gps_map[video_path] = gps_wpt
+            except Exception:
+                pass
 
-        if missing_point:
-            QtWidgets.QMessageBox.critical(
+        if not video_gps_map:
+            QtWidgets.QMessageBox.warning(
                 self.widget,
-                self.translate("Nom du point manquant", "Missing point name"),
+                self.translate("Pt GPS Garmin manquant", "Missing GPS Garmin Pt"),
                 self.translate(
-                    "Toutes les vidéos doivent avoir un 'Nom du point' avant d'importer le GPX.\n\n"
-                    "Vidéos sans nom de point :\n"
-                    + "\n".join(f"  • {v}" for v in missing_point),
-                    "All videos must have a 'Point name' before importing GPX.\n\n"
-                    "Videos without a point name:\n"
-                    + "\n".join(f"  • {v}" for v in missing_point),
+                    "Aucune vidéo n'a de 'Pt GPS Garmin' renseigné.\n"
+                    "Saisissez le numéro de waypoint Garmin dans la colonne 'Pt GPS Garmin' avant d'importer.",
+                    "No video has a 'GPS Garmin Pt' set.\n"
+                    "Enter the Garmin waypoint number in the 'GPS Garmin Pt' column before importing."
                 )
             )
             return
@@ -2586,18 +2595,18 @@ class MetadonneesController:
             )
             return
 
-        # ── Étape 4 : matcher point_name ↔ <name> GPX et écrire lat/lon ─────
+        # ── Étape 4 : matcher gps_waypoint ↔ <name> GPX et écrire lat/lon ───
         matched = 0
-        not_found: list[str] = []   # (vidéo, point_name) introuvable dans le GPX
+        not_found: list[str] = []
         write_errors: list[str] = []
 
-        for video_path, point_name in video_point_map.items():
-            coords = waypoints.get(point_name)
-            if coords is None:
-                not_found.append(f"{os.path.basename(video_path)} (point « {point_name} »)")
+        for video_path, gps_wpt in video_gps_map.items():
+            entry = waypoints.get(gps_wpt)
+            if entry is None:
+                not_found.append(f"{os.path.basename(video_path)} (Pt GPS « {gps_wpt} »)")
                 continue
 
-            lat, lon = coords
+            lat, lon, hhmm = entry
             json_path = get_working_video_json_path(self._working_dir, video_path)
             if not os.path.isfile(json_path):
                 write_errors.append(f"{os.path.basename(video_path)} : JSON introuvable")
@@ -2616,6 +2625,12 @@ class MetadonneesController:
                     lon_val = lon
                 obs["latitude"]  = {"value": lat_val}
                 obs["longitude"] = {"value": lon_val}
+                stem = os.path.basename(json_path)
+                print(f"[TEMP_JSON] {stem} ← video_observation.latitude  = {lat_val}")
+                print(f"[TEMP_JSON] {stem} ← video_observation.longitude = {lon_val}")
+                if hhmm:
+                    obs.setdefault("time", {})["value"] = hhmm
+                    print(f"[TEMP_JSON] {stem} ← video_observation.time = {hhmm!r} (GPX UTC)")
                 with open(json_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=4, ensure_ascii=False)
                 matched += 1
@@ -2662,8 +2677,12 @@ class MetadonneesController:
         """Valide que tous les champs nécessaires au nom formaté sont remplis pour chaque vidéo."""
         if not self._working_dir:
             QtWidgets.QMessageBox.warning(
-                self.widget, "Aucune campagne ouverte",
-                "Ouvrez d'abord une campagne avant de sauvegarder."
+                self.widget,
+                self.translate("Aucune campagne ouverte", "No campaign open"),
+                self.translate(
+                    "Ouvrez d'abord une campagne avant de sauvegarder.",
+                    "Please open a campaign before saving."
+                )
             )
             return
 
@@ -2679,14 +2698,16 @@ class MetadonneesController:
                 continue
             json_path = resolve_video_json_path(self._working_dir, str(video_path))
             if not os.path.isfile(json_path):
-                missing_by_video.append((os.path.basename(str(video_path)), ["JSON introuvable"]))
+                missing_by_video.append((os.path.basename(str(video_path)),
+                                         [self.translate("JSON introuvable", "JSON not found")]))
                 continue
 
             try:
                 with open(json_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
             except Exception:
-                missing_by_video.append((os.path.basename(str(video_path)), ["JSON illisible"]))
+                missing_by_video.append((os.path.basename(str(video_path)),
+                                         [self.translate("JSON illisible", "JSON unreadable")]))
                 continue
 
             missing_fields = []
@@ -2943,10 +2964,20 @@ class MetadonneesController:
             except Exception as e:
                 errors.append(f"{nom}: {e}")
 
-        msg = f"{len(generated)} dossier(s) générés dans :\n{benthoss_dir}"
+        msg = self.translate(
+            f"{len(generated)} dossier(s) générés dans :\n{benthoss_dir}",
+            f"{len(generated)} folder(s) generated in:\n{benthoss_dir}"
+        )
         if errors:
-            msg += f"\n\nErreurs ({len(errors)}) :\n" + "\n".join(errors[:5])
-        QtWidgets.QMessageBox.information(self.widget, "Génération terminée", msg)
+            msg += self.translate(
+                f"\n\nErreurs ({len(errors)}) :\n" + "\n".join(errors[:5]),
+                f"\n\nErrors ({len(errors)}):\n" + "\n".join(errors[:5])
+            )
+        QtWidgets.QMessageBox.information(
+            self.widget,
+            self.translate("Génération terminée", "Generation complete"),
+            msg
+        )
 
     def _open_feuille_terrain(self):
         """Ouvre un explorateur pour choisir une image (JPG/PNG) et l'affiche dans un QDialog."""

@@ -423,14 +423,12 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.btn_debut_annotation = QtWidgets.QPushButton("DÉBUT ANNOTATION")
         self.btn_debut_annotation.setStyleSheet(_BTN_STYLE)
         self.btn_debut_annotation.setEnabled(False)
-        self.btn_debut_annotation.setToolTip("Marquer le début de l'annotation à la position courante")
         self.btn_debut_annotation.setVisible(False)
         buttons_layout.addWidget(self.btn_debut_annotation)
 
         self.btn_fin_annotation = QtWidgets.QPushButton("FIN ANNOTATION")
         self.btn_fin_annotation.setStyleSheet(_BTN_STYLE)
         self.btn_fin_annotation.setEnabled(False)
-        self.btn_fin_annotation.setToolTip("Marquer la fin de l'annotation à la position courante")
         self.btn_fin_annotation.setVisible(False)
         buttons_layout.addWidget(self.btn_fin_annotation)
 
@@ -669,6 +667,14 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             "Afficher / masquer le graphe de télémétrie", "Show / hide the telemetry graph"))
         self.btn_ardoise.setToolTip(self.translate(
             "Saisir l'ardoise à la position courante", "Record the slate at the current position"))
+        self.btn_debut_annotation.setText(self.translate("DÉBUT ANNOTATION", "ANNOTATION START"))
+        self.btn_debut_annotation.setToolTip(self.translate(
+            "Marquer le début de l'annotation à la position courante",
+            "Mark the annotation start at the current position"))
+        self.btn_fin_annotation.setText(self.translate("FIN ANNOTATION", "ANNOTATION END"))
+        self.btn_fin_annotation.setToolTip(self.translate(
+            "Marquer la fin de l'annotation à la position courante",
+            "Mark the annotation end at the current position"))
         if hasattr(self, 'telemetry_dialog'):
             self.telemetry_dialog.set_language(language)
         self.update_top_time_label(self.player.position(), self.player.duration())

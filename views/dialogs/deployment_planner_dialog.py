@@ -515,7 +515,7 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
     def _export_json(self):
         if not self._points:
             QtWidgets.QMessageBox.information(
-                self, "Export", self.translate("Aucun waypoint a exporter.", "No waypoint to export.")
+                self, "Export", self.translate("Aucun waypoint à exporter.", "No waypoint to export.")
             )
             return
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
@@ -529,9 +529,9 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
             with open(path, 'wb') as f:
                 f.write(self._build_json_bytes())
             QtWidgets.QMessageBox.information(
-                self, self.translate("Export reussi", "Export successful"),
+                self, self.translate("Export réussi", "Export successful"),
                 self.translate(
-                    f"{len(self._points)} waypoints exportes vers :\n{path}",
+                    f"{len(self._points)} waypoints exportés vers :\n{path}",
                     f"{len(self._points)} waypoints exported to:\n{path}"
                 )
             )
@@ -544,7 +544,7 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
         if not self._points:
             QtWidgets.QMessageBox.information(
                 self, self.translate("Envoi", "Send"),
-                self.translate("Aucun waypoint a envoyer.", "No waypoint to send.")
+                self.translate("Aucun waypoint à envoyer.", "No waypoint to send.")
             )
             return
         dlg = _SftpSendDialog(self._build_json_bytes(),

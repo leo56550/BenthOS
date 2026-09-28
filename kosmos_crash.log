@@ -1890,3 +1890,47 @@ Traceback (most recent call last):
     def eventFilter(self, obj, event):
     
 KeyboardInterrupt
+
+============================================================
+2026-09-28 11:02:42.739508
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\main.py", line 59, in <module>
+    main()
+  File "c:\KOSMOS_IHM\main.py", line 49, in main
+    window.controller = AppController(window)
+                        ^^^^^^^^^^^^^^^^^^^^^
+  File "c:\KOSMOS_IHM\controllers\app_controller.py", line 68, in __init__
+    self.extraction_ctrl = ExtractionController(
+                           ^^^^^^^^^^^^^^^^^^^^^
+  File "c:\KOSMOS_IHM\controllers\extraction_controller.py", line 54, in __init__
+    self.video_player = EmbeddedVideoPlayer(zone_definitions=None)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\KOSMOS_IHM\views\widgets\embedded_player.py", line 513, in __init__
+    self.telemetry_dialog = TelemetryDialog(self)
+                            ^^^^^^^^^^^^^^^^^^^^^
+  File "c:\KOSMOS_IHM\views\dialogs\telemetry_dialog.py", line 81, in __init__
+    pw = pg.PlotWidget(title=label, axisItems={'bottom': _TimeAxis(orientation='bottom')})
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\widgets\PlotWidget.py", line 58, in __init__
+    self.plotItem = PlotItem(**kargs)
+                    ^^^^^^^^^^^^^^^^^
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\graphicsItems\PlotItem\PlotItem.py", line 162, in __init__
+    viewBox = ViewBox(parent=self, enableMenu=enableMenu)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\graphicsItems\ViewBox\ViewBox.py", line 224, in __init__
+    self.menu = ViewBoxMenu(self)
+                ^^^^^^^^^^^^^^^^^
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\graphicsItems\ViewBox\ViewBoxMenu.py", line 29, in __init__
+    ui.setupUi(w)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\graphicsItems\ViewBox\axisCtrlTemplate_generic.py", line 49, in setupUi
+    self.invertCheck = QtWidgets.QCheckBox(Form)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
+
+============================================================
+2026-09-28 11:15:33.660535
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\app_controller.py", line 758, in eventFilter
+    def eventFilter(self, obj, event):
+    
+KeyboardInterrupt

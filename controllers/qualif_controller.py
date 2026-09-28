@@ -847,13 +847,17 @@ class QualifController:
             is_stereo_video, _ = check_stereo_status(video["path"])
             segs = get_sequential_segments(video["path"])
             if is_stereo_video:
-                col_name.setToolTip("Vidéo stéréo — flux gauche + flux droit")
+                col_name.setToolTip(self.translate(
+                    "Vidéo stéréo — flux gauche + flux droit",
+                    "Stereo video — left stream + right stream"))
                 col_name.setForeground(QtGui.QBrush(QtGui.QColor("#4a9fcf")))
                 col_name.setData("#4a9fcf", QtCore.Qt.ItemDataRole.UserRole + 1)
                 col_name.setText(video["name"] + f"  {sys_name} · STEREO")
             elif segs:
                 names = ", ".join(os.path.basename(s) for s in segs)
-                col_name.setToolTip(f"Vidéo scindée — segment(s) lié(s) : {names}")
+                col_name.setToolTip(self.translate(
+                    f"Vidéo scindée — segment(s) lié(s) : {names}",
+                    f"Split video — linked segment(s): {names}"))
                 col_name.setForeground(QtGui.QBrush(QtGui.QColor("#E8C838")))
                 col_name.setData("#E8C838", QtCore.Qt.ItemDataRole.UserRole + 1)
                 col_name.setText(video["name"] + f"  {sys_name} · [+{len(segs)}]")
@@ -1078,13 +1082,17 @@ class QualifController:
                 is_stereo_video, _ = check_stereo_status(video["path"])
                 segs = get_sequential_segments(video["path"])
                 if is_stereo_video:
-                    col_name.setToolTip("Vidéo stéréo — flux gauche + flux droit")
+                    col_name.setToolTip(self.translate(
+                        "Vidéo stéréo — flux gauche + flux droit",
+                        "Stereo video — left stream + right stream"))
                     col_name.setForeground(QtGui.QBrush(QtGui.QColor("#4a9fcf")))
                     col_name.setData("#4a9fcf", QtCore.Qt.ItemDataRole.UserRole + 1)
                     col_name.setText(video["name"] + f"  {sys_name} · STEREO")
                 elif segs:
                     names = ", ".join(os.path.basename(s) for s in segs)
-                    col_name.setToolTip(f"Vidéo scindée — segment(s) lié(s) : {names}")
+                    col_name.setToolTip(self.translate(
+                        f"Vidéo scindée — segment(s) lié(s) : {names}",
+                        f"Split video — linked segment(s): {names}"))
                     col_name.setForeground(QtGui.QBrush(QtGui.QColor("#E8C838")))
                     col_name.setData("#E8C838", QtCore.Qt.ItemDataRole.UserRole + 1)
                     col_name.setText(video["name"] + f"  {sys_name} · [+{len(segs)}]")
