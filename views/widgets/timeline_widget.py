@@ -285,26 +285,44 @@ class VideoTimeline(QtWidgets.QWidget):
                 continue
 
             if evt_type != "custom_event" and self._is_motor_event(evt_type):
-                # Toutes les rotations moteur → orange, tiret-point, losange
                 is_blinking = (start_ms == self._blink_event_start and not self._blink_on)
-                c_line = QtGui.QColor("#ffffff" if is_blinking else self.C_MOTOR_MANUAL)
-                pen = QtGui.QPen(c_line, 2.5 if is_blinking else 1.5)
+                is_360 = "360" in title
+
+                if is_blinking:
+                    c_line = QtGui.QColor("#ffffff")
+                    line_w = 3.0
+                elif is_360:
+                    c_line = QtGui.QColor(self.C_MOTOR360)
+                    line_w = 3.0
+                else:
+                    c_line = QtGui.QColor(self.C_MOTOR_MANUAL)
+                    line_w = 1.5
+
+                pen = QtGui.QPen(c_line, line_w)
                 pen.setStyle(QtCore.Qt.PenStyle.DashDotLine)
                 painter.setPen(pen)
-                painter.drawLine(x_start, RH, x_start, H)
+                # 360° : ligne qui remonte dans la règle pour être vraiment visible
+                line_top = max(0, RH - 10) if is_360 else RH
+                painter.drawLine(x_start, line_top, x_start, H)
+
+                # Losange — plus grand pour 360°
+                dm = 7 if is_360 else 4
                 painter.setPen(QtCore.Qt.PenStyle.NoPen)
                 painter.setBrush(c_line)
                 pts = QtGui.QPolygon([
-                    QtCore.QPoint(x_start,     RH + 3),
-                    QtCore.QPoint(x_start + 4, RH + 7),
-                    QtCore.QPoint(x_start,     RH + 11),
-                    QtCore.QPoint(x_start - 4, RH + 7),
+                    QtCore.QPoint(x_start,      RH + 2),
+                    QtCore.QPoint(x_start + dm, RH + 2 + dm),
+                    QtCore.QPoint(x_start,      RH + 2 + dm * 2),
+                    QtCore.QPoint(x_start - dm, RH + 2 + dm),
                 ])
                 painter.drawPolygon(pts)
-                f_m = QtGui.QFont("Segoe UI", 7, QtGui.QFont.Weight.Bold)
+
+                # Label
+                lbl = "360°" if is_360 else "M"
+                f_m = QtGui.QFont("Segoe UI", 8 if is_360 else 7, QtGui.QFont.Weight.Bold)
                 painter.setFont(f_m)
                 painter.setPen(c_line)
-                painter.drawText(x_start + 5, RH + 16, "M")
+                painter.drawText(x_start + dm + 2, RH + dm * 2 + 5, lbl)
                 continue
 
             x_end      = self._clamp_int((end_ms / total_duration) * width)

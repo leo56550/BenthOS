@@ -516,9 +516,6 @@ class AppController(QtCore.QObject):
                 tl.events = []
                 tl.set_selected_event(None)
                 tl.update()
-            mc = getattr(player, '_motor_card', None)
-            if mc is not None:
-                mc.setVisible(False)
 
     def _load_historical_data(self):
         """Ouvre un CSV/XLSX infostation et l'affiche directement dans le tableau métadonnées."""
