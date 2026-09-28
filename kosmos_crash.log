@@ -1934,3 +1934,51 @@ Traceback (most recent call last):
     def eventFilter(self, obj, event):
     
 KeyboardInterrupt
+
+============================================================
+2026-09-28 14:42:34.639579
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\validation_controller.py", line 656, in on_video_selected
+    if os.path.exists(csv_system):
+                      ^^^^^^^^^^
+NameError: name 'csv_system' is not defined
+
+============================================================
+2026-09-28 14:43:44.430480
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\validation_controller.py", line 656, in on_video_selected
+    if os.path.exists(csv_system):
+                      ^^^^^^^^^^
+NameError: name 'csv_system' is not defined
+
+============================================================
+2026-09-28 14:43:47.204028
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\validation_controller.py", line 656, in on_video_selected
+    if os.path.exists(csv_system):
+                      ^^^^^^^^^^
+NameError: name 'csv_system' is not defined
+
+============================================================
+2026-09-28 14:43:49.354481
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\validation_controller.py", line 656, in on_video_selected
+    if os.path.exists(csv_system):
+                      ^^^^^^^^^^
+NameError: name 'csv_system' is not defined
+
+============================================================
+2026-09-28 14:48:04.593714
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\validation_controller.py", line 665, in on_video_selected
+    if os.path.exists(csv_system):
+                      ^^^^^^^^^^
+NameError: name 'csv_system' is not defined
+
+============================================================
+2026-09-28 14:48:04.628920
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\views\widgets\timeline_widget.py", line 299, in paintEvent
+    QtCore.QPoint(x_start + 4, RH + 7),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+OverflowError: argument 1 overflowed: value must be in the range -2147483648 to 2147483647

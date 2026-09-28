@@ -4,7 +4,6 @@ import cv2
 
 from PyQt6 import QtWidgets, QtCore, QtGui
 
-from services.motor_service import get_motor_stable_timestamps
 from services.thumbnail_service import THUMB_W, THUMB_H
 from services.video_service import check_stereo_status
 from services.export_service import VideoSegmentationWorker
@@ -89,6 +88,7 @@ class ExtractionController:
             self.show_no_cap_seg_message()
 
         self.video_player.timeline.markersChanged.connect(self.on_timeline_markers_moved)
+        self.video_player.timeline.eventSelected.connect(self._seek_on_event_select)
         self.video_player.timeline.eventDoubleClicked.connect(self.on_event_double_clicked)
         self.video_player.timeline.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.video_player.timeline.customContextMenuRequested.connect(self.on_timeline_context_menu)
@@ -187,79 +187,49 @@ class ExtractionController:
         if not self.current_video_path or not os.path.exists(self.current_video_path):
             return
 
-        video_dir = os.path.dirname(self.current_video_path)
-        csv_system = os.path.join(video_dir, "systemEvent.csv")
         timeline_events = []
-        if os.path.exists(csv_system):
-            try:
-                from services.motor_service import get_motor_stable_timestamps as _gmt
-                motor_data = _gmt(csv_system, delay=6.0)
-                for motor_item in motor_data:
-                    start_ms = int(motor_item["timestamp"] * 1000)
-                    timeline_events.append({
-                        "start": start_ms, "end": start_ms + 3000,
-                        "title": f"Rot #{motor_item['rotation_index']} ({motor_item['angle']}°)",
-                        "type": motor_item["type"]
-                    })
-            except Exception:
-                pass
-
         json_path = get_temp_json_path(self.current_video_path)
         if json_path and os.path.exists(json_path):
             try:
                 with open(json_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 video_obs = data.get("video_observation", {})
-                for json_key in ["events_motor", "events_animal", "events_interesting_images"]:
-                    raw = video_obs.get(json_key) or (video_obs.get("events_deployment") if json_key == "events_motor" else None)
+                # Événements moteur (depuis JSON uniquement)
+                for val in (video_obs.get("events_motor") or []):
+                    if not isinstance(val, dict):
+                        continue
+                    start_ms = int(val.get("start_ms", 0)) or int(
+                        ((val.get("frame_number", 0) - 1) / 25.0) * 1000
+                    )
+                    value = val.get("description_fr", "Rotation moteur")
+                    event_dict = {
+                        "start": start_ms, "end": start_ms,
+                        "title": value,
+                        "type": "rotation_manual", "zone": 0, "_json_key": "events_motor",
+                        "single_frame": True,
+                    }
+                    if val.get("event_id"):
+                        event_dict["_event_uid"] = val["event_id"]
+                    timeline_events.append(event_dict)
+                # Autres événements JSON (animaux, images)
+                for json_key in ["events_animal", "events_interesting_images"]:
+                    raw = video_obs.get(json_key)
                     if not isinstance(raw, list) or not raw:
                         continue
-                    if json_key == "events_motor":
-                        first = raw[0] if raw else {}
-                        if isinstance(first, dict) and "values" in first:
-                            values_list = [
-                                {"frame_number": v.get("frame_number_start", 0),
-                                 "description_fr": v.get("value", ""),
-                                 "event_id": v.get("event_id"),
-                                 "comment": v.get("comment", "")}
-                                for v in first.get("values", []) if isinstance(v, dict)
-                            ]
-                        else:
-                            values_list = [v for v in raw if isinstance(v, dict) and "frame_number" in v]
-                    else:
-                        values_list = raw[0].get("values", []) if isinstance(raw[0], dict) else []
+                    values_list = raw[0].get("values", []) if isinstance(raw[0], dict) else []
                     for val in values_list:
-                        if json_key == "events_motor":
-                            frame_start = val.get("frame_number", 0)
-                            frame_end = frame_start
-                            value = val.get("description_fr") or val.get("value", "rotation")
-                        else:
-                            frame_start = val.get("frame_number_start", 0)
-                            frame_end = val.get("frame_number_end", 0)
-                            value = val.get("value", "")
+                        frame_start = val.get("frame_number_start", 0)
+                        frame_end = val.get("frame_number_end", 0)
+                        value = val.get("value", "")
                         fps = 25.0
                         start_ms = int(((frame_start - 1) / fps) * 1000) if frame_start and fps else 0
                         end_ms = int(((frame_end - 1) / fps) * 1000) if frame_end and fps else 0
                         is_pic = (json_key == "events_interesting_images" or start_ms == end_ms)
-                        if json_key == "events_motor":
-                            already = any(
-                                abs(e.get("start", 0) - start_ms) <= 2000
-                                for e in timeline_events
-                                if e.get("type", "").startswith("rotation")
-                            )
-                            if already:
-                                continue
-                            event_dict = {
-                                "start": start_ms, "end": start_ms,
-                                "title": f"Pic: {value}" if is_pic else value,
-                                "type": "rotation_manual", "zone": 0, "_json_key": json_key,
-                            }
-                        else:
-                            event_dict = {
-                                "start": start_ms, "end": end_ms,
-                                "title": f"Pic: {value}" if is_pic else value,
-                                "type": "custom_event", "zone": 0, "_json_key": json_key,
-                            }
+                        event_dict = {
+                            "start": start_ms, "end": end_ms,
+                            "title": f"Pic: {value}" if is_pic else value,
+                            "type": "custom_event", "zone": 0, "_json_key": json_key,
+                        }
                         if val.get("event_id"):
                             event_dict["_event_uid"] = val["event_id"]
                         if is_pic:
@@ -299,81 +269,48 @@ class ExtractionController:
             self.start_ms = 0
             self.end_ms = 0
 
-            video_dir = os.path.dirname(video_path)
-            csv_system = os.path.join(video_dir, "systemEvent.csv")
             timeline_events = []
-            if os.path.exists(csv_system):
-                try:
-                    motor_data = get_motor_stable_timestamps(csv_system, delay=6.0)
-                    for motor_item in motor_data:
-                        start_ms = int(motor_item["timestamp"] * 1000)
-                        timeline_events.append({
-                            "start": start_ms, "end": start_ms + 3000,
-                            "title": f"Rot #{motor_item['rotation_index']} ({motor_item['angle']}°)",
-                            "type": motor_item["type"]
-                        })
-                except Exception as e:
-                    print(f"[MOTEURS] Erreur : {e}")
-
             if self.current_json_path and os.path.exists(self.current_json_path):
                 try:
                     with open(self.current_json_path, 'r', encoding='utf-8') as f:
                         data = json.load(f)
                     video_obs = data.get("video_observation", {})
-                    for json_key in ["events_motor", "events_animal", "events_interesting_images"]:
-                        raw = video_obs.get(json_key) or (video_obs.get("events_deployment") if json_key == "events_motor" else None)
+                    # Événements moteur (depuis JSON uniquement)
+                    for val in (video_obs.get("events_motor") or []):
+                        if not isinstance(val, dict):
+                            continue
+                        start_ms = int(val.get("start_ms", 0)) or int(
+                            ((val.get("frame_number", 0) - 1) / 25.0) * 1000
+                        )
+                        value = val.get("description_fr", "Rotation moteur")
+                        event_dict = {
+                            "start": start_ms, "end": start_ms,
+                            "title": value,
+                            "type": "rotation_manual", "zone": 0, "_json_key": "events_motor",
+                            "single_frame": True,
+                        }
+                        if val.get("event_id"):
+                            event_dict["_event_uid"] = val["event_id"]
+                        timeline_events.append(event_dict)
+                    # Autres événements JSON (animaux, images)
+                    for json_key in ["events_animal", "events_interesting_images"]:
+                        raw = video_obs.get(json_key)
                         if not isinstance(raw, list) or not raw:
                             continue
-                        if json_key == "events_motor":
-                            first = raw[0] if raw else {}
-                            if isinstance(first, dict) and "values" in first:
-                                values_list = [
-                                    {"frame_number": v.get("frame_number_start", 0),
-                                     "description_fr": v.get("value", ""),
-                                     "event_id": v.get("event_id"),
-                                     "comment": v.get("comment", "")}
-                                    for v in first.get("values", []) if isinstance(v, dict)
-                                ]
-                            else:
-                                values_list = [v for v in raw if isinstance(v, dict) and "frame_number" in v]
-                        else:
-                            values_list = raw[0].get("values", []) if isinstance(raw[0], dict) else []
+                        values_list = raw[0].get("values", []) if isinstance(raw[0], dict) else []
                         for val in values_list:
-                            if json_key == "events_motor":
-                                frame_start = val.get("frame_number", 0)
-                                frame_end = frame_start
-                                value = val.get("description_fr") or val.get("value", "rotation")
-                            else:
-                                frame_start = val.get("frame_number_start", 0)
-                                frame_end = val.get("frame_number_end", 0)
-                                value = val.get("value", "")
+                            frame_start = val.get("frame_number_start", 0)
+                            frame_end = val.get("frame_number_end", 0)
+                            value = val.get("value", "")
                             fps = 25.0
                             start_ms = int(((frame_start - 1) / fps) * 1000) if frame_start and fps else 0
                             end_ms = int(((frame_end - 1) / fps) * 1000) if frame_end and fps else 0
                             is_pic = (json_key == "events_interesting_images" or start_ms == end_ms)
-                            if json_key == "events_motor":
-                                already = any(
-                                    abs(e.get("start", 0) - start_ms) <= 2000
-                                    for e in timeline_events
-                                    if e.get("type", "").startswith("rotation")
-                                )
-                                if already:
-                                    continue
-                                event_dict = {
-                                    "start": start_ms, "end": start_ms,
-                                    "title": f"Pic: {value}" if is_pic else value,
-                                    "type": "rotation_manual",
-                                    "zone": 0,
-                                    "_json_key": json_key,
-                                }
-                            else:
-                                event_dict = {
-                                    "start": start_ms, "end": end_ms,
-                                    "title": f"Pic: {value}" if is_pic else value,
-                                    "type": "custom_event",
-                                    "zone": 0,
-                                    "_json_key": json_key,
-                                }
+                            event_dict = {
+                                "start": start_ms, "end": end_ms,
+                                "title": f"Pic: {value}" if is_pic else value,
+                                "type": "custom_event", "zone": 0, "_json_key": json_key,
+                            }
                             if val.get("event_id"):
                                 event_dict["_event_uid"] = val["event_id"]
                             if is_pic:
@@ -421,6 +358,11 @@ class ExtractionController:
         chosen = menu.exec(self.video_player.timeline.mapToGlobal(position))
         if chosen == action_export:
             self.on_event_double_clicked(event_dict)
+
+    def _seek_on_event_select(self, event_dict):
+        """Clic sur un événement : positionne le lecteur au début de l'événement."""
+        if event_dict is not None and hasattr(self, 'video_player') and self.video_player is not None:
+            self.video_player.player.setPosition(int(event_dict.get("start", 0)))
 
     def on_event_double_clicked(self, event: dict):
         """Double-clic sur un événement : extrait en JPG (image) ou MP4 (vidéo)."""

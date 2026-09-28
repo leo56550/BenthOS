@@ -113,8 +113,6 @@ class EvenementsController:
         self.event_dictionary = {}
         self.capture_start_time = None
         self._analysis_widgets: dict[str, QtWidgets.QLineEdit] = {}
-        # Cache des rotations moteur : (csv_path, mtime) → list
-        self._motor_cache: dict[tuple, list] = {}
 
         self.left_frame_events = self.page.findChild(QtWidgets.QFrame, "frame_12")
         self.player_container_events = self.page.findChild(QtWidgets.QFrame, "video_timeline_container")
@@ -439,7 +437,9 @@ class EvenementsController:
             self.event_player.player.setPosition(int(event_dict.get("start", 0)))
 
     def on_timeline_event_selected(self, event_dict):
-        """Propage la sélection de la timeline vers l'arbre (simple clic)."""
+        """Positionne le lecteur à l'événement cliqué et propage la sélection vers l'arbre."""
+        if event_dict is not None and hasattr(self, 'event_player') and self.event_player is not None:
+            self.event_player.player.setPosition(int(event_dict.get("start", 0)))
 
         if not hasattr(self, 'tree_captures') or self.tree_captures is None:
             return
@@ -1720,46 +1720,6 @@ class EvenementsController:
                 video_fps = 25.0
 
         timeline_events = []
-        csv_system = os.path.join(video_dir, "systemEvent.csv")
-        if os.path.exists(csv_system):
-            try:
-                _cache_key = (csv_system, os.path.getmtime(csv_system))
-                if _cache_key not in self._motor_cache:
-                    self._motor_cache[_cache_key] = get_motor_stable_timestamps(csv_system, delay=6.0)
-                motor_data = self._motor_cache[_cache_key]
-
-                # Persister dans le JSON si events_motor est encore vide (première détection)
-                if motor_data and self.current_json_path and os.path.isfile(self.current_json_path):
-                    try:
-                        with open(self.current_json_path, 'r', encoding='utf-8') as _f:
-                            _jdata = json.load(_f)
-                        _obs = _jdata.setdefault("video_observation", {})
-                        _existing = self._strip_events_motor_placeholder(_obs.get("events_motor"))
-                        if not _existing:
-                            _obs["events_motor"] = []
-                            for _mi in motor_data:
-                                _ms = int(_mi["timestamp"] * 1000)
-                                _h = _ms // 3600000
-                                _m = (_ms % 3600000) // 60000
-                                _s = (_ms % 60000) // 1000
-                                _tc = f"{_h:02d}:{_m:02d}:{_s:02d}"
-                                _frame = int(_mi["timestamp"] * video_fps)
-                                _obs["events_motor"].append({
-                                    "event_id":       self._generate_event_uid(),
-                                    "time_code":      _tc,
-                                    "frame_number":   _frame,
-                                    "description_fr": f"Rotation moteur #{_mi['rotation_index']} ({_mi['angle']}°)",
-                                    "description_en": f"Motor rotation #{_mi['rotation_index']} ({_mi['angle']}°)",
-                                    "comment":        "",
-                                })
-                            with open(self.current_json_path, 'w', encoding='utf-8') as _f:
-                                json.dump(_jdata, _f, indent=4, ensure_ascii=False)
-                            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)}"
-                                  f" ← events_motor auto ({len(motor_data)} rotation(s) depuis CSV)")
-                    except Exception as _e:
-                        print(f"[EVENTS] Erreur écriture events_motor depuis CSV : {_e}")
-            except Exception as e:
-                print(f"[EVENTS] Motor CSV Error: {e}")
 
         if self.current_json_path and os.path.exists(self.current_json_path):
             try:

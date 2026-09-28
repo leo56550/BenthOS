@@ -143,6 +143,10 @@ class ValidationController:
             # Cacher le bouton ardoise original du player
             self.player.btn_ardoise.setVisible(False)
 
+            # Clic ou double-clic sur un événement → seek immédiat
+            self.player.timeline.eventSelected.connect(self._seek_to_timeline_event)
+            self.player.timeline.eventDoubleClicked.connect(self._seek_to_timeline_event)
+
             # ── Bascule lecteur / vue des secteurs ────────────────────────────
             # Workflow : on cherche l'ardoise en mode lecteur, puis une fois le
             # numéro de point saisi, on bascule sur les photos de rotation moteur
@@ -553,6 +557,11 @@ class ValidationController:
                 self.on_video_selected(proxy_index)
                 break
 
+    def _seek_to_timeline_event(self, event_dict):
+        """Clic (ou double-clic) sur un événement : positionne le lecteur au début de l'événement."""
+        if event_dict is not None and hasattr(self, 'player') and self.player is not None:
+            self.player.player.setPosition(int(event_dict.get("start", 0)))
+
     def on_video_selected(self, index: QtCore.QModelIndex):
         """Charge la vidéo sélectionnée, les événements moteur et la télémétrie CSV."""
         source_index = self.proxy_model.mapToSource(index)
@@ -586,16 +595,20 @@ class ValidationController:
             self._on_video_focused(item.text())
 
         detected_events = []
-        csv_system = os.path.join(video_dir, "systemEvent.csv")
-        if os.path.exists(csv_system):
+        if self.current_json_path and os.path.isfile(self.current_json_path):
             try:
-                engine_data = get_motor_stable_timestamps(csv_system, delay=6.0)
-                for entry in engine_data:
-                    start_ms = int(entry["timestamp"] * 1000)
+                with open(self.current_json_path, 'r', encoding='utf-8') as _mf:
+                    _md = json.load(_mf)
+                for val in (_md.get("video_observation", {}).get("events_motor") or []):
+                    if not isinstance(val, dict):
+                        continue
+                    _ms = int(val.get("start_ms", 0)) or int(
+                        ((val.get("frame_number", 0) - 1) / 25.0) * 1000
+                    )
                     detected_events.append({
-                        "start": start_ms, "end": start_ms + 3000,
-                        "title": f"Rot #{entry['rotation_index']} ({entry['angle']}°)",
-                        "type": entry["type"]
+                        "start": _ms, "end": _ms,
+                        "title": val.get("description_fr", "Rotation moteur"),
+                        "type": "rotation_manual",
                     })
             except Exception:
                 pass

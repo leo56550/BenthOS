@@ -45,9 +45,31 @@ class VideoTimeline(QtWidgets.QWidget):
         self._depth_profile: list = []   # [(time_ms, depth_m), ...]
         self._depth_max: float = 0.0
 
+        # Clignotement d'un événement moteur au clic
+        self._blink_event_start: int = -1
+        self._blink_on: bool = True
+        self._blink_count: int = 0
+        self._blink_timer = QtCore.QTimer(self)
+        self._blink_timer.setInterval(150)
+        self._blink_timer.timeout.connect(self._on_blink_tick)
+
         self.setMinimumHeight(160)
         self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding)
         self.setMouseTracking(True)
+
+    def _on_blink_tick(self):
+        """Alterne la visibilité du clignotement et arrête après 10 ticks (5 cycles)."""
+        self._blink_on = not self._blink_on
+        self._blink_count += 1
+        if self._blink_count >= 10:
+            self._blink_timer.stop()
+            self._blink_on = True
+            self._blink_event_start = -1
+        self.update()
+
+    @staticmethod
+    def _is_motor_event(evt_type: str) -> bool:
+        return evt_type == "rotation_manual" or evt_type.startswith("rotation_")
 
     def _clamp_int(self, value):
         """Clamp value dans l'intervalle des entiers 32 bits signés, retourne 0 si invalide."""
@@ -95,8 +117,18 @@ class VideoTimeline(QtWidgets.QWidget):
         return self.current_pos
 
     def set_selected_event(self, event_dict):
-        """Sélectionne un événement (ou None) et rafraîchit l'affichage."""
+        """Sélectionne un événement (ou None), rafraîchit l'affichage et déclenche le clignotement
+        si c'est un événement moteur (type rotation_*)."""
         self.selected_event_dict = event_dict
+        if event_dict is not None and self._is_motor_event(event_dict.get("type", "")):
+            self._blink_event_start = event_dict.get("start", -1)
+            self._blink_count = 0
+            self._blink_on = True
+            self._blink_timer.start()
+        else:
+            self._blink_timer.stop()
+            self._blink_event_start = -1
+            self._blink_on = True
         self.update()
 
     def calculate_segments(self):
@@ -252,38 +284,27 @@ class VideoTimeline(QtWidgets.QWidget):
                 painter.drawText(x_start + 4, RH + 15, short_lbl)
                 continue
 
-            if evt_type != "custom_event":
-                if evt_type == "rotation_manual":
-                    # Rotation manuelle : orange, trait tiret-point, losange
-                    c_line = QtGui.QColor(self.C_MOTOR_MANUAL)
-                    pen = QtGui.QPen(c_line, 1.5)
-                    pen.setStyle(QtCore.Qt.PenStyle.DashDotLine)
-                    painter.setPen(pen)
-                    painter.drawLine(x_start, RH, x_start, H)
-                    painter.setPen(QtCore.Qt.PenStyle.NoPen)
-                    painter.setBrush(c_line)
-                    pts = QtGui.QPolygon([
-                        QtCore.QPoint(x_start,     RH + 3),
-                        QtCore.QPoint(x_start + 4, RH + 7),
-                        QtCore.QPoint(x_start,     RH + 11),
-                        QtCore.QPoint(x_start - 4, RH + 7),
-                    ])
-                    painter.drawPolygon(pts)
-                    f_m = QtGui.QFont("Segoe UI", 7, QtGui.QFont.Weight.Bold)
-                    painter.setFont(f_m)
-                    painter.setPen(c_line)
-                    painter.drawText(x_start + 5, RH + 16, "M")
-                else:
-                    # Rotation CSV : jaune (ou rouge pour 360°), tirets
-                    is_360 = "360" in str(evt_type).lower()
-                    c_line = QtGui.QColor(self.C_MOTOR360 if is_360 else self.C_MOTOR)
-                    dash_pen = QtGui.QPen(c_line, 1.5 if is_360 else 1)
-                    dash_pen.setStyle(QtCore.Qt.PenStyle.DashLine)
-                    painter.setPen(dash_pen)
-                    painter.drawLine(x_start, RH, x_start, H)
-                    painter.setPen(QtCore.Qt.PenStyle.NoPen)
-                    painter.setBrush(c_line)
-                    painter.drawEllipse(QtCore.QPoint(x_start, RH + 5), 3, 3)
+            if evt_type != "custom_event" and self._is_motor_event(evt_type):
+                # Toutes les rotations moteur → orange, tiret-point, losange
+                is_blinking = (start_ms == self._blink_event_start and not self._blink_on)
+                c_line = QtGui.QColor("#ffffff" if is_blinking else self.C_MOTOR_MANUAL)
+                pen = QtGui.QPen(c_line, 2.5 if is_blinking else 1.5)
+                pen.setStyle(QtCore.Qt.PenStyle.DashDotLine)
+                painter.setPen(pen)
+                painter.drawLine(x_start, RH, x_start, H)
+                painter.setPen(QtCore.Qt.PenStyle.NoPen)
+                painter.setBrush(c_line)
+                pts = QtGui.QPolygon([
+                    QtCore.QPoint(x_start,     RH + 3),
+                    QtCore.QPoint(x_start + 4, RH + 7),
+                    QtCore.QPoint(x_start,     RH + 11),
+                    QtCore.QPoint(x_start - 4, RH + 7),
+                ])
+                painter.drawPolygon(pts)
+                f_m = QtGui.QFont("Segoe UI", 7, QtGui.QFont.Weight.Bold)
+                painter.setFont(f_m)
+                painter.setPen(c_line)
+                painter.drawText(x_start + 5, RH + 16, "M")
                 continue
 
             x_end      = self._clamp_int((end_ms / total_duration) * width)
