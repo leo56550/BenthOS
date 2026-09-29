@@ -614,6 +614,7 @@ class AppController(QtCore.QObject):
         generated, total, failures = self.metadonnees_ctrl.generate_temp_from_table(
             folder, mode=mode
         )
+        self.metadonnees_ctrl._apply_ft_table_json_bold()
         self._show_generate_result(generated, total, failures)
 
     def _show_generate_result(self, generated: int, total: int, failures: list):
@@ -671,6 +672,7 @@ class AppController(QtCore.QObject):
             return
 
         generated, total, failures = self.metadonnees_ctrl.generate_temp_from_table(folder)
+        self.metadonnees_ctrl._apply_ft_table_json_bold()
         self._show_generate_result(generated, total, failures)
 
     # --- Language ---

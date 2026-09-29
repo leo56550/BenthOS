@@ -713,7 +713,41 @@ class MetadonneesController:
         )
         self._btn_generer.clicked.connect(self._export_infostation_action)
         tb_row.addWidget(self._btn_generer)
+
         outer.addWidget(title_bar)
+
+        # ── Barre de filtres ──────────────────────────────────────────────
+        filter_bar = QtWidgets.QWidget()
+        filter_bar.setStyleSheet(
+            "background-color: #0c1720; border-bottom: 1px solid #1a2e40;")
+        filter_bar.setFixedHeight(26)
+        fb_row = QtWidgets.QHBoxLayout(filter_bar)
+        fb_row.setContentsMargins(10, 0, 10, 0)
+        fb_row.setSpacing(8)
+
+        _lbl_filter = QtWidgets.QLabel(self.translate("Filtres :", "Filters:"))
+        _lbl_filter.setStyleSheet(
+            "color: #4a7a9a; font-size: 10px; font-weight: bold; border: none;"
+            " font-family: 'Segoe UI', sans-serif;")
+        fb_row.addWidget(_lbl_filter)
+
+        self._btn_json_filter = QtWidgets.QPushButton(
+            self.translate("Avec JSON", "With JSON"))
+        self._btn_json_filter.setCheckable(True)
+        self._btn_json_filter.setToolTip(self.translate(
+            "Afficher uniquement les lignes dont le _temp.json a été créé",
+            "Show only rows whose _temp.json has been created"))
+        self._btn_json_filter.setStyleSheet(
+            "QPushButton{background:#0d2a1a;color:#5cd88a;border:1px solid #2a7a4a;"
+            "border-radius:3px;padding:1px 10px;font-size:10px;font-weight:bold;"
+            "font-family:'Segoe UI',sans-serif;}"
+            "QPushButton:hover{background:#1a5a30;color:white;}"
+            "QPushButton:checked{background:#1a5a30;color:#80ffb0;border-color:#5cd88a;}"
+        )
+        self._btn_json_filter.toggled.connect(self._toggle_json_filter)
+        fb_row.addWidget(self._btn_json_filter)
+        fb_row.addStretch()
+        outer.addWidget(filter_bar)
 
         # ── En-tête campagne ─────────────────────────────────────────────
         _lbl_h = ("color: #7ec8e3; font-size: 10px; font-weight: bold; border: none;"
@@ -857,7 +891,8 @@ class MetadonneesController:
     # pour pouvoir la restaurer après un surlignage de ligne — stockée sur l'item lui-même
     # (et non indexée par numéro de ligne) car elle doit rester valide après un tri par
     # en-tête de colonne, qui déplace les items d'une ligne à l'autre.
-    _FT_BASE_BG_ROLE = QtCore.Qt.ItemDataRole.UserRole + 5
+    _FT_BASE_BG_ROLE  = QtCore.Qt.ItemDataRole.UserRole + 5
+    _FT_HAS_JSON_ROLE = QtCore.Qt.ItemDataRole.UserRole + 6
 
     # Palette de couleurs de fond par système (fond sombre, lisible)
     _SYSTEM_COLORS = [
@@ -966,6 +1001,63 @@ class MetadonneesController:
                         cell.setData(self._FT_BASE_BG_ROLE, QtGui.QColor(row_bg))
         finally:
             self._ft_table.blockSignals(False)
+
+    def _apply_ft_table_json_bold(self):
+        """Marque en gras les lignes dont le _temp.json existe, stocke le flag sur item 0."""
+        if not hasattr(self, '_ft_table') or not self._ft_table:
+            return
+        vpath_col = next(
+            (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "video_path"), None)
+        vnum_col = next(
+            (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "video_number"), None)
+        self._ft_table.blockSignals(True)
+        try:
+            for row in range(self._ft_table.rowCount()):
+                item0 = self._ft_table.item(row, 0)
+                has_json = False
+                # Priority 1 : UserRole already holds the full video path
+                vp = item0.data(QtCore.Qt.ItemDataRole.UserRole) if item0 else None
+                if vp:
+                    has_json = os.path.isfile(get_temp_json_path(str(vp)))
+                else:
+                    # Priority 2 : reconstruct from video_path + video_number columns
+                    folder = ""
+                    fname = ""
+                    if vpath_col is not None:
+                        vi = self._ft_table.item(row, vpath_col)
+                        folder = vi.text().strip() if vi else ""
+                    if vnum_col is not None:
+                        vni = self._ft_table.item(row, vnum_col)
+                        fname = vni.text().strip() if vni else ""
+                    if folder and fname:
+                        if not os.path.isabs(folder) and self._working_dir:
+                            folder = os.path.join(self._working_dir, folder)
+                        stem = os.path.splitext(fname)[0]
+                        has_json = os.path.isfile(os.path.join(folder, stem + "_temp.json"))
+                if item0:
+                    item0.setData(self._FT_HAS_JSON_ROLE, has_json)
+                for col in range(self._ft_table.columnCount()):
+                    cell = self._ft_table.item(row, col)
+                    if cell is None:
+                        continue
+                    f = cell.font()
+                    if f.bold() != has_json:
+                        f.setBold(has_json)
+                        cell.setFont(f)
+        finally:
+            self._ft_table.blockSignals(False)
+        # Ré-appliquer le filtre actif si besoin
+        if hasattr(self, '_btn_json_filter') and self._btn_json_filter.isChecked():
+            self._toggle_json_filter(True)
+
+    def _toggle_json_filter(self, checked: bool):
+        """Masque les lignes sans _temp.json quand le filtre est actif."""
+        if not hasattr(self, '_ft_table') or not self._ft_table:
+            return
+        for row in range(self._ft_table.rowCount()):
+            item0 = self._ft_table.item(row, 0)
+            has_json = bool(item0.data(self._FT_HAS_JSON_ROLE)) if item0 else False
+            self._ft_table.setRowHidden(row, checked and not has_json)
 
     def _update_ft_table_weather_cells(self, target_path: str, api_data: dict):
         """Met à jour en place les cellules météo du tableau pour la ligne correspondant à target_path."""
@@ -1461,6 +1553,8 @@ class MetadonneesController:
             self._btn_copier.setText(self.translate("Copier ↓", "Copy ↓"))
         if hasattr(self, '_btn_map'):
             self._btn_map.setText(self.translate("OUVRIR CARTE", "OPEN MAP"))
+        if hasattr(self, '_btn_json_filter'):
+            self._btn_json_filter.setText(self.translate("Avec JSON", "With JSON"))
         if hasattr(self, '_ft_table'):
             self._ft_table.setHorizontalHeaderLabels(self._get_ft_header_labels())
 
@@ -2349,6 +2443,7 @@ class MetadonneesController:
         self._ft_table.blockSignals(False)
         self._ft_table.setSortingEnabled(True)
         self._apply_ft_table_system_colors()
+        self._apply_ft_table_json_bold()
         if self._ft_table.rowCount() > 0:
             self._set_video_buttons_enabled(True)
 
