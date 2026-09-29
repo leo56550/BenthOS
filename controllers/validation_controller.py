@@ -617,16 +617,17 @@ class ValidationController:
         # Reset ardoise buttons, puis applique l'état réel depuis le JSON
         self.player.btn_ardoise.setText(self.translate("SAISIR ARDOISE", "RECORD SLATE"))
         self.player.btn_ardoise.setEnabled(True)
-        _has_ardoise = False   # True si timecode_ardoise déjà saisi → bascule auto vers secteurs
+        _has_ardoise = False   # True si timecode_ardoise ou point_name déjà saisi → bascule auto vers secteurs
         try:
             with open(self.current_json_path, 'r', encoding='utf-8') as _f:
                 _jdata = json.load(_f)
             _vob = _jdata.get("video_observation", {})
             _tc = (_vob.get("timecode_ardoise") or {}).get("value")
-            if _tc:
-                # Ardoise saisie : "MODIFIER ARDOISE" + restaure le marker sur la timeline
+            _pn = (_vob.get("point_name") or {}).get("value") if isinstance(_vob.get("point_name"), dict) else None
+            if _tc or _pn:
                 _has_ardoise = True
-                self.player.btn_ardoise.setText(self.translate("MODIFIER ARDOISE", "MODIFY SLATE"))
+                if _tc:
+                    self.player.btn_ardoise.setText(self.translate("MODIFIER ARDOISE", "MODIFY SLATE"))
                 try:
                     _parts = str(_tc).split(":")
                     if len(_parts) == 3:
@@ -1094,8 +1095,11 @@ class ValidationController:
         try:
             obs = data.setdefault("video_observation", {})
             if station_num:
-                obs.setdefault("point_name", {})["value"] = station_num
-                obs.setdefault("station_number", {})["value"] = station_num
+                if isinstance(obs.get("point_name"), dict):
+                    obs["point_name"]["value"] = station_num
+                else:
+                    obs["point_name"] = {"value": station_num}
+                obs["station_number"] = {"value": station_num}
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
             print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← video_observation.point_name = {station_num!r}")
@@ -1205,12 +1209,19 @@ class ValidationController:
             obs = data.setdefault("video_observation", {})
 
             # Timecode ardoise → champ dédié
-            obs.setdefault("timecode_ardoise", {})["value"] = time_str
+            # setdefault ne remplace pas None existant — on utilise isinstance pour préserver les métadonnées
+            if isinstance(obs.get("timecode_ardoise"), dict):
+                obs["timecode_ardoise"]["value"] = time_str
+            else:
+                obs["timecode_ardoise"] = {"value": time_str}
 
             # N° du point → 4 chiffres zero-padded (calculé dans la boucle de saisie)
             if station_num:
-                obs.setdefault("point_name", {})["value"] = station_num
-                obs.setdefault("station_number", {})["value"] = station_num
+                if isinstance(obs.get("point_name"), dict):
+                    obs["point_name"]["value"] = station_num
+                else:
+                    obs["point_name"] = {"value": station_num}
+                obs["station_number"] = {"value": station_num}
 
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
