@@ -192,7 +192,9 @@ class AppController(QtCore.QObject):
                 self._show_load_history_context_menu)
 
         if hasattr(window, 'btn_generate_temp'):
-            window.btn_generate_temp.clicked.connect(self._generate_temp_jsons)
+            window.btn_generate_temp.setVisible(False)
+            if hasattr(window, '_act_generate_temp'):
+                window._act_generate_temp.setVisible(False)
 
         # Boutons QUALIFIER / VALIDER retirés : la navigation entre pages n'est plus
         # conditionnée à un clic explicite, seule une campagne chargée est nécessaire.
@@ -526,7 +528,7 @@ class AppController(QtCore.QObject):
             self._delete_temp_jsons()
 
     def _load_historical_data(self):
-        """Ouvre un CSV/XLSX infostation, le charge dans le tableau puis génère les temp.json."""
+        """Ouvre un CSV/XLSX infostation, demande le dossier vidéo, génère les temp.json."""
         start_dir = getattr(self.qualif_ctrl, 'current_campaign_folder', '') or self.working_dir or ""
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self.window,
@@ -536,12 +538,60 @@ class AppController(QtCore.QObject):
         )
         if not path:
             return
+
+        folder = QtWidgets.QFileDialog.getExistingDirectory(
+            self.window,
+            self.translate(
+                "Choisir le dossier contenant les vidéos",
+                "Choose the folder containing the videos",
+            ),
+            os.path.dirname(path),
+        )
+        if not folder:
+            return
+
         self.switch_page(self.window.page_metadonnees)
         self.metadonnees_ctrl.load_csv_into_table(path)
         self._last_infostation_folder = os.path.dirname(path)
+        self._auto_generate_temp_jsons(folder)
 
-        # Mettre à jour la visibilité du bouton (page métadonnées + CSV chargé requis)
-        self._refresh_generate_temp_visibility()
+    def _auto_generate_temp_jsons(self, folder: str):
+        """Vérifie les conflits temp.json puis génère selon le choix utilisateur."""
+        existing = self.metadonnees_ctrl.count_existing_temp_jsons(folder)
+        mode = 'overwrite'
+
+        if existing > 0:
+            msg = QtWidgets.QMessageBox(self.window)
+            msg.setWindowTitle(self.translate("Temp.json existants", "Existing temp.json"))
+            msg.setText(self.translate(
+                f"{existing} fichier(s) _temp.json existent déjà dans ce dossier.\n"
+                "Que voulez-vous faire ?",
+                f"{existing} _temp.json file(s) already exist in this folder.\n"
+                "What would you like to do?",
+            ))
+            btn_overwrite = msg.addButton(
+                self.translate("Écraser tout", "Overwrite all"),
+                QtWidgets.QMessageBox.ButtonRole.DestructiveRole,
+            )
+            btn_fill = msg.addButton(
+                self.translate("Compléter les champs vides", "Fill empty fields only"),
+                QtWidgets.QMessageBox.ButtonRole.AcceptRole,
+            )
+            btn_cancel = msg.addButton(
+                self.translate("Annuler", "Cancel"),
+                QtWidgets.QMessageBox.ButtonRole.RejectRole,
+            )
+            msg.exec()
+            clicked = msg.clickedButton()
+            if clicked is None or clicked == btn_cancel:
+                return
+            if clicked == btn_fill:
+                mode = 'fill_empty'
+
+        generated, total, failures = self.metadonnees_ctrl.generate_temp_from_table(
+            folder, mode=mode
+        )
+        self._show_generate_result(generated, total, failures)
 
     def _show_generate_result(self, generated: int, total: int, failures: list):
         """Affiche le résultat de la génération des temp.json."""
@@ -891,14 +941,9 @@ class AppController(QtCore.QObject):
         self._refresh_generate_temp_visibility(page)
 
     def _refresh_generate_temp_visibility(self, page=None):
-        """Affiche 'GÉNÉRER TEMP.JSON' seulement sur la page métadonnées après import CSV."""
-        if not hasattr(self.window, '_act_generate_temp'):
-            return
-        if page is None:
-            page = self.window.stackedWidget.currentWidget()
-        on_meta_page = (page is self.window.page_metadonnees)
-        csv_loaded   = bool(getattr(self, '_last_infostation_folder', ''))
-        self.window._act_generate_temp.setVisible(on_meta_page and csv_loaded)
+        # Bouton supprimé — la génération est automatique à l'import (voir _load_historical_data)
+        if hasattr(self.window, '_act_generate_temp'):
+            self.window._act_generate_temp.setVisible(False)
 
     def _get_page_player(self, page):
         """Retourne le player embarqué (EmbeddedVideoPlayer) associé à *page*, ou None."""

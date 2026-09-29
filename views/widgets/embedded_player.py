@@ -244,6 +244,14 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
     playback_state_changed = QtCore.pyqtSignal(bool)
     corrections_changed    = QtCore.pyqtSignal()
 
+    def sizeHint(self) -> QtCore.QSize:
+        # Taille préférée fixe : empêche les layouts parents (splitter de page, etc.)
+        # de se redimensionner quand QVideoWidget change son sizeHint au démarrage de la lecture.
+        return QtCore.QSize(800, 600)
+
+    def minimumSizeHint(self) -> QtCore.QSize:
+        return QtCore.QSize(0, 0)
+
     def __init__(self, parent=None, zone_definitions=None):
         """Construit l'interface complète : affichage vidéo, timeline, panneaux corrections et télémétrie."""
         super().__init__(parent)
@@ -286,6 +294,11 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         # Video display
         self.display_stack = QtWidgets.QStackedWidget()
         self.display_stack.setStyleSheet("background-color: black; border-radius: 6px 6px 0px 0px;")
+        self.display_stack.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Ignored,
+        )
+        self.display_stack.setMinimumSize(QtCore.QSize(0, 0))
 
         self.logo_label = QtWidgets.QLabel()
         self.logo_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -332,6 +345,13 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         # Caméra gauche : QVideoWidget (rendu hardware) + overlay corrections (_VideoLabel)
         self.video_widget = QVideoWidget()
         self.video_widget.setAspectRatioMode(QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+        # Empêche QVideoWidget d'imposer la résolution native de la vidéo comme taille minimale,
+        # ce qui ferait grandir le splitter et expulserait les contrôles en bas de l'écran.
+        self.video_widget.setMinimumSize(QtCore.QSize(0, 0))
+        self.video_widget.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
         self.correction_overlay = _VideoLabel()
         self.left_display = QtWidgets.QStackedWidget()
         self.left_display.addWidget(self.video_widget)      # index 0 → lecture hardware
@@ -341,6 +361,11 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         # Caméra droite (stéréo uniquement)
         self.video_widget_R = QVideoWidget()
         self.video_widget_R.setAspectRatioMode(QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+        self.video_widget_R.setMinimumSize(QtCore.QSize(0, 0))
+        self.video_widget_R.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
         self.video_widget_R.setVisible(False)
 
         vc_layout.addWidget(self.left_display)
@@ -363,11 +388,16 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.lbl_top_time.setStyleSheet(
             f"color: {C_MELON}; font-weight: bold; font-size: 13px; border: none;"
             " font-family: 'Segoe UI', sans-serif;")
+        # Largeur fixe pour que le label ne rétrécisse/élargisse jamais le splitter
+        self.lbl_top_time.setFixedWidth(160)
         self.time_layout.addWidget(self.lbl_top_time)
 
         self.lbl_frame_number = QtWidgets.QLabel("Frame: -")
         self.lbl_frame_number.setStyleSheet(
             f"color: #b0c8d8; font-size: 12px; margin-left: 12px; border: none;")
+        # Largeur fixe : évite que la croissance du numéro de frame élargisse le widget
+        # et rétrécisse les panneaux voisins via le splitter
+        self.lbl_frame_number.setFixedWidth(130)
         self.time_layout.addWidget(self.lbl_frame_number)
         self.time_layout.addStretch()
 
@@ -525,6 +555,15 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         # Conteneur vidéo : cam_bar (stéréo) + display_stack
         video_outer = QtWidgets.QWidget()
         video_outer.setStyleSheet("background: black;")
+        # Politique Ignored sur l'axe vertical : le QSplitter interne ne doit JAMAIS
+        # utiliser le sizeHint de QVideoWidget (qui passe de 320×240 à la résolution native
+        # dès la première frame) pour redistribuer l'espace. Sans cela, le splitter se
+        # redimensionne à chaque play/pause et expulse les contrôles hors de l'écran.
+        video_outer.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Ignored,
+        )
+        video_outer.setMinimumSize(QtCore.QSize(0, 0))
         video_outer_layout = QtWidgets.QVBoxLayout(video_outer)
         video_outer_layout.setContentsMargins(0, 0, 0, 0)
         video_outer_layout.setSpacing(0)
@@ -534,6 +573,9 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
         bottom_container = QtWidgets.QWidget()
         bottom_container.setStyleSheet(f"background-color: {C_BG_DARK};")
+        # Garantit que les contrôles (timeline + boutons) restent toujours visibles
+        # même si le QVideoWidget tente d'élargir le panneau vidéo au-delà du disponible.
+        bottom_container.setMinimumHeight(220)
         bottom_vbox = QtWidgets.QVBoxLayout(bottom_container)
         bottom_vbox.setContentsMargins(0, 0, 0, 0)
         bottom_vbox.setSpacing(0)

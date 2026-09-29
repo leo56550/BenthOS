@@ -1223,6 +1223,21 @@ class MetadonneesController:
             if os.path.splitext(os.path.basename(p))[0].lower() == stem:
                 first_item.setData(QtCore.Qt.ItemDataRole.UserRole, p)
                 return p
+
+        # Priorité 3 : reconstruire depuis video_path (dossier) + video_number (nom fichier)
+        # — données historiques importées sans vidéos dans video_model
+        _vpath_col = next(
+            (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "video_path"), None
+        )
+        if _vpath_col is not None:
+            vpath_item = self._ft_table.item(row, _vpath_col)
+            if vpath_item:
+                folder = vpath_item.text().strip()
+                name = name_item.text().strip()
+                if folder and name:
+                    constructed = os.path.join(folder, name)
+                    first_item.setData(QtCore.Qt.ItemDataRole.UserRole, constructed)
+                    return constructed
         return ""
 
     def _on_ft_table_row_clicked(self, row: int, _col: int):
@@ -1230,10 +1245,11 @@ class MetadonneesController:
         first_item = self._ft_table.item(row, 0)
         if first_item is None:
             return
+        # Active les boutons dès qu'une ligne est cliquée (même sans chemin vidéo résolu)
+        self._set_video_buttons_enabled(True)
         video_path = self._resolve_ft_row_video_path(row)
         if not video_path:
             return
-        self._set_video_buttons_enabled(True)
         json_path = resolve_video_json_path(self._working_dir, str(video_path))
         if os.path.isfile(json_path):
             self.current_video_path = str(video_path)
@@ -2248,11 +2264,37 @@ class MetadonneesController:
         self._ft_table.blockSignals(False)
         self._ft_table.setSortingEnabled(True)
 
-    def generate_temp_from_table(self, folder_path: str) -> tuple[int, int, list[tuple[str, str]]]:
+    def count_existing_temp_jsons(self, folder_path: str) -> int:
+        """Compte les _temp.json déjà présents pour les vidéos du tableau dans folder_path."""
+        if not hasattr(self, '_ft_table') or self._ft_table is None:
+            return 0
+        video_name_col = next(
+            (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "video_number"), None
+        )
+        if video_name_col is None:
+            return 0
+        _VIDEO_EXTS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.mts', '.m2ts', '.mpg', '.mpeg', '.m4v'}
+        stem_to_path: dict[str, str] = {}
+        for root, _dirs, files in os.walk(folder_path):
+            for fname in files:
+                if os.path.splitext(fname)[1].lower() in _VIDEO_EXTS:
+                    stem_to_path[os.path.splitext(fname)[0].lower()] = os.path.join(root, fname)
+        count = 0
+        for row in range(self._ft_table.rowCount()):
+            item = self._ft_table.item(row, video_name_col)
+            val = item.text().strip() if item else ''
+            stem_key = os.path.splitext(val)[0].lower()
+            vp = stem_to_path.get(stem_key)
+            if vp and os.path.isfile(get_temp_json_path(vp)):
+                count += 1
+        return count
+
+    def generate_temp_from_table(self, folder_path: str,
+                                  mode: str = 'overwrite') -> tuple[int, int, list[tuple[str, str]]]:
         """Génère les _temp.json pour les vidéos de folder_path à partir du tableau chargé.
 
-        Chaque _temp.json est initialisé depuis template.json (structure complète), puis les
-        valeurs du tableau viennent écraser les champs correspondants.
+        mode='overwrite' : écrase tous les champs (comportement par défaut).
+        mode='fill_empty': ne touche que les champs actuellement null/vides dans le JSON.
         Matching : colonne 'video_number' (sans extension, insensible à la casse).
         Retourne (nb_générés, nb_lignes_tableau, [(video_name, raison_echec), ...]).
         """
@@ -2333,32 +2375,43 @@ class MetadonneesController:
                     continue
                 coerced = _coerce_field_value(sec, fk, val)
                 block = jdata.setdefault(sec, {})
+                if mode == 'fill_empty':
+                    existing = block.get(fk)
+                    existing_val = existing.get('value') if isinstance(existing, dict) else existing
+                    if existing_val not in (None, '', [], {}):
+                        continue  # conserver la valeur existante
                 if fk in block and isinstance(block[fk], dict):
                     block[fk]['value'] = coerced
                 else:
                     block[fk] = {'value': coerced}
 
-            # Forcer explicitement les champs IHM à null (sécurité si présents dans le template)
             vobs = jdata.setdefault("video_observation", {})
-            for fk in _NULL_IN_GENERATED:
-                if fk in vobs and isinstance(vobs[fk], dict):
-                    vobs[fk]['value'] = None
+
+            # Forcer les champs IHM à null (overwrite uniquement — ne pas effacer en fill_empty)
+            if mode == 'overwrite':
+                for fk in _NULL_IN_GENERATED:
+                    if fk in vobs and isinstance(vobs[fk], dict):
+                        vobs[fk]['value'] = None
 
             # codeObs : valeur directe depuis la colonne Codestation en priorité,
             # calcul automatique en fallback si absente
-            direct_code = ''
-            if codeobs_col_i is not None:
-                citem = self._ft_table.item(row, codeobs_col_i)
-                direct_code = citem.text().strip() if citem else ''
-            if not direct_code:
-                direct_code = _compute_codeobs(jdata) or ''
-            if direct_code:
-                if "codeObs" in vobs and isinstance(vobs["codeObs"], dict):
-                    vobs["codeObs"]["value"] = direct_code
-                else:
-                    vobs["codeObs"] = {"value": direct_code}
+            _existing_code = (vobs.get("codeObs") or {}).get("value") \
+                if isinstance(vobs.get("codeObs"), dict) else vobs.get("codeObs")
+            if mode == 'overwrite' or not _existing_code:
+                direct_code = ''
+                if codeobs_col_i is not None:
+                    citem = self._ft_table.item(row, codeobs_col_i)
+                    direct_code = citem.text().strip() if citem else ''
+                if not direct_code:
+                    direct_code = _compute_codeobs(jdata) or ''
+                if direct_code:
+                    if "codeObs" in vobs and isinstance(vobs["codeObs"], dict):
+                        vobs["codeObs"]["value"] = direct_code
+                    else:
+                        vobs["codeObs"] = {"value": direct_code}
 
             # Calculer et écrire video_path et video_number depuis le chemin réel
+            # (toujours écrit : ils reflètent la localisation réelle du fichier)
             _vp_val, _vn_val = _compute_video_path_number(video_path)
             if "video_path" in vobs and isinstance(vobs["video_path"], dict):
                 vobs["video_path"]["value"] = _vp_val
@@ -3474,15 +3527,8 @@ class MetadonneesController:
 
     # ── Weather web compare ───────────────────────────────────────────────
 
-    @staticmethod
-    def _jdata_from_selected_table_row(self) -> dict:
-        """Construit un dict jdata minimal depuis la ligne sélectionnée du tableau infostation.
-        Utilisé quand le _temp.json n'existe pas encore (import CSV sans génération)."""
-        rows = sorted({idx.row() for idx in self._ft_table.selectedIndexes()})
-        if not rows:
-            return {}
-        row = rows[0]
-
+    def _jdata_from_table_row(self, row: int) -> dict:
+        """Construit un dict jdata minimal depuis une ligne explicite du tableau infostation."""
         def _cell(fk: str) -> str:
             ci = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == fk), None)
             if ci is None:
@@ -3500,6 +3546,14 @@ class MetadonneesController:
                 "longitude": {"value": _cell("longitude")},
             },
         }
+
+    def _jdata_from_selected_table_row(self) -> dict:
+        """Construit un dict jdata minimal depuis la ligne sélectionnée du tableau infostation.
+        Utilisé quand le _temp.json n'existe pas encore (import CSV sans génération)."""
+        rows = sorted({idx.row() for idx in self._ft_table.selectedIndexes()})
+        if not rows:
+            return {}
+        return self._jdata_from_table_row(rows[0])
 
     @staticmethod
     def _extract_lat_lon_date(json_data: dict):
@@ -3541,10 +3595,14 @@ class MetadonneesController:
     def action_compare_weather_web(self):
         """Lance la comparaison météo web — pour tous les points sélectionnés dans le tableau
         infostation s'il y en a plusieurs, sinon pour la vidéo actuellement affichée."""
-        selected_paths = self._get_selected_ft_video_paths()
-        if len(selected_paths) > 1:
-            self._action_compare_weather_web_multi(selected_paths)
+        # Vérifie le nombre de lignes sélectionnées (pas uniquement les paths résolus)
+        # pour que les données historiques sans video_model déclenchent aussi le mode multi
+        selected_rows = (sorted({idx.row() for idx in self._ft_table.selectedIndexes()})
+                         if hasattr(self, '_ft_table') and self._ft_table else [])
+        if len(selected_rows) > 1:
+            self._action_compare_weather_web_multi(selected_rows)
             return
+        selected_paths = self._get_selected_ft_video_paths()
 
         # Charger le JSON le plus pertinent disponible
         json_data = self._json_data
@@ -3580,25 +3638,33 @@ class MetadonneesController:
         self.weather_worker.weather_fetched.connect(self._open_web_weather_popup)
         self.weather_worker.start()
 
-    def _action_compare_weather_web_multi(self, video_paths: list):
-        """Lance une requête météo web pour chaque point sélectionné, puis affiche un dialogue
-        récapitulatif unique proposant d'appliquer les résultats à tous les points à la fois."""
+    def _action_compare_weather_web_multi(self, rows: list):
+        """Lance une requête météo web pour chaque ligne sélectionnée, puis affiche un dialogue
+        récapitulatif unique proposant d'appliquer les résultats à tous les points à la fois.
+        Accepte une liste de numéros de lignes du tableau infostation."""
         pending_entries = []
-        for vp in video_paths:
-            json_path = resolve_video_json_path(self._working_dir, vp)
-            if not os.path.isfile(json_path):
-                continue
-            try:
-                with open(json_path, 'r', encoding='utf-8') as f:
-                    jdata = json.load(f)
-            except Exception:
-                continue
+        for row in rows:
+            vp = self._resolve_ft_row_video_path(row)
+            jdata = None
+            # Essai 1 : lire le _temp.json de la vidéo
+            if vp:
+                json_path = resolve_video_json_path(self._working_dir, vp)
+                if os.path.isfile(json_path):
+                    try:
+                        with open(json_path, 'r', encoding='utf-8') as f:
+                            jdata = json.load(f)
+                    except Exception:
+                        pass
+            # Essai 2 (données historiques sans JSON) : lire les cellules du tableau
+            if not jdata:
+                jdata = self._jdata_from_table_row(row)
             lat, lon, _raw_date, formatted_date = self._extract_lat_lon_date(jdata)
             if not lat or not lon or not formatted_date:
                 continue
+            video_name = os.path.basename(vp) if vp else f"Ligne {row + 1}"
             pending_entries.append({
-                "video_path": vp,
-                "video_name": os.path.basename(vp),
+                "video_path": vp or "",
+                "video_name": video_name,
                 "lat": lat, "lon": lon, "date": formatted_date,
             })
 
@@ -3686,11 +3752,21 @@ class MetadonneesController:
         target_path = video_path or self.current_video_path
         json_path = resolve_video_json_path(self._working_dir, target_path) \
             if target_path else None
-        if not json_path or not os.path.isfile(json_path):
+        if not target_path:
             QtWidgets.QMessageBox.warning(
                 self.widget,
                 self.translate("Aucune vidéo", "No video"),
                 self.translate("Sélectionnez une vidéo d'abord.", "Select a video first."),
+            )
+            return
+        if not json_path or not os.path.isfile(json_path):
+            QtWidgets.QMessageBox.warning(
+                self.widget,
+                self.translate("JSON introuvable", "JSON not found"),
+                self.translate(
+                    f"Le fichier JSON de la vidéo est introuvable.\n{json_path}",
+                    f"The video JSON file could not be found.\n{json_path}",
+                ),
             )
             return
         try:
