@@ -1064,8 +1064,9 @@ class ValidationController:
         except Exception:
             return
         vob = data.get("video_observation", {})
-        existing_num = (vob.get("point_name", {}).get("value")
-                        or vob.get("station_number", {}).get("value") or "")
+        def _gv(b):
+            return b.get("value") if isinstance(b, dict) else b
+        existing_num = _gv(vob.get("point_name")) or _gv(vob.get("station_number")) or ""
         current_input = str(existing_num)
         station_num = ""
         while True:
@@ -1153,8 +1154,17 @@ class ValidationController:
         # Mode modification si timecode_ardoise déjà rempli
         _is_modify = bool((vob_tmp.get("timecode_ardoise") or {}).get("value"))
 
-        existing_num = (vob_tmp.get("point_name", {}).get("value")
-                        or vob_tmp.get("station_number", {}).get("value") or "")
+        def _get_val(block):
+            """Extrait .value d'un bloc JSON qui peut être un dict, None ou une valeur brute."""
+            if isinstance(block, dict):
+                return block.get("value")
+            return block
+
+        existing_num = (
+            _get_val(vob_tmp.get("point_name"))
+            or _get_val(vob_tmp.get("station_number"))
+            or ""
+        )
 
         # Dialog numéro du point — boucle jusqu'à ce que le numéro soit unique dans le système
         dialog_title = (self.translate("Modifier l'ardoise", "Modify slate")
@@ -1281,7 +1291,7 @@ class ValidationController:
         """Normalise un numéro de point pour le stockage : entier sans zéros de tête
         (le zero-padding à 4 chiffres n'est appliqué qu'à la construction du codestation,
         ex. build_video_output_name / _get_codestation_for_video)."""
-        raw = (raw or "").strip()
+        raw = str(raw or "").strip()
         if not raw:
             return ""
         try:

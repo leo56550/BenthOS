@@ -71,15 +71,18 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
         surv = data.get("survey", {})
 
         has_ardoise = bool((obs.get("timecode_ardoise") or {}).get("value"))
+        _pn = obs.get("point_name")
+        has_point_name = bool((_pn.get("value") if isinstance(_pn, dict) else _pn) or "")
+        has_identified = has_ardoise or has_point_name
 
         expl = obs.get("exploitable", {})
         expl_val = expl.get("value", "") if isinstance(expl, dict) else str(expl or "")
         expl_val = "" if str(expl_val).strip() in ("", "None", "null") else str(expl_val).strip()
         has_status = bool(expl_val and expl_val != "?")
 
-        if has_ardoise and has_status:
+        if has_point_name and has_status:
             color = QtGui.QColor("#5DBB63")
-        elif has_ardoise:
+        elif has_identified:
             color = QtGui.QColor("#E8A838")
         else:
             color = QtGui.QColor("#D94F38")

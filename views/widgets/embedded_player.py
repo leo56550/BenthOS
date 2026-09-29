@@ -264,8 +264,12 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.apply_histogram = False
         self.he_params = {"vB": 3, "vG": 3, "vR": 3}
 
-        # Throttle UI updates (timeline, labels) pendant la lecture
+        # Timer dédié à l'animation fluide du curseur timeline pendant la lecture (~50 fps)
+        self._smooth_timer = QtCore.QTimer(self)
+        self._smooth_timer.setInterval(20)
+        self._smooth_timer.timeout.connect(self._smooth_position_update)
         self._last_ui_update_ms: int = 0
+        self._label_update_ms: int = 0
 
         # Image corrections (active only when paused)
         self._last_raw_frame: np.ndarray | None = None
@@ -885,6 +889,9 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             if self.apply_histogram or self.apply_dehaze:
                 self.apply_histogram = False
                 self.apply_dehaze = False
+            self._smooth_timer.start()
+        else:
+            self._smooth_timer.stop()
         self._update_corrections_enabled(is_playing)
         self.playback_state_changed.emit(is_playing)
 
@@ -949,16 +956,13 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.center_scroll_on_cursor()
 
     def on_player_position_changed(self, position_ms: int):
-        """Synchronise le flux R, la timeline, le curseur télémétrie et les labels de temps."""
+        """Synchronise le flux R et la timeline quand le lecteur est en pause ou en scrub."""
         if self.is_stereo and abs(self.player_R.position() - position_ms) > 50:
             self.player_R.setPosition(position_ms)
 
-        # Throttler les mises à jour UI à ~15 fps pendant la lecture (positionChanged fire à la cadence native)
-        now_ms = int(time.monotonic() * 1000)
-        is_playing = (self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState)
-        if is_playing and (now_ms - self._last_ui_update_ms) < 66:
+        # Pendant la lecture, le smooth_timer gère les mises à jour UI
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             return
-        self._last_ui_update_ms = now_ms
 
         if not self.timeline.is_dragging:
             self.timeline.set_current_position(position_ms)
@@ -967,11 +971,28 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.update_top_time_label(position_ms, self.player.duration())
         self.update_frame_label(position_ms)
 
-    def center_scroll_on_cursor(self):
-        """Fait défiler la timeline pour garder le curseur de lecture visible au centre."""
-        if self.player.duration() <= 0:
+    def _smooth_position_update(self):
+        """Appelé à ~50 fps pendant la lecture pour animer le curseur timeline en douceur."""
+        if self.timeline.is_dragging:
             return
-        ratio = self.player.position() / self.player.duration()
+        pos = self.player.position()
+        self.timeline.set_current_position(pos)
+        self.center_scroll_on_cursor(pos)
+        # Labels mis à jour à ~8 fps pour limiter les redraws texte
+        now_ms = int(time.monotonic() * 1000)
+        if now_ms - self._label_update_ms >= 120:
+            self._label_update_ms = now_ms
+            self.update_top_time_label(pos, self.player.duration())
+            self.update_frame_label(pos)
+
+    def center_scroll_on_cursor(self, pos_ms: int | None = None):
+        """Fait défiler la timeline pour garder le curseur de lecture visible au centre."""
+        duration = self.player.duration()
+        if duration <= 0:
+            return
+        if pos_ms is None:
+            pos_ms = self.player.position()
+        ratio = pos_ms / duration
         # Utiliser min_zoomed_width() car timeline.width() n'est pas encore à jour après set_zoom()
         cursor_x = int(ratio * self.timeline.min_zoomed_width())
         scrollbar = self.scroll_area_timeline.horizontalScrollBar()
