@@ -40,6 +40,10 @@ class VideoTimeline(QtWidgets.QWidget):
         self.drag_start_event_start = 0
         self.drag_start_event_end = 0
 
+        self.active_marker_move = None      # timecode_marker (atterrissage/décollage) en drag
+        self.drag_marker_mouse_x = 0.0
+        self.drag_marker_start_ms = 0
+
         self.rects_evenements = {}
 
         self._depth_profile: list = []   # [(time_ms, depth_m), ...]
@@ -108,7 +112,7 @@ class VideoTimeline(QtWidgets.QWidget):
 
     def set_current_position(self, position_ms):
         """Met à jour la position du curseur de lecture (ignoré si un drag/resize est en cours)."""
-        if not self.is_dragging and not self.active_resize_event and not self.active_move_event:
+        if not self.is_dragging and not self.active_resize_event and not self.active_move_event and not self.active_marker_move:
             self.current_pos = position_ms
             self.update()
 
@@ -269,18 +273,19 @@ class VideoTimeline(QtWidgets.QWidget):
 
             if evt_type == "timecode_marker":
                 # Marqueur atterrissage / décollage : ligne bleue pleine + label
-                c_blue = QtGui.QColor("#2778A2")
-                solid_pen = QtGui.QPen(c_blue, 2)
-                painter.setPen(solid_pen)
+                is_moving = (self.active_marker_move is evt)
+                c_mark = QtGui.QColor("#ffffff") if is_moving else QtGui.QColor("#2778A2")
+                line_w = 3 if is_moving else 2
+                painter.setPen(QtGui.QPen(c_mark, line_w))
                 painter.drawLine(x_start, RH, x_start, H)
                 painter.setPen(QtCore.Qt.PenStyle.NoPen)
-                painter.setBrush(c_blue)
-                painter.drawEllipse(QtCore.QPoint(x_start, RH + 6), 4, 4)
-                # Label court (ATT / DEC)
+                painter.setBrush(c_mark)
+                r = 5 if is_moving else 4
+                painter.drawEllipse(QtCore.QPoint(x_start, RH + 6), r, r)
                 short_lbl = title[:3].upper()
                 f_lbl = QtGui.QFont("Segoe UI", 7, QtGui.QFont.Weight.Bold)
                 painter.setFont(f_lbl)
-                painter.setPen(c_blue)
+                painter.setPen(c_mark)
                 painter.drawText(x_start + 4, RH + 15, short_lbl)
                 continue
 
@@ -636,6 +641,7 @@ class VideoTimeline(QtWidgets.QWidget):
                     return
 
         # Marqueurs verticaux (rotation_manual, timecode_marker, etc.) : sélection par proximité x
+        # Les timecode_marker (atterrissage/décollage) activent aussi le drag horizontal
         TOLERANCE_PX = 6
         for evt in self.events:
             if evt.get("type") != "custom_event":
@@ -643,6 +649,10 @@ class VideoTimeline(QtWidgets.QWidget):
                 if abs(pos_x - x_line) <= TOLERANCE_PX:
                     self.set_selected_event(evt)
                     self.eventSelected.emit(evt)
+                    if evt.get("type") == "timecode_marker":
+                        self.active_marker_move = evt
+                        self.drag_marker_mouse_x = pos_x
+                        self.drag_marker_start_ms = evt["start"]
                     return
 
         self.set_selected_event(None)
@@ -689,6 +699,16 @@ class VideoTimeline(QtWidgets.QWidget):
             self.update()
             return
 
+        if self.active_marker_move:
+            delta_pixels = pos_x - self.drag_marker_mouse_x
+            delta_ms = int((delta_pixels / width) * total_duration)
+            new_ms = max(0, min(self.drag_marker_start_ms + delta_ms, total_duration))
+            self.active_marker_move["start"] = new_ms
+            self.active_marker_move["end"] = new_ms
+            self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.SizeHorCursor))
+            self.update()
+            return
+
         if self.is_dragging:
             self.calculate_and_emit_position(pos_x)
             return
@@ -713,6 +733,13 @@ class VideoTimeline(QtWidgets.QWidget):
         elif inside_block:
             self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.SizeAllCursor))
         else:
+            # Hover sur un timecode_marker → curseur de déplacement horizontal
+            for evt in self.events:
+                if evt.get("type") == "timecode_marker":
+                    x_line = int((evt.get("start", 0) / total_duration) * width)
+                    if abs(pos_x - x_line) <= 6:
+                        self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.SizeHorCursor))
+                        return
             self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.ArrowCursor))
 
     def mouseReleaseEvent(self, event):
@@ -724,6 +751,9 @@ class VideoTimeline(QtWidgets.QWidget):
             if self.active_move_event:
                 self.eventMoved.emit(self.active_move_event)
                 self.active_move_event = None
+            if self.active_marker_move:
+                self.eventMoved.emit(self.active_marker_move)
+                self.active_marker_move = None
             if hasattr(self, 'active_resize_marker'):
                 del self.active_resize_marker
             if self.is_dragging:

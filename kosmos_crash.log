@@ -2006,3 +2006,98 @@ Traceback (most recent call last):
     def eventFilter(self, obj, event):
     
 KeyboardInterrupt
+
+============================================================
+2026-09-28 16:12:02.297576
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\views\widgets\timeline_widget.py", line 314, in paintEvent
+    QtCore.QPoint(x_start + dm, RH + 2 + dm),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+OverflowError: argument 1 overflowed: value must be in the range -2147483648 to 2147483647
+
+============================================================
+2026-09-29 09:14:02.957642
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\app_controller.py", line 907, in eventFilter
+    def eventFilter(self, obj, event):
+    
+KeyboardInterrupt
+
+============================================================
+2026-09-29 09:14:08.855217
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\main.py", line 59, in <module>
+    main()
+  File "c:\KOSMOS_IHM\main.py", line 47, in main
+    window = MainWindow()
+             ^^^^^^^^^^^^
+  File "c:\KOSMOS_IHM\views\main_window.py", line 17, in __init__
+    uic.loadUi(ui_path, self)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\load_ui.py", line 86, in loadUi
+    return DynamicUILoader(package).loadUi(uifile, baseinstance)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\Loader\loader.py", line 62, in loadUi
+    return self.parse(filename)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 1014, in parse
+    self._handle_widget(ui_file.widget)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 842, in _handle_widget
+    self.traverseWidgetTree(el)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 818, in traverseWidgetTree
+    handler(self, child)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 280, in createWidget
+    self.traverseWidgetTree(elem)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 818, in traverseWidgetTree
+    handler(self, child)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 512, in createLayout
+    self.traverseWidgetTree(elem)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 818, in traverseWidgetTree
+    handler(self, child)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 555, in handleItem
+    self.traverseWidgetTree(elem)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 818, in traverseWidgetTree
+    handler(self, child)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 280, in createWidget
+    self.traverseWidgetTree(elem)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 818, in traverseWidgetTree
+    handler(self, child)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 280, in createWidget
+    self.traverseWidgetTree(elem)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 818, in traverseWidgetTree
+    handler(self, child)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 512, in createLayout
+    self.traverseWidgetTree(elem)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 818, in traverseWidgetTree
+    handler(self, child)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 555, in handleItem
+    self.traverseWidgetTree(elem)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 818, in traverseWidgetTree
+    handler(self, child)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 280, in createWidget
+    self.traverseWidgetTree(elem)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 818, in traverseWidgetTree
+    handler(self, child)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 280, in createWidget
+    self.traverseWidgetTree(elem)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 818, in traverseWidgetTree
+    handler(self, child)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 512, in createLayout
+    self.traverseWidgetTree(elem)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 818, in traverseWidgetTree
+    handler(self, child)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 555, in handleItem
+    self.traverseWidgetTree(elem)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 818, in traverseWidgetTree
+    handler(self, child)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 280, in createWidget
+    self.traverseWidgetTree(elem)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 818, in traverseWidgetTree
+    handler(self, child)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 271, in createWidget
+    self.stack.push(self._setupObject(widget_class, parent, elem))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\uiparser.py", line 237, in _setupObject
+    self.wprops.setProperties(obj, branch)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\PyQt6\uic\properties.py", line 432, in setProperties
+    getattr(widget, 'set%s%s' % (ascii_upper(prop_name[0]), prop_name[1:]))(prop_value)
+KeyboardInterrupt

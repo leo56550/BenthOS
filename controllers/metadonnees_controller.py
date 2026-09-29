@@ -188,7 +188,6 @@ def _compute_video_path_number(actual_video_path: str) -> tuple[str, str]:
 # Schéma CSV infoStation : ordre et noms de colonnes calqués sur TEMPLATE_infoStation.xlsx.
 # Chaque tuple : (section, field_key, csv_column_name)
 # section=None → champ calculé ou non mappé (toujours vide)
-# Les lignes sont écrites comme LISTE ordonnée (csv.writer) pour gérer le doublon "Zone".
 _INFOSTATION_CSV_SCHEMA: list[tuple] = [
     ("video_observation", "codeObs",                   "Codestation"),           # col  1
     ("survey",            "zone",                      "Zone"),                   # col  2
@@ -201,7 +200,7 @@ _INFOSTATION_CSV_SCHEMA: list[tuple] = [
     ("video_observation", "point_name",                "Nom du point"),           # col  9
     ("video_observation", "gps_waypoint",              "Pt GPS Garmin"),          # col 10
     ("video_observation", "boatgps_waypoint",          "Pt gps bateau"),          # col 11
-    ("survey",            "region",                    "Zone"),                   # col 12 – doublon intentionnel XLSX
+    ("survey",            "region",                    "Region"),                 # col 12
     ("video_observation", "site",                      "Site"),                   # col 13
     ("video_observation", "monitoring_program",        "Pt de Suivi"),            # col 14
     ("video_observation", "depth",                     "Profondeur"),             # col 15
@@ -238,10 +237,11 @@ _INFOSTATION_COLUMNS: list[str] = [col for _, _, col in _INFOSTATION_CSV_SCHEMA]
 
 # Traduction anglaise des en-têtes de colonne pour l'affichage à l'écran uniquement
 # (le CSV généré garde toujours les noms français ci-dessus, format figé calqué sur
-# TEMPLATE_infoStation.xlsx — ne jamais traduire _INFOSTATION_CSV_SCHEMA lui-même).
+# TEMPLATE_infoStation.xlsx).
 _COL_NAME_EN: dict[str, str] = {
     "Codestation":                          "Station code",
     "Zone":                                 "Zone",
+    "Region":                               "Region",
     "Type":                                 "Type",
     "Systeme":                              "System",
     "Latitude":                             "Latitude",
@@ -732,6 +732,7 @@ class MetadonneesController:
         _default_widths = {
             "Codestation":                       90,
             "Zone":                              55,
+            "Region":                            55,
             "Type":                              55,
             "Systeme":                           70,
             "Latitude":                          90,
@@ -1828,7 +1829,7 @@ class MetadonneesController:
             self._upsert_infostation_row(self._infostation_pending_path)
 
     def _upsert_infostation_row(self, video_path: str):
-        """Régénère le CSV infostation complet (approche simplifiée, gère le doublon 'Zone')."""
+        """Régénère le CSV infostation complet."""
         self.generate_infostation_csv()
 
     # ── Infostation CSV generation ────────────────────────────────────────
@@ -1865,8 +1866,6 @@ class MetadonneesController:
 
     def _build_infostation_row(self, video_path: str, for_csv: bool = False) -> list:
         """Construit la liste ordonnée des valeurs pour une ligne CSV (ordre _INFOSTATION_CSV_SCHEMA).
-
-        Retourne une liste positionnelle (pour gérer le doublon "Zone" en cols 2 et 12).
         `for_csv=True` transforme la colonne Codestation en formule =HYPERLINK(...) vers la
         vidéo brute (uniquement souhaité dans le fichier CSV exporté, pas dans le tableau IHM).
         """

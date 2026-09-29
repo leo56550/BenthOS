@@ -258,6 +258,7 @@ class AppController(QtCore.QObject):
         # Écriture du dérusher uniquement dans les copies de travail (jamais dans les bruts)
         if self._current_derusher_name:
             self._write_derusher_to_working_copies(video_paths, self._current_derusher_name)
+        QtWidgets.QApplication.processEvents()
 
 
     def _persist_motor_events_for_all_videos(self, force: bool = False) -> None:
@@ -274,6 +275,7 @@ class AppController(QtCore.QObject):
             json_path = get_temp_json_path(video_path)
             if os.path.isfile(json_path):
                 total += persist_motor_events_from_csv(video_path, json_path, force=force)
+            QtWidgets.QApplication.processEvents()
         if total:
             print(f"[MOTOR] {total} rotation(s) moteur inscrites dans les _temp.json au chargement.")
 
@@ -284,6 +286,7 @@ class AppController(QtCore.QObject):
         for video_path in video_paths:
             wjson = get_working_video_json_path(self.working_dir, video_path)
             if not os.path.isfile(wjson):
+                QtWidgets.QApplication.processEvents()
                 continue
             try:
                 with open(wjson, 'r', encoding='utf-8') as f:
@@ -303,6 +306,7 @@ class AppController(QtCore.QObject):
                     count += 1
             except Exception as e:
                 print(f"[DERUSHER] {wjson}: {e}")
+            QtWidgets.QApplication.processEvents()
         print(f"[DERUSHER] '{derusher_name}' écrit dans {count} copies de travail.")
 
     def _open_working_dir(self):

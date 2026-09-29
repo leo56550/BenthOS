@@ -856,6 +856,7 @@ class QualifController:
         for video in videos:
             initialise_temp_json_if_needed(video["path"])    # crée <stem>_temp.json (valeurs nulles)
             update_temp_json_paths(video["path"])             # remplit les champs chemin si absents
+            QtWidgets.QApplication.processEvents()
 
         # Doit s'exécuter avant le choix du JSON de référence ci-dessous : une vidéo
         # mise à la corbeille (qualifiable='no') sort de video_model et ne reçoit plus
@@ -1944,7 +1945,7 @@ class QualifController:
                 cur = j
                 break
 
-        screen = QtWidgets.QApplication.primaryScreen().size()
+        screen = QtWidgets.QApplication.primaryScreen().availableSize()
 
         dlg = QtWidgets.QDialog(self.widget)
         dlg.setWindowFlags(
@@ -1961,6 +1962,7 @@ class QualifController:
         lbl_img = QtWidgets.QLabel()
         lbl_img.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         lbl_img.setStyleSheet("background-color: black;")
+        lbl_img._src_pix = None  # pixmap original pour rescaler à chaque resize
         outer.addWidget(lbl_img, 1)
 
         bar = QtWidgets.QWidget()
@@ -2016,8 +2018,12 @@ class QualifController:
             j = max(0, min(j, len(valid) - 1))
             state["cur"] = j
             _, pix = valid[j]
+            lbl_img._src_pix = pix
+            sz = lbl_img.size()
+            if not sz.isValid() or sz.isEmpty():
+                sz = QtCore.QSize(screen.width(), screen.height() - 44)
             scaled = pix.scaled(
-                screen,
+                sz,
                 QtCore.Qt.AspectRatioMode.KeepAspectRatio,
                 QtCore.Qt.TransformationMode.SmoothTransformation,
             )
@@ -2025,6 +2031,13 @@ class QualifController:
             lbl_counter.setText(f"{j + 1} / {len(valid)}")
             btn_prev.setEnabled(j > 0)
             btn_next.setEnabled(j < len(valid) - 1)
+
+        def _on_lbl_resize(event):
+            if lbl_img._src_pix:
+                _show(state["cur"])
+            QtWidgets.QLabel.resizeEvent(lbl_img, event)
+
+        lbl_img.resizeEvent = _on_lbl_resize
 
         btn_prev.clicked.connect(lambda: _show(state["cur"] - 1))
         btn_next.clicked.connect(lambda: _show(state["cur"] + 1))

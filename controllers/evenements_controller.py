@@ -171,6 +171,7 @@ class EvenementsController:
             self.event_player.timeline.eventResized.connect(self.refresh_event_list)
             if hasattr(self.event_player.timeline, 'eventMoved'):
                 self.event_player.timeline.eventMoved.connect(self.refresh_event_list)
+                self.event_player.timeline.eventMoved.connect(self._on_timeline_event_moved)
             elif hasattr(self.event_player.timeline, 'eventChanged'):
                 self.event_player.timeline.eventChanged.connect(self.refresh_event_list)
 
@@ -678,6 +679,15 @@ class EvenementsController:
                 self._on_events_changed()
         except Exception as e:
             print(f"[EVENTS] Erreur écriture {field_key} @ {timecode}: {e}")
+
+    def _on_timeline_event_moved(self, evt: dict):
+        """Appelé quand l'utilisateur déplace un timecode_marker sur la timeline → persiste dans le JSON."""
+        if evt.get("type") != "timecode_marker":
+            return
+        field_key = evt.get("_json_key")
+        if not field_key:
+            return
+        self._write_timecode_at_ms(field_key, evt["start"])
 
     def _show_landing_context_menu(self, btn: QtWidgets.QPushButton, pos):
         """Menu contextuel (clic droit) sur Atterrissage ou Décollage."""
@@ -2079,6 +2089,9 @@ class EvenementsController:
         self.tree_captures.blockSignals(False)
         self.tree_captures.viewport().update()
 
+        # Les timecode_marker (atterrissage/décollage) sont persistés par _on_timeline_event_moved
+        if modified_event.get("type") == "timecode_marker":
+            return
         display_type = getattr(self, '_selected_type', '') or self.combo_type_event.currentText()
         if "_json_key" in modified_event:
             display_type = self._get_label_from_json_key(modified_event["_json_key"])
