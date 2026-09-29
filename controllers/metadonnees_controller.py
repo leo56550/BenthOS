@@ -791,7 +791,7 @@ class MetadonneesController:
             "Latitude":                          90,
             "Longitude":                         90,
             "Date":                              75,
-            "Heure":                             55,
+            "Heure":                             65,
             "Nom du point":                      80,
             "Pt GPS Garmin":                     100,
             "Pt gps bateau":                     100,
@@ -2165,13 +2165,18 @@ class MetadonneesController:
             norm_row = {_norm(k): v for k, v in row_dict.items()}
             trow = self._ft_table.rowCount()
             self._ft_table.insertRow(trow)
-            for col_i, (col_label, _, _, _) in enumerate(_FT_TABLE_COLS):
+            for col_i, (col_label, _sec, _fk, _) in enumerate(_FT_TABLE_COLS):
                 val = (norm_row.get(_norm(col_label)) or '').strip()
                 # Nettoyer les formules Excel (=LIEN_HYPERTEXTE...)
                 if val.startswith('='):
                     import re as _re_csv
                     m = _re_csv.search(r'"([^"]*)"[;,]\s*"([^"]*)"', val)
                     val = m.group(2) if m else ''
+                # Normaliser date et heure au format cible (YYYYMMDD / HH:MM)
+                if val and _sec and _fk in ("date", "time"):
+                    coerced = _coerce_field_value(_sec, _fk, val)
+                    if coerced is not None:
+                        val = str(coerced)
                 cell = QtWidgets.QTableWidgetItem(val)
                 cell.setFlags(QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEnabled)
                 self._ft_table.setItem(trow, col_i, cell)
