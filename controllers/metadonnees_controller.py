@@ -114,10 +114,30 @@ for _sec, _sec_data in _TEMPLATE_BASE.items():
                 _FIELD_TYPES[(_sec, _fk)] = str(_fdef["type"]).lower()
 
 
+def _normalize_date_yyyymmdd(val: str) -> str:
+    """Normalise une date en YYYYMMDD quelle que soit le format d'entrée.
+
+    Gère : YYYYMMDD · YYYY-MM-DD · DD/MM/YYYY · MM/DD/YYYY
+           et les suffixes horaires produits par openpyxl (2019-08-19 00:00:00).
+    """
+    s = str(val).strip().split("T")[0].split(" ")[0]  # retirer la partie heure
+    for fmt in ("%Y%m%d", "%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(s, fmt).strftime("%Y%m%d")
+        except ValueError:
+            pass
+    # Dernier recours : garder les chiffres uniquement
+    digits = "".join(c for c in s if c.isdigit())
+    return digits[:8] if len(digits) >= 8 else val
+
+
 def _coerce_field_value(section: str, field_key: str, val: str):
     """Convertit val au type défini dans le template (int, float) ou laisse en str."""
     if not val:
         return None
+    # Les dates sont toujours stockées en YYYYMMDD
+    if field_key == "date":
+        return _normalize_date_yyyymmdd(val)
     ftype = _FIELD_TYPES.get((section, field_key), "str")
     if ftype == "int":
         try:
