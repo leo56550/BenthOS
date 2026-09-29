@@ -2148,6 +2148,12 @@ class MetadonneesController:
         if video_name_col is None:
             return 0, 0, [("—", "Colonne 'Nom de la video' introuvable dans le schéma")]
 
+        # Index de la colonne Codestation (codeObs) pour import direct
+        codeobs_col_i = next(
+            (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "codeObs"),
+            None,
+        )
+
         # Scanner récursivement le dossier pour tous les fichiers vidéo
         _VIDEO_EXTS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.mts', '.m2ts', '.mpg', '.mpeg', '.m4v'}
         stem_to_path: dict[str, str] = {}
@@ -2206,13 +2212,19 @@ class MetadonneesController:
                 if fk in vobs and isinstance(vobs[fk], dict):
                     vobs[fk]['value'] = None
 
-            # Calculer et écrire codeObs depuis zone + date + numéros de point du tableau
-            computed_code = _compute_codeobs(jdata)
-            if computed_code:
+            # codeObs : valeur directe depuis la colonne Codestation en priorité,
+            # calcul automatique en fallback si absente
+            direct_code = ''
+            if codeobs_col_i is not None:
+                citem = self._ft_table.item(row, codeobs_col_i)
+                direct_code = citem.text().strip() if citem else ''
+            if not direct_code:
+                direct_code = _compute_codeobs(jdata) or ''
+            if direct_code:
                 if "codeObs" in vobs and isinstance(vobs["codeObs"], dict):
-                    vobs["codeObs"]["value"] = computed_code
+                    vobs["codeObs"]["value"] = direct_code
                 else:
-                    vobs["codeObs"] = {"value": computed_code}
+                    vobs["codeObs"] = {"value": direct_code}
 
             # Calculer et écrire video_path et video_number depuis le chemin réel
             _vp_val, _vn_val = _compute_video_path_number(video_path)
@@ -2329,6 +2341,18 @@ class MetadonneesController:
                     block[fk]['value'] = coerced
                 else:
                     block[fk] = {'value': coerced}
+                changed = True
+
+            # codeObs : import direct depuis la colonne Codestation, fallback calcul
+            direct_code = (row_dict.get('Codestation') or '').strip()
+            if not direct_code:
+                direct_code = _compute_codeobs(jdata) or ''
+            if direct_code:
+                obs_b = jdata.setdefault('video_observation', {})
+                if 'codeObs' in obs_b and isinstance(obs_b['codeObs'], dict):
+                    obs_b['codeObs']['value'] = direct_code
+                else:
+                    obs_b['codeObs'] = {'value': direct_code}
                 changed = True
 
             if changed:
