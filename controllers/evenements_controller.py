@@ -98,6 +98,7 @@ class EvenementsController:
         self.video_model = shared_model
         self._on_video_focused = on_video_focused
         self._on_events_changed = on_events_changed
+        self._motor_deleted_paths: set = set()  # vidéos dont les rotations ont été supprimées manuellement
         # Reflète l'export en cours dans la barre de statut globale (visible depuis
         # n'importe quelle page), pas seulement dans le panneau de la page Événements.
         # Noms distincts des méthodes _on_export_* (slots Qt) pour éviter tout conflit.
@@ -699,6 +700,182 @@ class EvenementsController:
         if chosen == action:
             self._detect_landing_takeoff_from_telemetry()
 
+    def _show_motor_rotation_context_menu(self, pos):
+        """Menu contextuel (clic droit) sur le bouton Rotation moteur.
+
+        - Des rotations présentes → "Supprimer les rotations moteur"
+        - Rotations supprimées manuellement → "Rétablir les rotations moteur"
+        """
+        btn = getattr(self, '_btn_rotation_moteur', None)
+        if btn is None:
+            return
+
+        tl = getattr(getattr(self, 'event_player', None), 'timeline', None)
+        has_motor = tl is not None and any(
+            e.get("type") == "rotation_manual" or e.get("type", "").startswith("rotation_")
+            for e in tl.events
+        )
+        was_deleted = bool(getattr(self, 'current_video_path', None)
+                          and self.current_video_path in self._motor_deleted_paths)
+
+        menu = QtWidgets.QMenu(btn)
+        action_del = action_restore = None
+
+        if has_motor:
+            action_del = menu.addAction(
+                self.translate("Supprimer les rotations moteur", "Delete motor rotations"))
+        elif was_deleted:
+            action_restore = menu.addAction(
+                self.translate("Rétablir les rotations moteur", "Restore motor rotations"))
+
+        if menu.isEmpty():
+            return
+
+        chosen = menu.exec(btn.mapToGlobal(pos))
+        if chosen is None:
+            return
+        if chosen is action_del:
+            self._delete_all_motor_rotations()
+        elif chosen is action_restore:
+            self._restore_motor_rotations()
+
+    def _delete_all_motor_rotations(self):
+        """Supprime toutes les rotations moteur : JSON _temp, timeline et arbre des captures."""
+        if not self.current_json_path or not os.path.isfile(self.current_json_path):
+            return
+
+        # ── 1. JSON : vider events_motor ────────────────────────────────────
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            obs = data.setdefault("video_observation", {})
+            obs["events_motor"] = []
+            with open(self.current_json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+            print(f"[EVENTS] events_motor vidé : {os.path.basename(self.current_json_path)}")
+        except Exception as e:
+            print(f"[EVENTS] Erreur suppression rotations moteur JSON : {e}")
+            return
+
+        # ── 2. Timeline : retirer tous les events moteur ─────────────────────
+        if hasattr(self, 'event_player') and getattr(self.event_player, 'timeline', None):
+            tl = self.event_player.timeline
+            tl.events = [
+                e for e in tl.events
+                if not (e.get("type", "") == "rotation_manual"
+                        or e.get("type", "").startswith("rotation_"))
+            ]
+            tl.set_selected_event(None)
+            tl.update()
+
+        # ── 3. Arbre des captures : retirer les lignes Rotation moteur ───────
+        if hasattr(self, 'tree_captures') and self.tree_captures:
+            label_fr = "Rotation moteur"
+            label_en = "Motor rotation"
+            for i in range(self.tree_captures.topLevelItemCount() - 1, -1, -1):
+                it = self.tree_captures.topLevelItem(i)
+                if it.text(3) in (label_fr, label_en):
+                    self.tree_captures.takeTopLevelItem(i)
+
+        # Mémoriser la suppression pour proposer "Rétablir" au prochain clic droit
+        if self.current_video_path:
+            self._motor_deleted_paths.add(self.current_video_path)
+
+        if self._on_events_changed:
+            self._on_events_changed()
+
+    def _restore_motor_rotations(self):
+        """Recalcule les rotations moteur depuis le CSV et les réinjecte dans JSON + timeline + arbre."""
+        if not self.current_video_path or not self.current_json_path:
+            return
+        if not os.path.isfile(self.current_json_path):
+            return
+
+        from services.motor_service import persist_motor_events_from_csv
+
+        fps = self._get_video_fps() or 25.0
+        persist_motor_events_from_csv(self.current_video_path, self.current_json_path,
+                                      fps=fps, force=True)
+        self._motor_deleted_paths.discard(self.current_video_path)
+
+        # Recharger events_motor depuis le JSON mis à jour
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception as e:
+            print(f"[EVENTS] Erreur lecture JSON après restore : {e}")
+            return
+
+        video_obs = data.get("video_observation", {})
+        raw = video_obs.get("events_motor")
+        if not isinstance(raw, list) or not raw:
+            return
+
+        # Format plat (nouveau) ou format ancien events_deployment ?
+        first = raw[0] if raw else {}
+        if isinstance(first, dict) and "values" in first:
+            values_list = [
+                {"frame_number": v.get("frame_number_start", 0),
+                 "description_fr": v.get("value", ""),
+                 "event_id": v.get("event_id"),
+                 "comment": v.get("comment", "")}
+                for v in first.get("values", []) if isinstance(v, dict)
+            ]
+        else:
+            values_list = [v for v in raw if isinstance(v, dict) and "frame_number" in v]
+
+        if not values_list:
+            return
+
+        tl = getattr(getattr(self, 'event_player', None), 'timeline', None)
+        if tl is None:
+            return
+
+        category_name = self._get_label_from_json_key("events_motor")
+
+        for val in values_list:
+            if "start_ms" in val:
+                start_ms = int(val["start_ms"])
+            else:
+                tc = val.get("time_code", "")
+                try:
+                    tc_clean = tc.split(".")[0]
+                    parts = tc_clean.split(":")
+                    start_ms = (int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])) * 1000
+                except Exception:
+                    fn = val.get("frame_number", 0)
+                    start_ms = int(((fn - 1) / fps) * 1000) if fn and fps else 0
+
+            value = val.get("description_fr") or val.get("value", "rotation")
+            json_comment = val.get("comment", "")
+            timeline_title = f"Pic: {value}"
+            zone_index = self._zone_index_for_event_type("events_motor")
+
+            event_dict = {
+                "start": start_ms, "end": start_ms,
+                "title": timeline_title,
+                "type": "rotation_manual",
+                "zone": zone_index,
+                "comment": json_comment,
+                "_json_key": "events_motor",
+            }
+            if "event_id" in val and val["event_id"]:
+                event_dict["_event_uid"] = val["event_id"]
+            tl.events.append(event_dict)
+
+            if hasattr(self, 'tree_captures') and self.tree_captures:
+                txt_start = tl._format_ms(start_ms)
+                _ti = QtWidgets.QTreeWidgetItem(
+                    [txt_start, "-", category_name, value, json_comment, ""])
+                _ti.setFlags(_ti.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
+                _ti.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778A2")))
+                self.tree_captures.addTopLevelItem(_ti)
+                self.add_tree_thumbnail(_ti, start_ms)
+
+        tl.update()
+        if self._on_events_changed:
+            self._on_events_changed()
+
     def _detect_landing_takeoff_from_telemetry(self):
         """Détecte automatiquement l'atterrissage et le décollage depuis la courbe de profondeur."""
         if not hasattr(self, 'event_player') or not self.event_player:
@@ -1126,6 +1303,12 @@ class EvenementsController:
             btn.customContextMenuRequested.connect(
                 lambda pos, b=btn: self._show_landing_context_menu(b, pos)
             )
+
+        # Clic droit sur Rotation moteur → "Supprimer les rotations moteur"
+        btn_rot.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        btn_rot.customContextMenuRequested.connect(
+            lambda pos: self._show_motor_rotation_context_menu(pos)
+        )
 
         # --- Boutons dédiés Début / Fin annotation — sous Atterrissage/Décollage/Rotation ---
         annot_row_w = QtWidgets.QWidget()
