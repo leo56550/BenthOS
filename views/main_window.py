@@ -215,41 +215,20 @@ class MainWindow(QtWidgets.QMainWindow):
             b.setEnabled(enabled)
             return b
 
-        self.btn_recent_campaigns = _btn("Campagnes récentes", "Ouvrir une campagne récente", "btn_recent_campaigns")
-        self.btn_open_video  = _btn("Ouvrir vidéo",    "Ouvrir un fichier MP4 sans charger de campagne", "btn_open_video")
         self.btn_sftp        = _btn("KOSMOS Connexion", "Connexion SFTP / Planification déploiement",     "btn_sftp")
         self.btn_notes       = _btn("Notes",            "Notes de session — mémo libre de la campagne",   "btn_notes",       enabled=False)
-        self.btn_load_history = _btn("Données historiques", "Charger les données historiques depuis le serveur", "btn_load_history")
-        self.btn_delete_temp  = _btn("Supprimer temp.json", "Supprimer tous les _temp.json d'un dossier choisi", "btn_delete_temp")
+        self.btn_load_history = _btn("Données historiques",
+                                     "Charger les données historiques (clic droit → supprimer temp.json)",
+                                     "btn_load_history")
+        self.btn_load_history.setContextMenuPolicy(
+            QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
 
-        self.btn_generate_temp = QtWidgets.QToolButton()
-        self.btn_generate_temp.setText("GÉNÉRER TEMP.JSON")
-        self.btn_generate_temp.setToolTip("Générer les _temp.json pour les vidéos d'un dossier à partir du tableau CSV chargé")
-        self.btn_generate_temp.setObjectName("btn_generate_temp")
-        self.btn_generate_temp.setStyleSheet(
-            "QToolButton { background-color: #1a5c2a; color: #d0f0d8; font-weight: bold;"
-            " font-size: 12px; border: 1px solid #2e9e4a; border-radius: 4px; padding: 4px 12px; }"
-            " QToolButton:hover { background-color: #227a38; }"
-            " QToolButton:pressed { background-color: #145220; }"
-        )
-
-        # Boutons regroupés dans une zone défilable horizontalement : sur petit écran,
-        # le chevron d'overflow natif de QToolBar gère mal les widgets ajoutés via
-        # addWidget() (ils peuvent disparaître silencieusement sans indication). Avec un
-        # QScrollArea, tous les boutons restent atteignables par un défilement horizontal.
         buttons_container = QtWidgets.QWidget()
         buttons_layout = QtWidgets.QHBoxLayout(buttons_container)
         buttons_layout.setContentsMargins(0, 0, 0, 0)
         buttons_layout.setSpacing(4)
 
-        sep = QtWidgets.QFrame()
-        sep.setFrameShape(QtWidgets.QFrame.Shape.VLine)
-        sep.setStyleSheet("color: #2778A2; background-color: #2778A2; max-width: 1px;")
-
-        buttons_layout.addWidget(self.btn_recent_campaigns)
-        buttons_layout.addWidget(self.btn_open_video)
         buttons_layout.addWidget(self.btn_sftp)
-        buttons_layout.addWidget(sep)
         buttons_layout.addWidget(self.btn_notes)
         buttons_layout.addStretch()
 
@@ -265,10 +244,24 @@ class MainWindow(QtWidgets.QMainWindow):
         buttons_scroll.setFixedHeight(36)
         buttons_scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
 
+        self.btn_generate_temp = QtWidgets.QToolButton()
+        self.btn_generate_temp.setText("GÉNÉRER TEMP.JSON")
+        self.btn_generate_temp.setToolTip(
+            "Générer les _temp.json dans le dossier de l'infoStation chargée")
+        self.btn_generate_temp.setObjectName("btn_generate_temp")
+        self.btn_generate_temp.setStyleSheet(
+            "QToolButton { background-color: #1a5c2a; color: #d0f0d8; font-weight: bold;"
+            " font-size: 12px; border: 1px solid #2e9e4a; border-radius: 4px; padding: 4px 12px; }"
+            " QToolButton:hover { background-color: #227a38; }"
+            " QToolButton:pressed { background-color: #145220; }"
+        )
+        self.btn_generate_temp.setVisible(False)  # visible seulement après chargement infoStation
+
         self.action_toolbar.addWidget(buttons_scroll)
         self.action_toolbar.addWidget(self.btn_load_history)
-        self.action_toolbar.addWidget(self.btn_delete_temp)
-        self.action_toolbar.addWidget(self.btn_generate_temp)
+        # Stocker l'action wrapper pour pouvoir show/hide correctement dans la toolbar
+        self._act_generate_temp = self.action_toolbar.addWidget(self.btn_generate_temp)
+        self._act_generate_temp.setVisible(False)
 
         self.action_toolbar.setStyleSheet("""
             QToolBar {
@@ -299,15 +292,6 @@ class MainWindow(QtWidgets.QMainWindow):
             QToolButton:disabled {
                 color: #3a5568;
                 border-color: #1a2e40;
-            }
-            QToolButton#btn_recent_campaigns {
-                color: #F2BFB4;
-                border-color: #2778A2;
-            }
-            QToolButton#btn_recent_campaigns:hover {
-                background-color: #2778A2;
-                color: #ffffff;
-                border-color: #4a9fcf;
             }
             QToolButton#btn_load_history {
                 color: #F2BFB4;
@@ -478,22 +462,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
     _ACTION_TOOLBAR_TEXTS = {
         'fr': {
-            'btn_recent_campaigns': ("Campagnes récentes", "Ouvrir une campagne récente"),
-            'btn_open_video':       ("Ouvrir vidéo",       "Ouvrir un fichier MP4 sans charger de campagne"),
-            'btn_sftp':             ("KOSMOS Connexion",   "Connexion SFTP / Planification déploiement"),
-            'btn_notes':            ("Notes",              "Notes de session — mémo libre de la campagne"),
-            'btn_load_history':     ("Données historiques",  "Charger les données historiques depuis le serveur"),
-            'btn_delete_temp':      ("Supprimer temp.json", "Supprimer tous les _temp.json de la campagne courante"),
-            'btn_generate_temp':    ("GÉNÉRER TEMP.JSON",  "Générer les _temp.json pour les vidéos d'un dossier à partir du tableau CSV chargé"),
+            'btn_sftp':          ("KOSMOS Connexion",    "Connexion SFTP / Planification déploiement"),
+            'btn_notes':         ("Notes",               "Notes de session — mémo libre de la campagne"),
+            'btn_load_history':  ("Données historiques", "Charger les données historiques (clic droit → supprimer temp.json)"),
+            'btn_generate_temp': ("GÉNÉRER TEMP.JSON",   "Générer les _temp.json dans le dossier de l'infoStation chargée"),
         },
         'en': {
-            'btn_recent_campaigns': ("Recent campaigns",   "Open a recent campaign"),
-            'btn_open_video':       ("Open video",         "Open an MP4 file without loading a campaign"),
-            'btn_sftp':             ("KOSMOS Connection",  "SFTP connection / Deployment planning"),
-            'btn_notes':            ("Notes",              "Session notes — free memo for the campaign"),
-            'btn_load_history':     ("Historical data",    "Load historical data from the server"),
-            'btn_delete_temp':      ("Delete temp.json",   "Delete all _temp.json files from the current campaign"),
-            'btn_generate_temp':    ("GENERATE TEMP.JSON", "Generate _temp.json files for videos in a folder from the loaded CSV table"),
+            'btn_sftp':          ("KOSMOS Connection",   "SFTP connection / Deployment planning"),
+            'btn_notes':         ("Notes",               "Session notes — free memo for the campaign"),
+            'btn_load_history':  ("Historical data",     "Load historical data (right-click → delete temp.json)"),
+            'btn_generate_temp': ("GENERATE TEMP.JSON",  "Generate _temp.json files in the loaded infoStation folder"),
         },
     }
 

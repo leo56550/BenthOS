@@ -114,6 +114,34 @@ for _sec, _sec_data in _TEMPLATE_BASE.items():
                 _FIELD_TYPES[(_sec, _fk)] = str(_fdef["type"]).lower()
 
 
+def _normalize_time_hhmm(val: str) -> str:
+    """Normalise une heure au format HH:MM quelle que soit la forme d'entrée.
+
+    Gère : HH:MM · HH:MM:SS · HHMM · H:MM
+    et les horodatages openpyxl ('2019-08-19 14:30:00' → '14:30').
+    """
+    s = str(val).strip()
+    # Extraire la partie heure si date+heure
+    if ' ' in s:
+        s = s.split(' ', 1)[1]
+    if 'T' in s:
+        s = s.split('T', 1)[1]
+    # HH:MM ou HH:MM:SS
+    if ':' in s:
+        parts = s.split(':')
+        try:
+            h = int(parts[0])
+            m = int(parts[1])
+            return f"{h:02d}:{m:02d}"
+        except (ValueError, IndexError):
+            pass
+    # HHMM (4 chiffres bruts)
+    digits = ''.join(c for c in s if c.isdigit())
+    if len(digits) >= 4:
+        return f"{digits[:2]}:{digits[2:4]}"
+    return val
+
+
 def _normalize_date_yyyymmdd(val: str) -> str:
     """Normalise une date en YYYYMMDD quelle que soit le format d'entrée.
 
@@ -138,6 +166,9 @@ def _coerce_field_value(section: str, field_key: str, val: str):
     # Les dates sont toujours stockées en YYYYMMDD
     if field_key == "date":
         return _normalize_date_yyyymmdd(val)
+    # Les heures sont toujours stockées en HH:MM
+    if field_key == "time":
+        return _normalize_time_hhmm(val)
     ftype = _FIELD_TYPES.get((section, field_key), "str")
     if ftype == "int":
         try:
@@ -245,7 +276,8 @@ _INFOSTATION_CSV_SCHEMA: list[tuple] = [
     ("survey",            "boat_name",                 "Bateau"),                 # col 34
     ("survey",            "pilot_name",                "Pilote"),                 # col 35
     ("survey",            "crew_names",                "Equipage"),               # col 36
-    ("video_observation", "fish_annotator",            "Analyseur poisson"),      # col 37
+    ("survey",            "partners",                  "Partenaires"),            # col 37
+    ("video_observation", "fish_annotator",            "Analyseur poisson"),      # col 38
     ("video_observation", "habitat_annotator",         "Analyseur habitat"),      # col 38
     ("video_observation", "distance_min",              "Distance analysable min (m)"),  # col 39
     ("video_observation", "distance_max",              "Distance analysable max (m)"),  # col 40
@@ -295,6 +327,7 @@ _COL_NAME_EN: dict[str, str] = {
     "Bateau":                               "Boat",
     "Pilote":                               "Pilot",
     "Equipage":                             "Crew",
+    "Partenaires":                          "Partners",
     "Analyseur poisson":                    "Fish annotator",
     "Analyseur habitat":                    "Habitat annotator",
     "Distance analysable min (m)":          "Analyzable distance min (m)",
@@ -787,6 +820,7 @@ class MetadonneesController:
             "Bateau":                            90,
             "Pilote":                            90,
             "Equipage":                          120,
+            "Partenaires":                       120,
             "Analyseur poisson":                 100,
             "Analyseur habitat":                 100,
             "Distance analysable min (m)":       110,
@@ -2184,7 +2218,8 @@ class MetadonneesController:
                     stem_to_path[stem] = os.path.join(root, fname)
 
         # Champs toujours null dans les temp.json générés (saisis manuellement dans l'IHM)
-        _NULL_IN_GENERATED = {"point_name", "video_file_name"}
+        # point_name est exclu : pour les données historiques il est connu depuis le CSV
+        _NULL_IN_GENERATED = {"video_file_name"}
 
         # Colonnes écrivables : section non-None, champ non calculé, et non réservé à l'IHM
         writable_cols = [

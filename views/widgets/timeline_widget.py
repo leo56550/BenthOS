@@ -263,6 +263,29 @@ class VideoTimeline(QtWidgets.QWidget):
             painter.setPen(QtGui.QPen(QtGui.QColor(80, 180, 255, 60), 1))
             painter.drawRect(xs, y_z, max(1, xe - xs), zone_height)
 
+        # ── Pré-pass : niveaux de décalage vertical pour labels qui se superposent ──
+        # Chaque marqueur vertical (rotation moteur / atterrissage / décollage) dont le
+        # label tombe dans les LABEL_CLASH_PX pixels d'un label déjà placé est décalé
+        # vers le bas d'un cran (LABEL_STAGGER px) pour rester lisible.
+        LABEL_CLASH_PX = 28
+        LABEL_STAGGER  = 11
+        _vmark_levels: dict[int, int] = {}   # id(evt) → niveau (0 = position normale)
+        _sorted_vmarks = sorted(
+            [e for e in self.events
+             if e.get("type") == "timecode_marker"
+             or self._is_motor_event(e.get("type", ""))],
+            key=lambda e: e.get("start", 0)
+        )
+        _placed_vmarks: list[tuple[int, int]] = []  # (x_px, niveau)
+        for _ve in _sorted_vmarks:
+            _vx = self._clamp_int((_ve.get("start", 0) / total_duration) * width)
+            for _lvl in range(5):
+                if not any(abs(_vx - _ox) < LABEL_CLASH_PX and _ol == _lvl
+                           for _ox, _ol in _placed_vmarks):
+                    _placed_vmarks.append((_vx, _lvl))
+                    _vmark_levels[id(_ve)] = _lvl
+                    break
+
         # ── Événements ──────────────────────────────────────────────────────
         for idx, evt in enumerate(self.events):
             start_ms = evt.get("start", 0)
@@ -286,7 +309,8 @@ class VideoTimeline(QtWidgets.QWidget):
                 f_lbl = QtGui.QFont("Segoe UI", 7, QtGui.QFont.Weight.Bold)
                 painter.setFont(f_lbl)
                 painter.setPen(c_mark)
-                painter.drawText(x_start + 4, RH + 15, short_lbl)
+                _lbl_y_off = _vmark_levels.get(id(evt), 0) * LABEL_STAGGER
+                painter.drawText(x_start + 4, RH + 15 + _lbl_y_off, short_lbl)
                 continue
 
             if evt_type != "custom_event" and self._is_motor_event(evt_type):
@@ -327,7 +351,8 @@ class VideoTimeline(QtWidgets.QWidget):
                 f_m = QtGui.QFont("Segoe UI", 8 if is_360 else 7, QtGui.QFont.Weight.Bold)
                 painter.setFont(f_m)
                 painter.setPen(c_line)
-                painter.drawText(x_start + dm + 2, RH + dm * 2 + 5, lbl)
+                _lbl_y_off = _vmark_levels.get(id(evt), 0) * LABEL_STAGGER
+                painter.drawText(x_start + dm + 2, RH + dm * 2 + 5 + _lbl_y_off, lbl)
                 continue
 
             x_end      = self._clamp_int((end_ms / total_duration) * width)

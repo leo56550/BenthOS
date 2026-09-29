@@ -115,6 +115,8 @@ class AppController(QtCore.QObject):
         self.accueil_ctrl = AccueilController(
             window.page_accueil,
             self.handle_campaign_opening,
+            recent_callback=self._open_recent_campaigns,
+            open_video_callback=self._open_single_video,
         )
         self.qualif_ctrl = QualifController(
             window.page_qualification, parent=window,
@@ -178,23 +180,16 @@ class AppController(QtCore.QObject):
         window.btn_lang_fr.clicked.connect(lambda: self.set_language("fr"))
         window.btn_lang_en.clicked.connect(lambda: self.set_language("en"))
 
-        if hasattr(window, 'btn_open_video'):
-            window.btn_open_video.clicked.connect(self._open_single_video)
-
         if hasattr(window, 'btn_notes'):
             window.btn_notes.clicked.connect(self._open_notes)
 
         if hasattr(window, 'btn_sftp'):
             window.btn_sftp.clicked.connect(self._open_sftp_dialog)
 
-        if hasattr(window, 'btn_recent_campaigns'):
-            window.btn_recent_campaigns.clicked.connect(self._open_recent_campaigns)
-
         if hasattr(window, 'btn_load_history'):
             window.btn_load_history.clicked.connect(self._load_historical_data)
-
-        if hasattr(window, 'btn_delete_temp'):
-            window.btn_delete_temp.clicked.connect(self._delete_temp_jsons)
+            window.btn_load_history.customContextMenuRequested.connect(
+                self._show_load_history_context_menu)
 
         if hasattr(window, 'btn_generate_temp'):
             window.btn_generate_temp.clicked.connect(self._generate_temp_jsons)
@@ -521,8 +516,17 @@ class AppController(QtCore.QObject):
                 tl.set_selected_event(None)
                 tl.update()
 
+    def _show_load_history_context_menu(self, pos):
+        """Clic droit sur 'Données historiques' → supprimer les temp.json."""
+        btn = self.window.btn_load_history
+        menu = QtWidgets.QMenu(btn)
+        action_del = menu.addAction(
+            self.translate("Supprimer les temp.json", "Delete temp.json files"))
+        if menu.exec(btn.mapToGlobal(pos)) == action_del:
+            self._delete_temp_jsons()
+
     def _load_historical_data(self):
-        """Ouvre un CSV/XLSX infostation et l'affiche directement dans le tableau métadonnées."""
+        """Ouvre un CSV/XLSX infostation, le charge dans le tableau puis génère les temp.json."""
         start_dir = getattr(self.qualif_ctrl, 'current_campaign_folder', '') or self.working_dir or ""
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self.window,
@@ -534,9 +538,43 @@ class AppController(QtCore.QObject):
             return
         self.switch_page(self.window.page_metadonnees)
         self.metadonnees_ctrl.load_csv_into_table(path)
+        self._last_infostation_folder = os.path.dirname(path)
+
+        # Rendre visible le bouton de génération maintenant que l'infoStation est chargée
+        if hasattr(self.window, '_act_generate_temp'):
+            self.window._act_generate_temp.setVisible(True)
+
+    def _show_generate_result(self, generated: int, total: int, failures: list):
+        """Affiche le résultat de la génération des temp.json."""
+        skipped = total - generated
+        summary = self.translate(
+            f"{generated} temp.json générés sur {total} ligne(s).",
+            f"{generated} temp.json generated out of {total} row(s).",
+        )
+        if failures:
+            detail_lines = "\n".join(
+                f"• {name} → {reason}" for name, reason in failures
+            )
+            msg = QtWidgets.QMessageBox(self.window)
+            msg.setIcon(QtWidgets.QMessageBox.Icon.Warning)
+            msg.setWindowTitle(
+                self.translate("Génération terminée avec avertissements",
+                               "Generation complete with warnings"))
+            msg.setText(summary + self.translate(
+                f"\n\n⚠️ {skipped} ligne(s) non traitée(s).",
+                f"\n\n⚠️ {skipped} row(s) not processed.",
+            ))
+            msg.setDetailedText(detail_lines)
+            msg.exec()
+        else:
+            QtWidgets.QMessageBox.information(
+                self.window,
+                self.translate("Génération terminée", "Generation complete"),
+                summary,
+            )
 
     def _generate_temp_jsons(self):
-        """Choisit un dossier, puis génère les _temp.json pour chaque vidéo matchée dans le tableau."""
+        """Génère les _temp.json dans un dossier choisi par l'utilisateur."""
         if self.metadonnees_ctrl._ft_table.rowCount() == 0:
             QtWidgets.QMessageBox.information(
                 self.window,
@@ -548,42 +586,20 @@ class AppController(QtCore.QObject):
             )
             return
 
-        start_dir = getattr(self.qualif_ctrl, 'current_campaign_folder', '') or self.working_dir or ""
+        start_dir = getattr(self, '_last_infostation_folder', '') or \
+                    getattr(self.qualif_ctrl, 'current_campaign_folder', '') or \
+                    self.working_dir or ""
         folder = QtWidgets.QFileDialog.getExistingDirectory(
             self.window,
-            self.translate("Choisir le dossier contenant les vidéos", "Choose the folder containing videos"),
+            self.translate("Choisir le dossier contenant les vidéos",
+                           "Choose the folder containing videos"),
             start_dir,
         )
         if not folder:
             return
 
         generated, total, failures = self.metadonnees_ctrl.generate_temp_from_table(folder)
-
-        skipped = total - generated
-        summary = self.translate(
-            f"{generated} temp.json générés sur {total} ligne(s).",
-            f"{generated} temp.json generated out of {total} row(s).",
-        )
-
-        if failures:
-            detail_lines = "\n".join(
-                f"  • {name} → {reason}" for name, reason in failures
-            )
-            detail = self.translate(
-                f"\n\n⚠️ {skipped} ligne(s) non traitée(s) :\n{detail_lines}",
-                f"\n\n⚠️ {skipped} row(s) not processed:\n{detail_lines}",
-            )
-            QtWidgets.QMessageBox.warning(
-                self.window,
-                self.translate("Génération terminée avec avertissements", "Generation complete with warnings"),
-                summary + detail,
-            )
-        else:
-            QtWidgets.QMessageBox.information(
-                self.window,
-                self.translate("Génération terminée", "Generation complete"),
-                summary,
-            )
+        self._show_generate_result(generated, total, failures)
 
     # --- Language ---
 
