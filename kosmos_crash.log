@@ -2149,3 +2149,19 @@ Traceback (most recent call last):
     old_row = self._ft_highlighted_item0.row()
               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 RuntimeError: wrapped C/C++ object of type QTableWidgetItem has been deleted
+
+============================================================
+2026-09-29 10:25:53.402071
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\app_controller.py", line 923, in eventFilter
+    def eventFilter(self, obj, event):
+    
+KeyboardInterrupt
+
+============================================================
+2026-09-29 10:25:54.398436
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\app_controller.py", line 923, in eventFilter
+    def eventFilter(self, obj, event):
+    
+KeyboardInterrupt

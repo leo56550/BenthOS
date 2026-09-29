@@ -182,12 +182,12 @@ class QualifController:
 
         if self.frame_campaign:
             layout = QtWidgets.QVBoxLayout(self.frame_campaign)
-            layout.setContentsMargins(5, 5, 5, 5)
-            layout.setSpacing(10)
+            layout.setContentsMargins(4, 4, 4, 4)
+            layout.setSpacing(3)
             self.lbl_section_title = QtWidgets.QLabel("Campaign Properties")
             self.lbl_section_title.setStyleSheet(
-                "font-size: 13px; font-weight: bold; color: #F2BFB4;"
-                " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif; padding-bottom: 5px;"
+                "font-size: 11px; font-weight: bold; color: #F2BFB4;"
+                " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif; padding-bottom: 2px;"
             )
             self.lbl_section_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(self.lbl_section_title)
@@ -1150,10 +1150,10 @@ class QualifController:
 
         if merged:
             form_layout = QtWidgets.QFormLayout(self.dynamic_form_container)
-            form_layout.setContentsMargins(6, 4, 6, 4)
-            form_layout.setSpacing(4)
-            form_layout.setVerticalSpacing(4)
-            form_layout.setHorizontalSpacing(8)
+            form_layout.setContentsMargins(4, 2, 4, 2)
+            form_layout.setSpacing(3)
+            form_layout.setVerticalSpacing(3)
+            form_layout.setHorizontalSpacing(6)
             form_layout.setFieldGrowthPolicy(
                 QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
             for key, meta in merged.items():
@@ -1166,9 +1166,9 @@ class QualifController:
                 value_str = str(meta.get("value") or "")
                 input_field = QtWidgets.QLineEdit()
                 input_field.setText(value_str)
-                input_field.setFixedHeight(24)
+                input_field.setFixedHeight(21)
                 input_field.setStyleSheet(
-                    "QLineEdit { font-size: 11px; padding: 1px 5px;"
+                    "QLineEdit { font-size: 10px; padding: 1px 4px;"
                     " color: #ffffff; background-color: #1a1a1a;"
                     " border: 1px solid #555555; border-radius: 3px; }"
                 )
@@ -1180,9 +1180,10 @@ class QualifController:
                 input_field.editingFinished.connect(
                     lambda tk=key: self.on_campaign_field_modified(tk))
                 input_field.textChanged.connect(
-                    lambda txt, f=input_field: f.setToolTip(txt))
+                    lambda txt, f=input_field: (f.setToolTip(txt),
+                                                self._update_campaign_save_indicator()))
                 lbl = QtWidgets.QLabel(f"{display_name} :")
-                lbl.setStyleSheet("font-size: 11px; font-weight: bold; color: #a0b8c8;")
+                lbl.setStyleSheet("font-size: 10px; font-weight: bold; color: #a0b8c8;")
                 form_layout.addRow(lbl, input_field)
             self._update_campaign_save_indicator()
             return
@@ -1223,40 +1224,40 @@ class QualifController:
         self._update_campaign_save_indicator()
 
     def _update_campaign_save_indicator(self):
-        """Met à jour la surbrillance du titre 'Propriétés de campagne' selon l'état de remplissage."""
-        has_value = any(
+        """Contour vert si tous les champs de campagne sont remplis, rouge sinon."""
+        if not self.campaign_fields:
+            # Aucun formulaire chargé → état neutre
+            if self.frame_campaign:
+                self.frame_campaign.setStyleSheet(
+                    "background-color: rgb(32, 65, 93);"
+                    "border-radius: 8px; border: 1px solid #152d42;")
+            return
+
+        all_filled = all(
             bool(w.text().strip())
             for w in self.campaign_fields.values()
             if hasattr(w, 'text')
         )
-        if has_value:
-            if hasattr(self, 'lbl_section_title'):
-                self.lbl_section_title.setText(
-                    self.translate("✓ Propriétés de campagne", "✓ Campaign Properties"))
-                self.lbl_section_title.setStyleSheet(
-                    "font-size: 13px; font-weight: bold; color: #4caf50;"
-                    " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif; padding-bottom: 5px;"
-                )
-            if self.frame_campaign:
-                self.frame_campaign.setStyleSheet(
-                    "background-color: rgb(32, 65, 93);"
-                    "border-radius: 10px;"
-                    "border: 2px solid #4caf50;"
-                )
+
+        if all_filled:
+            title_text  = self.translate("✓ Propriétés de campagne", "✓ Campaign Properties")
+            title_color = "#4caf50"
+            border      = "2px solid #4caf50"
         else:
-            if hasattr(self, 'lbl_section_title'):
-                self.lbl_section_title.setText(
-                    self.translate("Propriétés de campagne", "Campaign Properties"))
-                self.lbl_section_title.setStyleSheet(
-                    "font-size: 13px; font-weight: bold; color: #F2BFB4;"
-                    " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif; padding-bottom: 5px;"
-                )
-            if self.frame_campaign:
-                self.frame_campaign.setStyleSheet(
-                    "background-color: rgb(32, 65, 93);"
-                    "border-radius: 10px;"
-                    "border: 1px solid #152d42;"
-                )
+            title_text  = self.translate("Propriétés de campagne", "Campaign Properties")
+            title_color = "#e57373"
+            border      = "2px solid #e53935"
+
+        if hasattr(self, 'lbl_section_title'):
+            self.lbl_section_title.setText(title_text)
+            self.lbl_section_title.setStyleSheet(
+                f"font-size: 11px; font-weight: bold; color: {title_color};"
+                " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif; padding-bottom: 2px;"
+            )
+        if self.frame_campaign:
+            self.frame_campaign.setStyleSheet(
+                f"background-color: rgb(32, 65, 93); border-radius: 8px; border: {border};"
+            )
 
     def synchronize_campaign_field(self, key: str, value: str):
         """Écrit value dans le champ key de la section survey de chaque _temp.json vidéo."""
