@@ -1382,12 +1382,14 @@ class QualifController:
         return display
 
 
-    def update_minimap(self, selected_name=None, show_dialog=False):
+    def update_minimap(self, selected_name=None, show_dialog=False, extra_points: dict = None):
         """Initialise ou rafraîchit la carte Folium et surligne le marqueur de selected_name en rouge.
 
         show_dialog=True → ouvre la fenêtre carte si elle n'est pas déjà visible (uniquement
         lors d'un clic explicite sur une vidéo).  Les autres appels passent False pour ne pas
         forcer la réouverture.
+        extra_points: dict {nom: [lat, lon]} — points supplémentaires (ex: données historiques)
+        à afficher quand video_model est vide.
         """
         # --- Lire les infos survey + coordonnées + waypoints + statut/codestation ---
         # Tout est relu ici à chaque appel, directement depuis chaque _temp.json, pour que
@@ -1436,6 +1438,14 @@ class QualifController:
                 }
             except Exception:
                 pass
+
+        # Fusionner les points extra (données historiques) quand video_model est vide
+        if extra_points:
+            for name, coords in extra_points.items():
+                if name not in valid_coords:
+                    valid_coords[name] = coords
+                    waypoints.setdefault(name, "")
+                    marker_meta.setdefault(name, {})
 
         center = list(valid_coords.values())[0] if valid_coords else [48.356, -4.571]
 

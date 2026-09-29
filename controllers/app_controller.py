@@ -581,6 +581,7 @@ class AppController(QtCore.QObject):
                 self.translate("Annuler", "Cancel"),
                 QtWidgets.QMessageBox.ButtonRole.RejectRole,
             )
+            msg.setMinimumWidth(480)
             msg.exec()
             clicked = msg.clickedButton()
             if clicked is None or clicked == btn_cancel:
@@ -1003,7 +1004,11 @@ class AppController(QtCore.QObject):
 
     def _open_map_from_metadonnees(self, video_name: str = None):
         """Ouvre la carte de campagne (QDialog Leaflet) depuis la page Métadonnées."""
-        self.qualif_ctrl.update_minimap(video_name, show_dialog=True)
+        extra_points = {}
+        # En mode données historiques (video_model vide), alimenter la carte depuis le tableau CSV
+        if self.qualif_ctrl.video_model.rowCount() == 0:
+            extra_points = self.metadonnees_ctrl.collect_ft_table_coords()
+        self.qualif_ctrl.update_minimap(video_name, show_dialog=True, extra_points=extra_points)
 
     def refresh_status_bar(self, *_):
         """Recalcule et affiche les stats de campagne dans la barre de statut."""

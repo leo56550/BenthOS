@@ -942,6 +942,74 @@ class MetadonneesController:
         self._ft_table.blockSignals(False)
         self._ft_table.setSortingEnabled(True)
 
+    def _apply_ft_table_system_colors(self):
+        """Applique la colorisation par système sur toutes les lignes actuelles du tableau."""
+        if not hasattr(self, '_ft_table') or not self._ft_table:
+            return
+        systeme_col = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "type_system"), None)
+        if systeme_col is None:
+            return
+        _system_color_map: dict[str, str] = {}
+        for row in range(self._ft_table.rowCount()):
+            sys_item = self._ft_table.item(row, systeme_col)
+            system_val = sys_item.text().strip() if sys_item else ""
+            if system_val and system_val not in _system_color_map:
+                idx = len(_system_color_map) % len(self._SYSTEM_COLORS)
+                _system_color_map[system_val] = self._SYSTEM_COLORS[idx]
+            row_bg = QtGui.QColor(_system_color_map.get(system_val, self._SYSTEM_COLORS[0]))
+            for col in range(self._ft_table.columnCount()):
+                cell = self._ft_table.item(row, col)
+                if cell:
+                    cell.setBackground(QtGui.QBrush(row_bg))
+                    cell.setData(self._FT_BASE_BG_ROLE, QtGui.QColor(row_bg))
+
+    def _update_ft_table_weather_cells(self, target_path: str, api_data: dict):
+        """Met à jour en place les cellules météo du tableau pour la ligne correspondant à target_path."""
+        if not hasattr(self, '_ft_table') or not self._ft_table:
+            return
+        key_to_col = {fk: i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS)}
+        vnum_col = key_to_col.get("video_number")
+        target_stem = os.path.splitext(os.path.basename(target_path))[0].lower()
+        target_norm = os.path.normcase(os.path.normpath(target_path))
+
+        target_row = None
+        for row in range(self._ft_table.rowCount()):
+            item0 = self._ft_table.item(row, 0)
+            if not item0:
+                continue
+            vp = item0.data(QtCore.Qt.ItemDataRole.UserRole)
+            if vp and os.path.normcase(os.path.normpath(str(vp))) == target_norm:
+                target_row = row
+                break
+            if vnum_col is not None:
+                vnum_item = self._ft_table.item(row, vnum_col)
+                if vnum_item:
+                    stem = os.path.splitext(vnum_item.text().strip())[0].lower()
+                    if stem and stem == target_stem:
+                        target_row = row
+                        break
+
+        if target_row is None:
+            return
+
+        self._ft_table.blockSignals(True)
+        for api_key, json_key in self._WEATHER_API_TO_JSON.items():
+            val = api_data.get(api_key)
+            if val is None:
+                continue
+            col = key_to_col.get(json_key)
+            if col is None:
+                continue
+            cell = self._ft_table.item(target_row, col)
+            if cell:
+                cell.setText(str(val))
+            else:
+                new_cell = QtWidgets.QTableWidgetItem(str(val))
+                new_cell.setTextAlignment(
+                    QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft)
+                self._ft_table.setItem(target_row, col, new_cell)
+        self._ft_table.blockSignals(False)
+
     def _delete_selected_ft_cells(self):
         """Efface le contenu de la/les cellule(s) sélectionnée(s) du tableau infostation (touche Suppr)."""
         if not hasattr(self, '_ft_table') or self._ft_table is None:
@@ -2263,6 +2331,9 @@ class MetadonneesController:
 
         self._ft_table.blockSignals(False)
         self._ft_table.setSortingEnabled(True)
+        self._apply_ft_table_system_colors()
+        if self._ft_table.rowCount() > 0:
+            self._set_video_buttons_enabled(True)
 
     def count_existing_temp_jsons(self, folder_path: str) -> int:
         """Compte les _temp.json déjà présents pour les vidéos du tableau dans folder_path."""
@@ -2426,6 +2497,13 @@ class MetadonneesController:
                 with open(temp_path, 'w', encoding='utf-8') as f:
                     json.dump(jdata, f, indent=4, ensure_ascii=False)
                 generated += 1
+                # Mémoriser le chemin absolu dans UserRole de la ligne du tableau.
+                # video_path (colonne JSON) est un chemin relatif — sans cette mise à jour,
+                # _resolve_ft_row_video_path Priority 3 reconstruit un chemin relatif invalide
+                # et _apply_web_weather_to_json ne trouve pas le fichier.
+                first_item = self._ft_table.item(row, 0)
+                if first_item:
+                    first_item.setData(QtCore.Qt.ItemDataRole.UserRole, video_path)
             except Exception as e:
                 failures.append((video_val, f"Erreur écriture : {e}"))
 
@@ -3370,6 +3448,36 @@ class MetadonneesController:
                     paths.append(str(vp))
         return paths
 
+    def collect_ft_table_coords(self) -> dict[str, list]:
+        """Retourne {nom_vidéo: [lat, lon]} pour toutes les lignes du tableau infostation."""
+        coords: dict[str, list] = {}
+        if not hasattr(self, '_ft_table') or not self._ft_table:
+            return coords
+        lat_col = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "latitude"), None)
+        lon_col = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "longitude"), None)
+        vnum_col = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "video_number"), None)
+        if lat_col is None or lon_col is None:
+            return coords
+        for row in range(self._ft_table.rowCount()):
+            lat_item = self._ft_table.item(row, lat_col)
+            lon_item = self._ft_table.item(row, lon_col)
+            if not lat_item or not lon_item:
+                continue
+            try:
+                lat = float(lat_item.text().replace(",", "."))
+                lon = float(lon_item.text().replace(",", "."))
+            except (ValueError, TypeError):
+                continue
+            if vnum_col is not None:
+                name_item = self._ft_table.item(row, vnum_col)
+                name = name_item.text().strip() if name_item else ""
+            else:
+                name = ""
+            if not name:
+                name = f"Ligne {row + 1}"
+            coords[name] = [lat, lon]
+        return coords
+
     def _open_map_action(self):
         """Ouvre la carte de campagne (Leaflet, QDialog) centrée sur la vidéo en cours."""
         if not self._on_open_map:
@@ -3788,7 +3896,13 @@ class MetadonneesController:
             # (une application groupée sur plusieurs points ne doit pas changer l'affichage courant).
             if target_path == self.current_video_path:
                 self.load_all_data(json_path)
-            self._rebuild_ft_table()
+            # En mode données historiques (video_model vide), _rebuild_ft_table effacerait le
+            # tableau chargé depuis CSV — on ne reconstruit que si on est en mode campagne.
+            if self.video_model and self.video_model.rowCount() > 0:
+                self._rebuild_ft_table()
+            else:
+                # Mode historique : mettre à jour les cellules météo directement dans le tableau
+                self._update_ft_table_weather_cells(target_path, api_data)
         except Exception as e:
             print(f"[WEATHER APPLY] Erreur : {e}")
 
