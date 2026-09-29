@@ -561,33 +561,55 @@ class AppController(QtCore.QObject):
         mode = 'overwrite'
 
         if existing > 0:
-            msg = QtWidgets.QMessageBox(self.window)
-            msg.setWindowTitle(self.translate("Temp.json existants", "Existing temp.json"))
-            msg.setText(self.translate(
+            dlg = QtWidgets.QDialog(self.window)
+            dlg.setWindowTitle(self.translate("Temp.json existants", "Existing temp.json"))
+            dlg.setMinimumWidth(500)
+            dlg.setStyleSheet("""
+                QDialog { background-color: #111820; }
+                QLabel  { color: #b0c8d8; font-size: 12px;
+                          font-family: 'Segoe UI', sans-serif; }
+                QPushButton {
+                    background-color: #20415D; color: #F2BFB4;
+                    border: 1px solid #2778A2; border-radius: 4px;
+                    padding: 6px 14px; font-size: 12px;
+                    font-family: 'Segoe UI', sans-serif;
+                }
+                QPushButton:hover { background-color: #2778A2; }
+                QPushButton#btn_danger {
+                    background-color: #5c2020; border-color: #a24040;
+                }
+                QPushButton#btn_danger:hover { background-color: #a24040; }
+            """)
+            vlay = QtWidgets.QVBoxLayout(dlg)
+            vlay.setContentsMargins(18, 18, 18, 14)
+            vlay.setSpacing(14)
+            lbl = QtWidgets.QLabel(self.translate(
                 f"{existing} fichier(s) _temp.json existent déjà dans ce dossier.\n"
                 "Que voulez-vous faire ?",
                 f"{existing} _temp.json file(s) already exist in this folder.\n"
                 "What would you like to do?",
             ))
-            btn_overwrite = msg.addButton(
-                self.translate("Écraser tout", "Overwrite all"),
-                QtWidgets.QMessageBox.ButtonRole.DestructiveRole,
-            )
-            btn_fill = msg.addButton(
-                self.translate("Compléter les champs vides", "Fill empty fields only"),
-                QtWidgets.QMessageBox.ButtonRole.AcceptRole,
-            )
-            btn_cancel = msg.addButton(
-                self.translate("Annuler", "Cancel"),
-                QtWidgets.QMessageBox.ButtonRole.RejectRole,
-            )
-            msg.setMinimumWidth(480)
-            msg.exec()
-            clicked = msg.clickedButton()
-            if clicked is None or clicked == btn_cancel:
+            lbl.setWordWrap(True)
+            vlay.addWidget(lbl)
+            btn_row = QtWidgets.QHBoxLayout()
+            btn_row.setSpacing(8)
+            _choice = [None]
+            btn_fill = QtWidgets.QPushButton(
+                self.translate("Compléter les champs vides", "Fill empty fields only"))
+            btn_fill.clicked.connect(lambda: (_choice.__setitem__(0, 'fill_empty'), dlg.accept()))
+            btn_row.addWidget(btn_fill)
+            btn_overwrite = QtWidgets.QPushButton(
+                self.translate("Écraser tout", "Overwrite all"))
+            btn_overwrite.setObjectName("btn_danger")
+            btn_overwrite.clicked.connect(lambda: (_choice.__setitem__(0, 'overwrite'), dlg.accept()))
+            btn_row.addWidget(btn_overwrite)
+            btn_cancel = QtWidgets.QPushButton(self.translate("Annuler", "Cancel"))
+            btn_cancel.clicked.connect(dlg.reject)
+            btn_row.addWidget(btn_cancel)
+            vlay.addLayout(btn_row)
+            if dlg.exec() != QtWidgets.QDialog.DialogCode.Accepted or _choice[0] is None:
                 return
-            if clicked == btn_fill:
-                mode = 'fill_empty'
+            mode = _choice[0]
 
         generated, total, failures = self.metadonnees_ctrl.generate_temp_from_table(
             folder, mode=mode
