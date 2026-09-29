@@ -950,18 +950,22 @@ class MetadonneesController:
         if systeme_col is None:
             return
         _system_color_map: dict[str, str] = {}
-        for row in range(self._ft_table.rowCount()):
-            sys_item = self._ft_table.item(row, systeme_col)
-            system_val = sys_item.text().strip() if sys_item else ""
-            if system_val and system_val not in _system_color_map:
-                idx = len(_system_color_map) % len(self._SYSTEM_COLORS)
-                _system_color_map[system_val] = self._SYSTEM_COLORS[idx]
-            row_bg = QtGui.QColor(_system_color_map.get(system_val, self._SYSTEM_COLORS[0]))
-            for col in range(self._ft_table.columnCount()):
-                cell = self._ft_table.item(row, col)
-                if cell:
-                    cell.setBackground(QtGui.QBrush(row_bg))
-                    cell.setData(self._FT_BASE_BG_ROLE, QtGui.QColor(row_bg))
+        self._ft_table.blockSignals(True)
+        try:
+            for row in range(self._ft_table.rowCount()):
+                sys_item = self._ft_table.item(row, systeme_col)
+                system_val = sys_item.text().strip() if sys_item else ""
+                if system_val and system_val not in _system_color_map:
+                    idx = len(_system_color_map) % len(self._SYSTEM_COLORS)
+                    _system_color_map[system_val] = self._SYSTEM_COLORS[idx]
+                row_bg = QtGui.QColor(_system_color_map.get(system_val, self._SYSTEM_COLORS[0]))
+                for col in range(self._ft_table.columnCount()):
+                    cell = self._ft_table.item(row, col)
+                    if cell:
+                        cell.setBackground(QtGui.QBrush(row_bg))
+                        cell.setData(self._FT_BASE_BG_ROLE, QtGui.QColor(row_bg))
+        finally:
+            self._ft_table.blockSignals(False)
 
     def _update_ft_table_weather_cells(self, target_path: str, api_data: dict):
         """Met à jour en place les cellules météo du tableau pour la ligne correspondant à target_path."""
@@ -1009,6 +1013,7 @@ class MetadonneesController:
                     QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft)
                 self._ft_table.setItem(target_row, col, new_cell)
         self._ft_table.blockSignals(False)
+        self._apply_ft_table_system_colors()
 
     def _delete_selected_ft_cells(self):
         """Efface le contenu de la/les cellule(s) sélectionnée(s) du tableau infostation (touche Suppr)."""
@@ -1153,12 +1158,20 @@ class MetadonneesController:
         cell = self._ft_table.item(row, col)
         new_value = cell.text().strip() if cell else ""
 
+        print(f"[TABLE EDIT] ligne {row + 1}, champ '{json_key}' → '{new_value}'")
+
         # ── Mise à jour codeObs dans le tableau (ne nécessite pas de video_path) ──
-        # Toujours recalculer si un champ source a changé
         computed_code = self._compute_codeobs_from_table_row(row)
 
         # ── Écriture JSON (nécessite video_path + fichier existant) ──────────────
         video_path = self._resolve_ft_row_video_path(row)
+
+        # Si le chemin résolu est relatif, tenter de le compléter avec le working dir
+        if video_path and not os.path.isabs(video_path) and self._working_dir:
+            candidate = os.path.join(self._working_dir, video_path)
+            if os.path.isfile(candidate) or os.path.isfile(get_temp_json_path(candidate)):
+                video_path = candidate
+
         try:
             if video_path:
                 json_path = resolve_video_json_path(self._working_dir, video_path)
@@ -1184,6 +1197,10 @@ class MetadonneesController:
                         json.dump(jdata, f, indent=4, ensure_ascii=False)
                     if self._on_metadata_saved:
                         self._on_metadata_saved(video_path)
+                else:
+                    print(f"[TABLE EDIT] JSON introuvable : {json_path}")
+            else:
+                print(f"[TABLE EDIT] Chemin vidéo non résolu pour la ligne {row + 1} — édition non persistée")
 
             # Rafraîchit la cellule Codestation dans le tableau sans rechargement complet
             if computed_code:
@@ -1200,7 +1217,7 @@ class MetadonneesController:
                         finally:
                             self._ft_table.blockSignals(False)
         except Exception as e:
-            print(f"[INFOSTATION TABLE] Error saving {block_name}.{json_key}: {e}")
+            print(f"[TABLE EDIT] Erreur sauvegarde {block_name}.{json_key}: {e}")
 
         if json_key == "point_name" and new_value:
             self._check_point_name_duplicate(video_path, new_value)
@@ -2153,7 +2170,7 @@ class MetadonneesController:
 
             # ── Surcharges par field_key ──────────────────────────────────
             if field_key == "date":
-                val = self._fmt_date(val) if val else ""
+                val = self._fmt_date(val) if (val and for_csv) else (val or "")
 
             elif field_key == "video_path" and not val:
                 import re as _re_vp
