@@ -524,6 +524,11 @@ class ValidationController:
             elif current in ("Non renseigné", "Not set"):
                 self._status_badge.setText(self.translate("Non renseigné", "Not set"))
         if hasattr(self, 'player') and hasattr(self.player, 'btn_ardoise'):
+            current = self.player.btn_ardoise.text()
+            if current in ("SAISIR ARDOISE", "RECORD SLATE"):
+                self.player.btn_ardoise.setText(self.translate("SAISIR ARDOISE", "RECORD SLATE"))
+            elif current in ("MODIFIER ARDOISE", "MODIFY SLATE"):
+                self.player.btn_ardoise.setText(self.translate("MODIFIER ARDOISE", "MODIFY SLATE"))
             self.player.btn_ardoise.setToolTip(self.translate(
                 "Saisir l'ardoise à la position courante",
                 "Record slate at current position"

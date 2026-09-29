@@ -1186,6 +1186,7 @@ class QualifController:
                 lbl.setStyleSheet("font-size: 10px; font-weight: bold; color: #a0b8c8;")
                 form_layout.addRow(lbl, input_field)
             self._update_campaign_save_indicator()
+            self._fit_campaign_frame()
             return
 
         fallback_layout = QtWidgets.QVBoxLayout(self.dynamic_form_container)
@@ -1258,6 +1259,19 @@ class QualifController:
             self.frame_campaign.setStyleSheet(
                 f"background-color: rgb(32, 65, 93); border-radius: 8px; border: {border};"
             )
+
+    def _fit_campaign_frame(self):
+        """Ajuste la hauteur du cadre Propriétés de campagne au contenu réel."""
+        if not self.frame_campaign or not hasattr(self, 'scroll_campaign'):
+            return
+        n = len(self.campaign_fields)
+        if not n:
+            return
+        row_h = 21 + 3          # hauteur champ + espacement
+        form_h = n * row_h + 8  # + marges du QFormLayout
+        title_h = 22            # label titre
+        frame_h = title_h + form_h + 14  # + marges du frame
+        self.frame_campaign.setMaximumHeight(frame_h)
 
     def synchronize_campaign_field(self, key: str, value: str):
         """Écrit value dans le champ key de la section survey de chaque _temp.json vidéo."""

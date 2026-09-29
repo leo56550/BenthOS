@@ -70,7 +70,7 @@ QLabel#titre_campagne {
                <property name="minimumSize">
                 <size>
                  <width>0</width>
-                 <height>430</height>
+                 <height>0</height>
                 </size>
                </property>
                <property name="maximumSize">
