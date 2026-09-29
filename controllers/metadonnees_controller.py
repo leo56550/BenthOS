@@ -1003,22 +1003,29 @@ class MetadonneesController:
             self._ft_table.blockSignals(False)
 
     def _apply_ft_table_json_bold(self):
-        """Marque en gras les lignes dont le _temp.json existe, stocke le flag sur item 0."""
+        """Marque en gras les lignes dont le _temp.json existe, stocke le flag sur item 0.
+        Répare aussi la colonne Systeme si elle est vide mais que le JSON contient la valeur."""
         if not hasattr(self, '_ft_table') or not self._ft_table:
             return
         vpath_col = next(
             (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "video_path"), None)
         vnum_col = next(
             (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "video_number"), None)
+        systeme_col = next(
+            (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "type_system"), None)
         self._ft_table.blockSignals(True)
         try:
             for row in range(self._ft_table.rowCount()):
                 item0 = self._ft_table.item(row, 0)
                 has_json = False
+                temp_json_path = None
                 # Priority 1 : UserRole already holds the full video path
                 vp = item0.data(QtCore.Qt.ItemDataRole.UserRole) if item0 else None
                 if vp:
-                    has_json = os.path.isfile(get_temp_json_path(str(vp)))
+                    _tp = get_temp_json_path(str(vp))
+                    if os.path.isfile(_tp):
+                        has_json = True
+                        temp_json_path = _tp
                 else:
                     # Priority 2 : reconstruct from video_path + video_number columns
                     folder = ""
@@ -1033,9 +1040,34 @@ class MetadonneesController:
                         if not os.path.isabs(folder) and self._working_dir:
                             folder = os.path.join(self._working_dir, folder)
                         stem = os.path.splitext(fname)[0]
-                        has_json = os.path.isfile(os.path.join(folder, stem + "_temp.json"))
+                        _tp = os.path.join(folder, stem + "_temp.json")
+                        if os.path.isfile(_tp):
+                            has_json = True
+                            temp_json_path = _tp
                 if item0:
                     item0.setData(self._FT_HAS_JSON_ROLE, has_json)
+
+                # Réparer la colonne Systeme si vide et JSON disponible
+                if has_json and temp_json_path and systeme_col is not None:
+                    sys_cell = self._ft_table.item(row, systeme_col)
+                    if sys_cell is not None and not sys_cell.text().strip():
+                        try:
+                            with open(temp_json_path, 'r', encoding='utf-8') as _f:
+                                _jd = json.load(_f)
+                            sys_block = _jd.get("system", {})
+                            # Format détaillé
+                            ts = sys_block.get("type_system")
+                            type_val = ts.get("value") if isinstance(ts, dict) else None
+                            # Fallback format plat legacy
+                            if not type_val:
+                                flat = sys_block.get("system")
+                                if isinstance(flat, str) and flat:
+                                    type_val = flat
+                            if type_val:
+                                sys_cell.setText(str(type_val))
+                        except Exception:
+                            pass
+
                 for col in range(self._ft_table.columnCount()):
                     cell = self._ft_table.item(row, col)
                     if cell is None:
@@ -1046,6 +1078,8 @@ class MetadonneesController:
                         cell.setFont(f)
         finally:
             self._ft_table.blockSignals(False)
+        # Ré-appliquer les couleurs système (au cas où la colonne Systeme a été complétée)
+        self._apply_ft_table_system_colors()
         # Ré-appliquer le filtre actif si besoin
         if hasattr(self, '_btn_json_filter') and self._btn_json_filter.isChecked():
             self._toggle_json_filter(True)
@@ -1679,9 +1713,18 @@ class MetadonneesController:
                 try:
                     with open(_raw, 'r', encoding='utf-8') as _f:
                         _raw_data = json.load(_f)
-                    # system : toujours depuis le JSON brut (données acquisition)
+                    # system : depuis le JSON brut SEULEMENT si le brut est au format
+                    # détaillé (valeurs = dicts avec clé "value"). Certains JSON legacy
+                    # ont un format plat {"system": "K2", "camera": "imx477", ...} :
+                    # écraser le bloc détaillé du _temp.json avec ce format plat viderait
+                    # la colonne "Systeme" du tableau (type_system introuvable).
                     if "system" in _raw_data:
-                        self._json_data["system"] = _raw_data["system"]
+                        _raw_sys = _raw_data["system"]
+                        _raw_is_detailed = isinstance(_raw_sys, dict) and any(
+                            isinstance(v, dict) for v in _raw_sys.values()
+                        )
+                        if _raw_is_detailed:
+                            self._json_data["system"] = _raw_sys
                     # survey : base = acquisition, surchargé par valeurs IHM non-nulles
                     if "survey" in _raw_data:
                         merged_survey = dict(_raw_data["survey"])
@@ -2263,7 +2306,13 @@ class MetadonneesController:
             val = self._v(block, field_key)
 
             # ── Surcharges par field_key ──────────────────────────────────
-            if field_key == "date":
+            if field_key == "type_system" and not val:
+                # Fallback format plat legacy : {"system": {"system": "K2", ...}}
+                legacy = block.get("system")
+                if isinstance(legacy, str) and legacy:
+                    val = legacy
+
+            elif field_key == "date":
                 val = self._fmt_date(val) if (val and for_csv) else (val or "")
 
             elif field_key == "video_path" and not val:
@@ -4004,12 +4053,11 @@ class MetadonneesController:
                 print(f"[TEMP_JSON] {os.path.basename(json_path)} ← video_observation.{json_key} = {val!r}")
             with open(json_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
-            # Ne recharge le panneau d'édition que si c'est bien la vidéo actuellement affichée
-            # (une application groupée sur plusieurs points ne doit pas changer l'affichage courant).
-            if target_path == self.current_video_path:
-                self.load_all_data(json_path)
-            # En mode données historiques (video_model vide), _rebuild_ft_table effacerait le
-            # tableau chargé depuis CSV — on ne reconstruit que si on est en mode campagne.
+            # NE PAS appeler load_all_data ici : cette méthode fusionne le bloc "system" du
+            # JSON brut d'acquisition (qui peut avoir un format plat legacy) dans _json_data
+            # puis le réécrit sur disque, ce qui écrase la structure détaillée du _temp.json.
+            # En mode campagne, _rebuild_ft_table relit les données depuis le fichier.
+            # En mode historique, _update_ft_table_weather_cells met à jour les cellules en place.
             if self.video_model and self.video_model.rowCount() > 0:
                 self._rebuild_ft_table()
             else:
