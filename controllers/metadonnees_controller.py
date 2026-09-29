@@ -1052,15 +1052,32 @@ class MetadonneesController:
         for idx in sel:
             self._ft_table.model().setData(idx, base_text, QtCore.Qt.ItemDataRole.EditRole)
 
+    def _compute_codeobs_from_table_row(self, row: int) -> str:
+        """Calcule codeObs directement depuis les cellules du tableau (sans JSON sur disque)."""
+        def _col_of(fk: str):
+            return next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == fk), None)
+
+        def _cell_text(fk: str) -> str:
+            ci = _col_of(fk)
+            if ci is None:
+                return ""
+            it = self._ft_table.item(row, ci)
+            return it.text().strip() if it else ""
+
+        zone   = _cell_text("zone")
+        date   = _cell_text("date")
+        pname  = _cell_text("point_name") or _cell_text("station_number") or ""
+        year2d = year_2d_from_date(date)
+        if not (zone and year2d and pname):
+            return ""
+        try:
+            idx = f"{int(pname):04d}"
+        except ValueError:
+            idx = pname.zfill(4)[:4]
+        return f"{zone}{year2d}{idx}"
+
     def _on_ft_table_cell_changed(self, row: int, col: int):
         """Sauvegarde la valeur éditée dans le JSON de la vidéo correspondante."""
-        first_item = self._ft_table.item(row, 0)
-        if first_item is None:
-            return
-        video_path = first_item.data(QtCore.Qt.ItemDataRole.UserRole)
-        if not video_path:
-            return
-
         _col_label, block_name, json_key, read_only = _FT_TABLE_COLS[col]
         if read_only or block_name is None or json_key is None:
             return
@@ -1068,31 +1085,38 @@ class MetadonneesController:
         cell = self._ft_table.item(row, col)
         new_value = cell.text().strip() if cell else ""
 
-        json_path = resolve_video_json_path(self._working_dir, video_path)
-        if not os.path.isfile(json_path):
-            return
+        # ── Mise à jour codeObs dans le tableau (ne nécessite pas de video_path) ──
+        # Toujours recalculer si un champ source a changé
+        computed_code = self._compute_codeobs_from_table_row(row)
+
+        # ── Écriture JSON (nécessite video_path + fichier existant) ──────────────
+        video_path = self._resolve_ft_row_video_path(row)
         try:
-            with open(json_path, 'r', encoding='utf-8') as f:
-                jdata = json.load(f)
-            block = jdata.setdefault(block_name, {})
-            coerced = _coerce_field_value(block_name, json_key, new_value)
-            if json_key in block and isinstance(block[json_key], dict):
-                block[json_key]["value"] = coerced
-            else:
-                block[json_key] = {"value": coerced}
-            print(f"[TEMP_JSON] {os.path.basename(json_path)} ← {block_name}.{json_key} = {coerced!r}")
-            # Recompute codeObs chaque fois qu'un champ source change
-            computed_code = _compute_codeobs(jdata)
-            if computed_code:
-                obs_block = jdata.setdefault("video_observation", {})
-                if "codeObs" in obs_block and isinstance(obs_block["codeObs"], dict):
-                    obs_block["codeObs"]["value"] = computed_code
-                else:
-                    obs_block["codeObs"] = {"value": computed_code}
-            with open(json_path, 'w', encoding='utf-8') as f:
-                json.dump(jdata, f, indent=4, ensure_ascii=False)
-            if self._on_metadata_saved:
-                self._on_metadata_saved(video_path)
+            if video_path:
+                json_path = resolve_video_json_path(self._working_dir, video_path)
+                if os.path.isfile(json_path):
+                    with open(json_path, 'r', encoding='utf-8') as f:
+                        jdata = json.load(f)
+                    block = jdata.setdefault(block_name, {})
+                    coerced = _coerce_field_value(block_name, json_key, new_value)
+                    if json_key in block and isinstance(block[json_key], dict):
+                        block[json_key]["value"] = coerced
+                    else:
+                        block[json_key] = {"value": coerced}
+                    print(f"[TEMP_JSON] {os.path.basename(json_path)} ← {block_name}.{json_key} = {coerced!r}")
+                    json_code = _compute_codeobs(jdata)
+                    if json_code:
+                        computed_code = json_code
+                        obs_block = jdata.setdefault("video_observation", {})
+                        if "codeObs" in obs_block and isinstance(obs_block["codeObs"], dict):
+                            obs_block["codeObs"]["value"] = json_code
+                        else:
+                            obs_block["codeObs"] = {"value": json_code}
+                    with open(json_path, 'w', encoding='utf-8') as f:
+                        json.dump(jdata, f, indent=4, ensure_ascii=False)
+                    if self._on_metadata_saved:
+                        self._on_metadata_saved(video_path)
+
             # Rafraîchit la cellule Codestation dans le tableau sans rechargement complet
             if computed_code:
                 _codeobs_col = next(
@@ -1163,12 +1187,50 @@ class MetadonneesController:
                 + "\n\nVérifiez le numéro de point saisi à l'ardoise."
             )
 
+    def _resolve_ft_row_video_path(self, row: int) -> str:
+        """Retourne le video_path pour une ligne du tableau infostation.
+
+        Priorité 1 : UserRole de la colonne 0 (posé par _rebuild_ft_table).
+        Priorité 2 : recherche dans video_model par correspondance de nom de fichier
+                     (cas import CSV où UserRole n'est pas encore posé).
+        Si trouvé via fallback, mémorise le chemin dans UserRole pour les appels suivants.
+        """
+        first_item = self._ft_table.item(row, 0)
+        if first_item is None:
+            return ""
+        vp = first_item.data(QtCore.Qt.ItemDataRole.UserRole)
+        if vp:
+            return str(vp)
+
+        # Fallback : chercher par nom de fichier dans la colonne "Nom de la video"
+        _vnum_col = next(
+            (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "video_number"),
+            None,
+        )
+        if _vnum_col is None:
+            return ""
+        name_item = self._ft_table.item(row, _vnum_col)
+        if not name_item:
+            return ""
+        stem = os.path.splitext(name_item.text().strip())[0].lower()
+        if not stem:
+            return ""
+        for r in range(self.video_model.rowCount()):
+            it = self.video_model.item(r, 0)
+            if not it:
+                continue
+            p = str(it.data(QtCore.Qt.ItemDataRole.UserRole) or "")
+            if os.path.splitext(os.path.basename(p))[0].lower() == stem:
+                first_item.setData(QtCore.Qt.ItemDataRole.UserRole, p)
+                return p
+        return ""
+
     def _on_ft_table_row_clicked(self, row: int, _col: int):
         """Charge les données de la vidéo cliquée et active les boutons contextuel."""
         first_item = self._ft_table.item(row, 0)
         if first_item is None:
             return
-        video_path = first_item.data(QtCore.Qt.ItemDataRole.UserRole)
+        video_path = self._resolve_ft_row_video_path(row)
         if not video_path:
             return
         self._set_video_buttons_enabled(True)
@@ -2165,7 +2227,7 @@ class MetadonneesController:
             norm_row = {_norm(k): v for k, v in row_dict.items()}
             trow = self._ft_table.rowCount()
             self._ft_table.insertRow(trow)
-            for col_i, (col_label, _sec, _fk, _) in enumerate(_FT_TABLE_COLS):
+            for col_i, (col_label, _sec, _fk, _ro) in enumerate(_FT_TABLE_COLS):
                 val = (norm_row.get(_norm(col_label)) or '').strip()
                 # Nettoyer les formules Excel (=LIEN_HYPERTEXTE...)
                 if val.startswith('='):
@@ -2178,7 +2240,9 @@ class MetadonneesController:
                     if coerced is not None:
                         val = str(coerced)
                 cell = QtWidgets.QTableWidgetItem(val)
-                cell.setFlags(QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEnabled)
+                _base = (QtCore.Qt.ItemFlag.ItemIsSelectable |
+                         QtCore.Qt.ItemFlag.ItemIsEnabled)
+                cell.setFlags(_base if _ro else _base | QtCore.Qt.ItemFlag.ItemIsEditable)
                 self._ft_table.setItem(trow, col_i, cell)
 
         self._ft_table.blockSignals(False)
@@ -2251,8 +2315,16 @@ class MetadonneesController:
 
             temp_path = get_temp_json_path(video_path)
 
-            # Base = copie fraîche de template.json (chargé au niveau module)
-            jdata = _copy.deepcopy(_TEMPLATE_BASE)
+            # Base = _temp.json existant (pour préserver ardoise/exploitable saisis en validation)
+            # ou copie fraîche du template si premier génération
+            if os.path.isfile(temp_path):
+                try:
+                    with open(temp_path, 'r', encoding='utf-8') as _f:
+                        jdata = json.load(_f)
+                except Exception:
+                    jdata = _copy.deepcopy(_TEMPLATE_BASE)
+            else:
+                jdata = _copy.deepcopy(_TEMPLATE_BASE)
 
             for col_i, sec, fk in writable_cols:
                 titem = self._ft_table.item(row, col_i)
@@ -3403,6 +3475,33 @@ class MetadonneesController:
     # ── Weather web compare ───────────────────────────────────────────────
 
     @staticmethod
+    def _jdata_from_selected_table_row(self) -> dict:
+        """Construit un dict jdata minimal depuis la ligne sélectionnée du tableau infostation.
+        Utilisé quand le _temp.json n'existe pas encore (import CSV sans génération)."""
+        rows = sorted({idx.row() for idx in self._ft_table.selectedIndexes()})
+        if not rows:
+            return {}
+        row = rows[0]
+
+        def _cell(fk: str) -> str:
+            ci = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == fk), None)
+            if ci is None:
+                return ""
+            it = self._ft_table.item(row, ci)
+            return it.text().strip() if it else ""
+
+        return {
+            "survey": {
+                "date": {"value": _cell("date")},
+                "zone": {"value": _cell("zone")},
+            },
+            "video_observation": {
+                "latitude":  {"value": _cell("latitude")},
+                "longitude": {"value": _cell("longitude")},
+            },
+        }
+
+    @staticmethod
     def _extract_lat_lon_date(json_data: dict):
         """Extrait (lat, lon, date_formatee 'YYYY-MM-DD') depuis un JSON vidéo complet."""
         lat, lon, raw_date = None, None, None
@@ -3434,10 +3533,9 @@ class MetadonneesController:
         rows = sorted({idx.row() for idx in self._ft_table.selectedIndexes()})
         paths = []
         for row in rows:
-            item = self._ft_table.item(row, 0)
-            vp = item.data(QtCore.Qt.ItemDataRole.UserRole) if item else None
+            vp = self._resolve_ft_row_video_path(row)
             if vp:
-                paths.append(str(vp))
+                paths.append(vp)
         return paths
 
     def action_compare_weather_web(self):
@@ -3448,7 +3546,23 @@ class MetadonneesController:
             self._action_compare_weather_web_multi(selected_paths)
             return
 
-        lat, lon, raw_date, formatted_date = self._extract_lat_lon_date(self._json_data)
+        # Charger le JSON le plus pertinent disponible
+        json_data = self._json_data
+        if not json_data or not json_data.get("video_observation"):
+            # Essai 1 : JSON de la vidéo sélectionnée dans le tableau
+            if selected_paths:
+                try:
+                    jp = resolve_video_json_path(self._working_dir, selected_paths[0])
+                    if os.path.isfile(jp):
+                        with open(jp, 'r', encoding='utf-8') as _f:
+                            json_data = json.load(_f)
+                except Exception:
+                    pass
+            # Essai 2 : valeurs directement dans les cellules du tableau
+            if not json_data or not json_data.get("video_observation"):
+                json_data = self._jdata_from_selected_table_row()
+
+        lat, lon, raw_date, formatted_date = self._extract_lat_lon_date(json_data)
 
         if not lat or not lon:
             QtWidgets.QMessageBox.warning(self.widget,
