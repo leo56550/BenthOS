@@ -540,9 +540,8 @@ class AppController(QtCore.QObject):
         self.metadonnees_ctrl.load_csv_into_table(path)
         self._last_infostation_folder = os.path.dirname(path)
 
-        # Rendre visible le bouton de génération maintenant que l'infoStation est chargée
-        if hasattr(self.window, '_act_generate_temp'):
-            self.window._act_generate_temp.setVisible(True)
+        # Mettre à jour la visibilité du bouton (page métadonnées + CSV chargé requis)
+        self._refresh_generate_temp_visibility()
 
     def _show_generate_result(self, generated: int, total: int, failures: list):
         """Affiche le résultat de la génération des temp.json."""
@@ -877,6 +876,7 @@ class AppController(QtCore.QObject):
             if page == w.page_extraction:
                 self.extraction_ctrl.refresh_video_list()
             self._focus_page_player(page)
+            self._refresh_generate_temp_visibility(page)
             return
 
         if not w.actionQualification.isEnabled():
@@ -888,6 +888,17 @@ class AppController(QtCore.QObject):
         w.stackedWidget.setCurrentWidget(page)
         w.update_nav_highlight(page)
         self._focus_page_player(page)
+        self._refresh_generate_temp_visibility(page)
+
+    def _refresh_generate_temp_visibility(self, page=None):
+        """Affiche 'GÉNÉRER TEMP.JSON' seulement sur la page métadonnées après import CSV."""
+        if not hasattr(self.window, '_act_generate_temp'):
+            return
+        if page is None:
+            page = self.window.stackedWidget.currentWidget()
+        on_meta_page = (page is self.window.page_metadonnees)
+        csv_loaded   = bool(getattr(self, '_last_infostation_folder', ''))
+        self.window._act_generate_temp.setVisible(on_meta_page and csv_loaded)
 
     def _get_page_player(self, page):
         """Retourne le player embarqué (EmbeddedVideoPlayer) associé à *page*, ou None."""
