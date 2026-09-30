@@ -551,6 +551,7 @@ class AppController(QtCore.QObject):
             return
 
         self.switch_page(self.window.page_metadonnees)
+        self.metadonnees_ctrl._csv_folder = folder
         self.metadonnees_ctrl.load_csv_into_table(path)
         self._last_infostation_folder = os.path.dirname(path)
         self._auto_generate_temp_jsons(folder)

@@ -494,6 +494,7 @@ class MetadonneesController:
         self._ft_table_video_paths: list = []
         self._working_dir: str = ""
         self._campaign_folder: str = ""
+        self._csv_folder: str = ""   # dossier vidéo sélectionné lors du chargement CSV historique
 
         # Debounce pour l'upsert infostation (2 s après la dernière modif)
         self._infostation_timer = QtCore.QTimer()
@@ -1004,46 +1005,73 @@ class MetadonneesController:
 
     def _apply_ft_table_json_bold(self):
         """Marque en gras les lignes dont le _temp.json existe, stocke le flag sur item 0.
-        Répare aussi la colonne Systeme si elle est vide mais que le JSON contient la valeur."""
+        Répare aussi la colonne Systeme si elle est vide mais que le JSON contient la valeur.
+
+        Stratégie de détection :
+        1. UserRole de col 0 (chemin complet posé par _rebuild_ft_table ou _resolve_ft_row_video_path)
+        2. Reconstruction depuis les colonnes CSV (Dossier Datawork + Nom de la video)
+        """
         if not hasattr(self, '_ft_table') or not self._ft_table:
             return
-        vpath_col = next(
-            (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "video_path"), None)
         vnum_col = next(
             (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "video_number"), None)
+        vpath_col = next(
+            (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "video_path"), None)
         systeme_col = next(
             (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "type_system"), None)
+
         self._ft_table.blockSignals(True)
         try:
             for row in range(self._ft_table.rowCount()):
                 item0 = self._ft_table.item(row, 0)
                 has_json = False
                 temp_json_path = None
-                # Priority 1 : UserRole already holds the full video path
+
+                # Priorité 1 : UserRole (chemin complet)
                 vp = item0.data(QtCore.Qt.ItemDataRole.UserRole) if item0 else None
                 if vp:
                     _tp = get_temp_json_path(str(vp))
                     if os.path.isfile(_tp):
                         has_json = True
                         temp_json_path = _tp
-                else:
-                    # Priority 2 : reconstruct from video_path + video_number columns
-                    folder = ""
-                    fname = ""
-                    if vpath_col is not None:
-                        vi = self._ft_table.item(row, vpath_col)
-                        folder = vi.text().strip() if vi else ""
-                    if vnum_col is not None:
-                        vni = self._ft_table.item(row, vnum_col)
-                        fname = vni.text().strip() if vni else ""
-                    if folder and fname:
-                        if not os.path.isabs(folder) and self._working_dir:
-                            folder = os.path.join(self._working_dir, folder)
+
+                # Priorité 2 : reconstruction depuis les colonnes CSV
+                # video_path (Dossier Datawork) + video_number (Nom de la video)
+                # On tente plusieurs bases dans l'ordre de priorité :
+                #   _csv_folder (dossier vidéo sélectionné à l'ouverture historique)
+                #   parent de _csv_folder (si _csv_folder est un dossier campagne)
+                #   _working_dir / parent de _working_dir (fallback)
+                if not has_json and vpath_col is not None and vnum_col is not None:
+                    vi = self._ft_table.item(row, vpath_col)
+                    vni = self._ft_table.item(row, vnum_col)
+                    folder_csv = vi.text().strip() if vi else ""
+                    fname = vni.text().strip() if vni else ""
+                    if folder_csv and fname and not os.path.isabs(folder_csv):
                         stem = os.path.splitext(fname)[0]
-                        _tp = os.path.join(folder, stem + "_temp.json")
-                        if os.path.isfile(_tp):
-                            has_json = True
-                            temp_json_path = _tp
+                        _seen: set[str] = set()
+                        _candidates: list[str] = []
+                        for _b in [self._csv_folder,
+                                   os.path.dirname(self._csv_folder) if self._csv_folder else "",
+                                   self._working_dir,
+                                   os.path.dirname(self._working_dir) if self._working_dir else ""]:
+                            if _b and _b not in _seen:
+                                _seen.add(_b)
+                                _candidates.append(_b)
+                        for _base in _candidates:
+                            abs_folder = os.path.join(_base, folder_csv)
+                            # Structure 1 : video_path est le dossier contenant la vidéo
+                            _tp1 = os.path.join(abs_folder, stem + "_temp.json")
+                            if os.path.isfile(_tp1):
+                                has_json = True
+                                temp_json_path = _tp1
+                                break
+                            # Structure 2 : dernier composant = identifiant numérique
+                            _tp2 = os.path.join(os.path.dirname(abs_folder), stem + "_temp.json")
+                            if os.path.isfile(_tp2):
+                                has_json = True
+                                temp_json_path = _tp2
+                                break
+
                 if item0:
                     item0.setData(self._FT_HAS_JSON_ROLE, has_json)
 
@@ -1055,10 +1083,8 @@ class MetadonneesController:
                             with open(temp_json_path, 'r', encoding='utf-8') as _f:
                                 _jd = json.load(_f)
                             sys_block = _jd.get("system", {})
-                            # Format détaillé
                             ts = sys_block.get("type_system")
                             type_val = ts.get("value") if isinstance(ts, dict) else None
-                            # Fallback format plat legacy
                             if not type_val:
                                 flat = sys_block.get("system")
                                 if isinstance(flat, str) and flat:
@@ -1078,7 +1104,7 @@ class MetadonneesController:
                         cell.setFont(f)
         finally:
             self._ft_table.blockSignals(False)
-        # Ré-appliquer les couleurs système (au cas où la colonne Systeme a été complétée)
+        # Ré-appliquer les couleurs système (au cas où Systeme a été complété)
         self._apply_ft_table_system_colors()
         # Ré-appliquer le filtre actif si besoin
         if hasattr(self, '_btn_json_filter') and self._btn_json_filter.isChecked():
@@ -2496,27 +2522,74 @@ class MetadonneesController:
         if self._ft_table.rowCount() > 0:
             self._set_video_buttons_enabled(True)
 
+    def _resolve_video_path_from_row(self, row: int, folder_path: str,
+                                       vpath_col: int | None, vnum_col: int | None) -> str | None:
+        """Retourne le chemin absolu de la vidéo pour la ligne `row`, en croisant
+        la colonne 'Dossier Datawork' (vpath_col) et 'Nom de la video' (vnum_col)
+        avec les bases candidates (folder_path, parent de folder_path).
+        Retourne None si aucun fichier trouvé.
+        """
+        if vnum_col is None:
+            return None
+        fname_item = self._ft_table.item(row, vnum_col)
+        fname = fname_item.text().strip() if fname_item else ""
+        if not fname:
+            return None
+
+        folder_csv = ""
+        if vpath_col is not None:
+            pi = self._ft_table.item(row, vpath_col)
+            folder_csv = pi.text().strip() if pi else ""
+
+        # Bases à essayer : dossier sélectionné + son parent (au cas où folder_path est campagne)
+        _seen: set[str] = set()
+        bases: list[str] = []
+        for _b in [folder_path,
+                   os.path.dirname(folder_path) if folder_path else ""]:
+            if _b and _b not in _seen:
+                _seen.add(_b)
+                bases.append(_b)
+
+        if folder_csv and not os.path.isabs(folder_csv):
+            # Dossier Datawork renseigné → matching par chemin complet UNIQUEMENT.
+            # Si le fichier n'existe pas à cet endroit, la ligne n'appartient pas
+            # au dossier sélectionné (ne pas tomber sur une autre campagne par stem).
+            for base in bases:
+                # Structure 1 : Dossier Datawork est le dossier contenant la vidéo
+                c1 = os.path.join(base, folder_csv, fname)
+                if os.path.isfile(c1):
+                    return c1
+                # Structure 2 : dernier composant = id numérique (structure camp\sys\video.mp4)
+                c2 = os.path.join(os.path.dirname(os.path.join(base, folder_csv)), fname)
+                if os.path.isfile(c2):
+                    return c2
+            return None  # chemin précis fourni mais fichier absent → pas de match
+
+        # Fallback uniquement si Dossier Datawork est absent (lignes sans info de path)
+        stem = os.path.splitext(fname)[0].lower()
+        _VIDEO_EXTS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.mts', '.m2ts', '.mpg', '.mpeg', '.m4v'}
+        for root, _dirs, files in os.walk(folder_path):
+            for f in files:
+                if (os.path.splitext(f)[1].lower() in _VIDEO_EXTS
+                        and os.path.splitext(f)[0].lower() == stem):
+                    return os.path.join(root, f)
+        return None
+
     def count_existing_temp_jsons(self, folder_path: str) -> int:
         """Compte les _temp.json déjà présents pour les vidéos du tableau dans folder_path."""
         if not hasattr(self, '_ft_table') or self._ft_table is None:
             return 0
-        video_name_col = next(
+        vnum_col = next(
             (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "video_number"), None
         )
-        if video_name_col is None:
+        vpath_col = next(
+            (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "video_path"), None
+        )
+        if vnum_col is None:
             return 0
-        _VIDEO_EXTS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.mts', '.m2ts', '.mpg', '.mpeg', '.m4v'}
-        stem_to_path: dict[str, str] = {}
-        for root, _dirs, files in os.walk(folder_path):
-            for fname in files:
-                if os.path.splitext(fname)[1].lower() in _VIDEO_EXTS:
-                    stem_to_path[os.path.splitext(fname)[0].lower()] = os.path.join(root, fname)
         count = 0
         for row in range(self._ft_table.rowCount()):
-            item = self._ft_table.item(row, video_name_col)
-            val = item.text().strip() if item else ''
-            stem_key = os.path.splitext(val)[0].lower()
-            vp = stem_to_path.get(stem_key)
+            vp = self._resolve_video_path_from_row(row, folder_path, vpath_col, vnum_col)
             if vp and os.path.isfile(get_temp_json_path(vp)):
                 count += 1
         return count
@@ -2527,7 +2600,7 @@ class MetadonneesController:
 
         mode='overwrite' : écrase tous les champs (comportement par défaut).
         mode='fill_empty': ne touche que les champs actuellement null/vides dans le JSON.
-        Matching : colonne 'video_number' (sans extension, insensible à la casse).
+        Matching : colonne 'Dossier Datawork' + 'Nom de la video' (path complet).
         Retourne (nb_générés, nb_lignes_tableau, [(video_name, raison_echec), ...]).
         """
         import copy as _copy
@@ -2537,7 +2610,7 @@ class MetadonneesController:
         if not _TEMPLATE_BASE:
             return 0, 0, [("—", "template.json introuvable ou vide")]
 
-        # Index de la colonne "Nom de la video" (video_number)
+        # Index des colonnes
         video_name_col = next(
             (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "video_number"),
             None,
@@ -2545,20 +2618,15 @@ class MetadonneesController:
         if video_name_col is None:
             return 0, 0, [("—", "Colonne 'Nom de la video' introuvable dans le schéma")]
 
+        video_path_col = next(
+            (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "video_path"), None
+        )
+
         # Index de la colonne Codestation (codeObs) pour import direct
         codeobs_col_i = next(
             (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "codeObs"),
             None,
         )
-
-        # Scanner récursivement le dossier pour tous les fichiers vidéo
-        _VIDEO_EXTS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.mts', '.m2ts', '.mpg', '.mpeg', '.m4v'}
-        stem_to_path: dict[str, str] = {}
-        for root, _dirs, files in os.walk(folder_path):
-            for fname in files:
-                if os.path.splitext(fname)[1].lower() in _VIDEO_EXTS:
-                    stem = os.path.splitext(fname)[0].lower()
-                    stem_to_path[stem] = os.path.join(root, fname)
 
         # Champs toujours null dans les temp.json générés (saisis manuellement dans l'IHM)
         # point_name est exclu : pour les données historiques il est connu depuis le CSV
@@ -2581,8 +2649,10 @@ class MetadonneesController:
                 failures.append(("(ligne vide)", f"Ligne {row + 1} : nom de vidéo absent"))
                 continue
 
-            stem_key = os.path.splitext(video_val)[0].lower()
-            video_path = stem_to_path.get(stem_key)
+            # Matching par chemin complet (Dossier Datawork + Nom de la video)
+            video_path = self._resolve_video_path_from_row(
+                row, folder_path, video_path_col, video_name_col
+            )
             if not video_path:
                 failures.append((video_val, "Fichier vidéo non trouvé dans le dossier sélectionné"))
                 continue

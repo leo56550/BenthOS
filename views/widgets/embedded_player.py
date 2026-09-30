@@ -232,7 +232,7 @@ class _VideoLabel(QtWidgets.QWidget):
         painter.fillRect(self.rect(), QtCore.Qt.GlobalColor.black)
         if self._image is not None and not self._image.isNull():
             scaled = self._image.size().scaled(
-                self.size(), QtCore.Qt.AspectRatioMode.KeepAspectRatioByExpanding)
+                self.size(), QtCore.Qt.AspectRatioMode.KeepAspectRatio)
             x = (self.width() - scaled.width()) // 2
             y = (self.height() - scaled.height()) // 2
             painter.drawImage(QtCore.QRect(x, y, scaled.width(), scaled.height()), self._image)
