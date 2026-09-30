@@ -182,8 +182,8 @@ class VideoTimeline(QtWidgets.QWidget):
     # Per-zone: (zone_bg, event_fill_top, event_fill_bot, event_border)
     ZONE_STYLES = [
         (QtGui.QColor(16, 36, 52, 200),  QtGui.QColor(36, 80, 120),  QtGui.QColor(20, 55, 90),  QtGui.QColor("#2778A2")),  # bleu  — déploiement
-        (QtGui.QColor(48, 14, 18, 200),  QtGui.QColor(130, 40, 35),  QtGui.QColor(90, 25, 20),  QtGui.QColor("#D94F38")),  # rouge — faune
-        (QtGui.QColor(26, 16,  0, 200),  QtGui.QColor(140, 90,  0),  QtGui.QColor(100, 60,  0), QtGui.QColor("#E68C14")),  # orange — images
+        (QtGui.QColor(35,  6,  6, 200),  QtGui.QColor(220, 38, 38),  QtGui.QColor(175, 22, 22),  QtGui.QColor("#ff3030")),  # rouge — faune
+        (QtGui.QColor(28, 25,  0, 200),  QtGui.QColor(155, 128, 10),  QtGui.QColor(115, 90,  5), QtGui.QColor("#c8a800")),  # jaune  — images intéressantes
     ]
 
     def paintEvent(self, event):

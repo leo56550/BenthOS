@@ -278,6 +278,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self._smooth_timer.timeout.connect(self._smooth_position_update)
         self._last_ui_update_ms: int = 0
         self._label_update_ms: int = 0
+        self._tel_cursor_ms:   int = 0
 
         # Image corrections (active only when paused)
         self._last_raw_frame: np.ndarray | None = None
@@ -1012,6 +1013,9 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
         self.update_top_time_label(position_ms, self.player.duration())
         self.update_frame_label(position_ms)
+        if hasattr(self, 'telemetry_dialog') and self.telemetry_dialog.isVisible():
+            self.telemetry_dialog.set_cursor(position_ms / 1000.0)
+            self._tel_cursor_ms = int(time.monotonic() * 1000)
 
     def _smooth_position_update(self):
         """Appelé à ~50 fps pendant la lecture pour animer le curseur timeline en douceur."""
@@ -1020,12 +1024,17 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         pos = self.player.position()
         self.timeline.set_current_position(pos)
         self.center_scroll_on_cursor(pos)
-        # Labels mis à jour à ~8 fps pour limiter les redraws texte
         now_ms = int(time.monotonic() * 1000)
+        # Labels mis à jour à ~8 fps pour limiter les redraws texte
         if now_ms - self._label_update_ms >= 120:
             self._label_update_ms = now_ms
             self.update_top_time_label(pos, self.player.duration())
             self.update_frame_label(pos)
+        # Curseur télémétrie mis à jour à ~25 fps max
+        if (hasattr(self, 'telemetry_dialog') and self.telemetry_dialog.isVisible()
+                and now_ms - self._tel_cursor_ms >= 40):
+            self._tel_cursor_ms = now_ms
+            self.telemetry_dialog.set_cursor(pos / 1000.0)
 
     def center_scroll_on_cursor(self, pos_ms: int | None = None):
         """Fait défiler la timeline pour garder le curseur de lecture visible au centre."""

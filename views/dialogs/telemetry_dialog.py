@@ -63,6 +63,12 @@ class TelemetryDialog(QtWidgets.QDialog):
         self.missing_labels = {} # key → QLabel (for "données manquantes" text updates)
         self._lux_rgb_curves = {}  # col → PlotDataItem (RLux, GLux, BLux)
 
+        self._x_data_min    = 0.0
+        self._x_data_max    = 1.0
+        self._master_vb     = None
+        self._scroll_busy   = False
+        self._cursor_lines  = {}   # key → pg.InfiniteLine
+
         self.metrics = {
             "température":  ("Température (°C)",       "#ff4d4d"),
             "profondeur":   ("Profondeur (m)",          "#4dff88"),
@@ -85,6 +91,16 @@ class TelemetryDialog(QtWidgets.QDialog):
             pw.setMouseEnabled(x=True, y=True)
             if key == "profondeur":
                 pw.invertY(True)
+            show_label = (len(self._cursor_lines) == 0)  # label uniquement sur le 1er graphe
+            cursor_line = pg.InfiniteLine(
+                angle=90, movable=False,
+                pen=pg.mkPen('#00d4ff', width=1.5),
+                label='00:00' if show_label else None,
+                labelOpts={'position': 0.96, 'color': '#00d4ff',
+                           'fill': pg.mkBrush(13, 24, 32, 210)} if show_label else {},
+            )
+            pw.addItem(cursor_line)
+            self._cursor_lines[key] = cursor_line
             curve = pw.plot(pen=pg.mkPen(color, width=1.5))
             pw.scene().sigMouseClicked.connect(
                 lambda evt, _pw=pw: self._on_graph_clicked(evt, _pw))
@@ -118,6 +134,10 @@ class TelemetryDialog(QtWidgets.QDialog):
         pw_lux.setBackground('#111820')
         pw_lux.showGrid(x=True, y=True, alpha=0.3)
         pw_lux.setMouseEnabled(x=True, y=True)
+        cursor_line_lux = pg.InfiniteLine(angle=90, movable=False,
+                                          pen=pg.mkPen('#00d4ff', width=1.5))
+        pw_lux.addItem(cursor_line_lux)
+        self._cursor_lines["lux_rgb"] = cursor_line_lux
 
         legend = pw_lux.addLegend(offset=(10, 10))
         legend.setLabelTextColor('w')
@@ -165,17 +185,111 @@ class TelemetryDialog(QtWidgets.QDialog):
         btn_row.addWidget(self._btn_reset)
         main_layout.addLayout(btn_row)
 
+        # ── Scrollbar horizontal (navigation dans le temps) ──────────────────
+        self._hscroll = QtWidgets.QScrollBar(QtCore.Qt.Orientation.Horizontal)
+        self._hscroll.setRange(0, 0)
+        self._hscroll.setEnabled(False)
+        self._hscroll.setSingleStep(1)
+        self._hscroll.setStyleSheet(
+            "QScrollBar:horizontal { background: #0d1520; height: 14px; border: none;"
+            " border-top: 1px solid #1e2d3d; }"
+            "QScrollBar::handle:horizontal { background: #2778A2; border-radius: 6px;"
+            " min-width: 28px; }"
+            "QScrollBar::handle:horizontal:hover { background: #3a9ad4; }"
+            "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal"
+            " { width: 0; border: none; }"
+            "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal"
+            " { background: none; }"
+        )
+        self._hscroll.valueChanged.connect(self._on_hscroll)
+        main_layout.addWidget(self._hscroll)
+
     # ── Language ──────────────────────────────────────────────────────────
 
     def translate(self, fr: str, en: str) -> str:
         """Retourne la chaîne fr ou en selon la langue active."""
         return fr if self.current_language == 'fr' else en
 
+    def _init_scroll_links(self, x_min: float, x_max: float):
+        """Lie les axes X de tous les graphes visibles et branche le scrollbar."""
+        self._x_data_min = x_min
+        self._x_data_max = x_max
+
+        # Lier tous les PlotWidgets au maître (température en premier s'il est visible)
+        first_pw = None
+        for key in ["température", "profondeur", "ExpTime", "lux_rgb"]:
+            pw = self.plot_widgets.get(key)
+            if pw is None:
+                continue
+            if first_pw is None:
+                first_pw = pw
+                self._master_vb = pw.getViewBox()
+            else:
+                pw.setXLink(first_pw)
+
+        if self._master_vb is None:
+            return
+
+        try:
+            self._master_vb.sigXRangeChanged.disconnect(self._on_vb_range_changed)
+        except TypeError:
+            pass
+        self._master_vb.sigXRangeChanged.connect(self._on_vb_range_changed)
+
+        # Vue initiale complète → scrollbar désactivé
+        self._hscroll.setRange(0, 0)
+        self._hscroll.setEnabled(False)
+
+    def _on_vb_range_changed(self, vb, x_range):
+        """Met à jour le scrollbar quand le ViewBox maître est zoomé/pané."""
+        if self._scroll_busy:
+            return
+        x_start, x_end = x_range
+        view_span = x_end - x_start
+        total_span = self._x_data_max - self._x_data_min
+        max_scroll = max(0.0, total_span - view_span)
+
+        if max_scroll <= 0:
+            self._scroll_busy = True
+            self._hscroll.setRange(0, 0)
+            self._hscroll.setEnabled(False)
+            self._scroll_busy = False
+            return
+
+        scale = 100  # précision : centisecondes
+        max_val  = int(max_scroll * scale)
+        page     = max(1, int(view_span * scale))
+        pos      = max(0.0, x_start - self._x_data_min)
+        pos_val  = max(0, min(int(pos * scale), max_val))
+
+        self._scroll_busy = True
+        self._hscroll.setRange(0, max_val)
+        self._hscroll.setPageStep(page)
+        self._hscroll.setSingleStep(max(1, page // 20))
+        self._hscroll.setValue(pos_val)
+        self._hscroll.setEnabled(True)
+        self._scroll_busy = False
+
+    def _on_hscroll(self, value: int):
+        """Positionne le ViewBox maître (et tous les graphes liés) selon le scrollbar."""
+        if self._scroll_busy or self._master_vb is None:
+            return
+        scale = 100
+        x_start = self._x_data_min + value / scale
+        vr = self._master_vb.viewRange()
+        view_span = vr[0][1] - vr[0][0]
+        x_end = x_start + view_span
+        self._scroll_busy = True
+        self._master_vb.setXRange(x_start, x_end, padding=0)
+        self._scroll_busy = False
+
     def _reset_all_views(self):
         """Remet tous les graphes visibles en vue auto (zoom/pan réinitialisé)."""
         for pw in self.plot_widgets.values():
             pw.enableAutoRange()
             pw.autoRange()
+        self._hscroll.setRange(0, 0)
+        self._hscroll.setEnabled(False)
 
     def set_language(self, language: str):
         """Met à jour la langue, le titre et les libellés des métriques."""
@@ -245,6 +359,8 @@ class TelemetryDialog(QtWidgets.QDialog):
         else:
             self._show_missing("lux_rgb", self.stacks["lux_rgb"])
 
+        self._init_scroll_links(float(x_data.min()), float(x_data.max()))
+
     def _show_missing(self, key: str, stack: QtWidgets.QStackedWidget):
         """Bascule le stack sur la page 'données manquantes' (bandeau compact)."""
         stack.setCurrentIndex(1)
@@ -254,6 +370,17 @@ class TelemetryDialog(QtWidgets.QDialog):
         """Bascule le stack sur la page graphe et restaure la hauteur maximale."""
         stack.setCurrentIndex(0)
         stack.setMaximumHeight(16777215)
+
+    def set_cursor(self, t_s: float):
+        """Positionne le curseur vertical sur tous les graphes à t_s secondes."""
+        mm = int(t_s) // 60
+        ss = int(t_s) % 60
+        time_str = f"{mm:02d}:{ss:02d}"
+        for line in self._cursor_lines.values():
+            line.setPos(t_s)
+            lbl = getattr(line, 'label', None)
+            if lbl is not None:
+                lbl.setText(time_str)
 
     def _on_graph_clicked(self, event, pw):
         """Émet time_clicked (en secondes) quand l'utilisateur clique sur un graphe."""

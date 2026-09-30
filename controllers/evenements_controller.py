@@ -159,7 +159,7 @@ class EvenementsController:
             zones = [
                 {"label": "Deployment",     "color": QtGui.QColor(39, 120, 162, 180)},  # bleu
                 {"label": "Fauna / Animal", "color": QtGui.QColor(217, 79,  56, 180)},  # rouge
-                {"label": "Images",         "color": QtGui.QColor(230, 140,  20, 180)}, # orange
+                {"label": "Images",         "color": QtGui.QColor(200, 168,   0, 180)}, # jaune
             ]
             self.event_player = EmbeddedVideoPlayer(parent=self.player_container_events, zone_definitions=zones)
             layout.addWidget(self.event_player)
@@ -1113,10 +1113,10 @@ class EvenementsController:
             "btn_bg": "#1e0f0f", "btn_border": "#D94F38", "btn_fg": "#e89090",
             "btn_hover": "#3a1a1a", "btn_active_bg": "#9a2a1a",
         },
-        {  # 2 — Image intéressante (orange)
-            "header_bg": "#1a1000", "header_fg": "#ffc97a",
-            "btn_bg": "#1e1400", "btn_border": "#E68C14", "btn_fg": "#e8c080",
-            "btn_hover": "#3a2800", "btn_active_bg": "#9a5a00",
+        {  # 2 — Image intéressante (jaune)
+            "header_bg": "#1a1700", "header_fg": "#f5d060",
+            "btn_bg": "#1e1a00", "btn_border": "#c8a800", "btn_fg": "#e8d080",
+            "btn_hover": "#383000", "btn_active_bg": "#9a8000",
         },
     ]
 
