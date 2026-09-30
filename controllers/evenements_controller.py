@@ -2236,6 +2236,53 @@ class EvenementsController:
                                 and abs(v.get("frame_number", 0) - target_frame_start) <= tolerance)
                         )
                     ]
+                    # Recalculate rotation angles for remaining auto-detected motor events
+                    import re as _re
+                    _rotation_events = sorted(
+                        [v for v in video_obs[json_key] if _re.search(r"Rotation moteur", v.get("description_fr", ""))],
+                        key=lambda v: v.get("frame_number", 0)
+                    )
+                    for _i, _ev in enumerate(_rotation_events):
+                        _angle_step = (_i % 6) + 1
+                        _angle = _angle_step * 60
+                        _rev = (_i // 6) + 1
+                        _ev["description_fr"] = f"Rotation moteur #{_rev} ({_angle}°)"
+                        _ev["description_en"] = f"Motor rotation #{_rev} ({_angle}°)"
+                    # Update matching timeline events' type field
+                    tl = getattr(getattr(self, 'event_player', None), 'timeline', None)
+                    if tl is not None:
+                        for _i, _ev in enumerate(_rotation_events):
+                            _angle_step = (_i % 6) + 1
+                            _angle = _angle_step * 60
+                            _new_type = "rotation_360°" if _angle == 360 else f"rotation_{_angle}°"
+                            _ev_uid = _ev.get("event_id")
+                            _ev_fn = _ev.get("frame_number", 0)
+                            _ev_desc = _ev["description_fr"]
+                            for _tl_evt in tl.events:
+                                if _tl_evt.get("_json_key") != "events_motor":
+                                    continue
+                                if _ev_uid and _tl_evt.get("_event_uid") == _ev_uid:
+                                    _tl_evt["type"] = _new_type
+                                    _tl_evt["title"] = f"Pic: {_ev_desc}"
+                                    break
+                                _tl_fn = self._ms_to_frame(_tl_evt.get("start", 0), fps)
+                                if abs(_tl_fn - _ev_fn) <= tolerance:
+                                    _tl_evt["type"] = _new_type
+                                    _tl_evt["title"] = f"Pic: {_ev_desc}"
+                                    break
+                        tl.update()
+                        # Update tree items for renamed rotation events
+                        if hasattr(self, 'tree_captures') and self.tree_captures:
+                            for _tl_evt in tl.events:
+                                if _tl_evt.get("_json_key") == "events_motor":
+                                    _new_title = _tl_evt.get("title", "").replace("Pic: ", "")
+                                    for _ti in range(self.tree_captures.topLevelItemCount()):
+                                        _tree_item = self.tree_captures.topLevelItem(_ti)
+                                        # Match by timecode since title may have changed
+                                        _item_start = self.event_player.timeline._format_ms(_tl_evt.get("start", 0))
+                                        if _tree_item.text(0) == _item_start and _tree_item.text(2) == self._get_label_from_json_key("events_motor"):
+                                            _tree_item.setText(3, _new_title)
+                                            break
                 else:
                     values_list = video_obs[json_key][0].get("values", [])
                     video_obs[json_key][0]["values"] = [
