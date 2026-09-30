@@ -228,8 +228,12 @@ class MainWindow(QtWidgets.QMainWindow):
         buttons_layout.setContentsMargins(0, 0, 0, 0)
         buttons_layout.setSpacing(4)
 
+        self.btn_avancement = _btn("Avancement",
+                                   "Voir l'avancement du dérushage de la campagne",
+                                   "btn_avancement", enabled=False)
         buttons_layout.addWidget(self.btn_sftp)
         buttons_layout.addWidget(self.btn_notes)
+        buttons_layout.addWidget(self.btn_avancement)
         buttons_layout.addStretch()
 
         buttons_scroll = QtWidgets.QScrollArea()
@@ -464,12 +468,14 @@ class MainWindow(QtWidgets.QMainWindow):
         'fr': {
             'btn_sftp':          ("KOSMOS Connexion",    "Connexion SFTP / Planification déploiement"),
             'btn_notes':         ("Notes",               "Notes de session — mémo libre de la campagne"),
+            'btn_avancement':    ("Avancement",          "Voir l'avancement du dérushage de la campagne"),
             'btn_load_history':  ("Données historiques", "Charger les données historiques (clic droit → supprimer temp.json)"),
             'btn_generate_temp': ("GÉNÉRER TEMP.JSON",   "Générer les _temp.json dans le dossier de l'infoStation chargée"),
         },
         'en': {
             'btn_sftp':          ("KOSMOS Connection",   "SFTP connection / Deployment planning"),
             'btn_notes':         ("Notes",               "Session notes — free memo for the campaign"),
+            'btn_avancement':    ("Progress",            "View campaign processing progress"),
             'btn_load_history':  ("Historical data",     "Load historical data (right-click → delete temp.json)"),
             'btn_generate_temp': ("GENERATE TEMP.JSON",  "Generate _temp.json files in the loaded infoStation folder"),
         },

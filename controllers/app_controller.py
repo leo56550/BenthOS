@@ -88,6 +88,7 @@ from services.weather_service import WeatherWorker
 from services.sound_service import get_sound_service
 from views.dialogs.notes_dialog import NotesDialog
 from controllers.accueil_controller import AccueilController
+from views.widgets.progress_dashboard import AvancementPanel
 from controllers.qualif_controller import QualifController, _get_point_name
 from controllers.validation_controller import ValidationController
 from controllers.evenements_controller import EvenementsController
@@ -157,8 +158,15 @@ class AppController(QtCore.QObject):
             self.evenements_ctrl, self.metadonnees_ctrl, self.apropos_ctrl, self.extraction_ctrl
         ]
 
+        self._avancement_panel = AvancementPanel(window)
+        if hasattr(window, 'btn_avancement'):
+            window.btn_avancement.clicked.connect(
+                lambda: self._avancement_panel.toggle(window.btn_avancement))
+
         self.qualif_ctrl.video_model.rowsInserted.connect(self.refresh_status_bar)
         self.qualif_ctrl.video_model.rowsRemoved.connect(self.refresh_status_bar)
+        self.qualif_ctrl.video_model.rowsInserted.connect(self._refresh_dashboard)
+        self.qualif_ctrl.video_model.rowsRemoved.connect(self._refresh_dashboard)
 
         # Carte : propager les clics sur les marqueurs vers tous les controllers
         bridge = self.qualif_ctrl.bridge
@@ -381,6 +389,7 @@ class AppController(QtCore.QObject):
     def _on_qualification_changed(self):
         """Appelé quand l'exploitabilité d'une vidéo change — rafraîchit la barre de statut."""
         self.refresh_status_bar()
+        self._refresh_dashboard()
         self.metadonnees_ctrl.refresh_feuille_terrain()
         self.qualif_ctrl.refresh_map_marker_colors()
         self.evenements_ctrl.proxy_model.invalidateFilter()
@@ -696,6 +705,7 @@ class AppController(QtCore.QObject):
         for ctrl in self.page_controllers:
             if hasattr(ctrl, 'set_language'):
                 ctrl.set_language(language)
+        self._avancement_panel.dashboard.set_language(language)
         self.refresh_status_bar()
 
     def _update_info_labels(self, trans: dict):
@@ -763,6 +773,7 @@ class AppController(QtCore.QObject):
             self._refresh_all_page_models()
             self._detect_campaign_mode()
             self.refresh_status_bar()
+            self._refresh_dashboard()
 
             dossier = getattr(self.qualif_ctrl, 'current_campaign_folder', None)
             if not dossier:
@@ -1035,6 +1046,19 @@ class AppController(QtCore.QObject):
         if self.qualif_ctrl.video_model.rowCount() == 0:
             extra_points = self.metadonnees_ctrl.collect_ft_table_coords()
         self.qualif_ctrl.update_minimap(video_name, show_dialog=True, extra_points=extra_points)
+
+    def _refresh_dashboard(self, *_):
+        """Recalcule les donuts du panneau Avancement."""
+        model = self.qualif_ctrl.video_model
+        paths = [
+            model.item(row, 0).data(QtCore.Qt.ItemDataRole.UserRole)
+            for row in range(model.rowCount())
+            if model.item(row, 0) and model.item(row, 0).data(QtCore.Qt.ItemDataRole.UserRole)
+        ]
+        trash_count = self.qualif_ctrl.trash_model.rowCount()
+        self._avancement_panel.dashboard.refresh(paths, trash_count)
+        if hasattr(self.window, 'btn_avancement'):
+            self.window.btn_avancement.setEnabled(True)
 
     def refresh_status_bar(self, *_):
         """Recalcule et affiche les stats de campagne dans la barre de statut."""

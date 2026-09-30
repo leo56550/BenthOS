@@ -342,7 +342,11 @@ class QualifController:
         splitter.setSizes([620, 10000])
 
     def _reset_left_splitter_sizes(self):
-        """Réinitialise les tailles du splitter gauche après chargement de campagne (fenêtre visible)."""
+        """Réinitialise les tailles du splitter gauche après chargement de campagne (fenêtre visible).
+
+        Si _fit_campaign_frame a déjà contraint la hauteur max du frame, on l'utilise
+        directement pour éviter un espace vide entre les propriétés et la liste vidéo.
+        """
         if not self.frame_campaign:
             return
         splitter = self.frame_campaign.parentWidget()
@@ -351,7 +355,13 @@ class QualifController:
         total = splitter.height()
         if total <= 0:
             return
-        campaign_h = max(320, int(total * 0.45))
+        _QWIDGETSIZE_MAX = 16777215
+        max_h = self.frame_campaign.maximumHeight()
+        if max_h < _QWIDGETSIZE_MAX:
+            # _fit_campaign_frame a déjà calculé la hauteur exacte — l'utiliser
+            campaign_h = max_h
+        else:
+            campaign_h = max(320, int(total * 0.45))
         video_h = max(80, total - campaign_h)
         splitter.setSizes([campaign_h, video_h, 0])
 
@@ -1261,7 +1271,8 @@ class QualifController:
             )
 
     def _fit_campaign_frame(self):
-        """Ajuste la hauteur du cadre Propriétés de campagne au contenu réel."""
+        """Ajuste la hauteur du cadre Propriétés de campagne au contenu réel,
+        et recalibre le splitter pour supprimer l'espace vide entre le cadre et la liste vidéo."""
         if not self.frame_campaign or not hasattr(self, 'scroll_campaign'):
             return
         n = len(self.campaign_fields)
@@ -1272,6 +1283,15 @@ class QualifController:
         title_h = 22            # label titre
         frame_h = title_h + form_h + 14  # + marges du frame
         self.frame_campaign.setMaximumHeight(frame_h)
+
+        # Recalibrer le splitter : le pane alloué était plus grand que frame_h,
+        # ce qui laissait un espace vide entre les propriétés et la liste vidéo.
+        splitter = self.frame_campaign.parentWidget()
+        if isinstance(splitter, QtWidgets.QSplitter):
+            total = splitter.height()
+            if total > 0:
+                video_h = max(80, total - frame_h)
+                splitter.setSizes([frame_h, video_h, 0])
 
     def synchronize_campaign_field(self, key: str, value: str):
         """Écrit value dans le champ key de la section survey de chaque _temp.json vidéo."""
