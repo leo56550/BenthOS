@@ -1,4 +1,5 @@
 import os
+import json
 from PyQt6 import QtGui, QtCore
 
 
@@ -97,6 +98,8 @@ class VideoFilterProxyModel(QtCore.QSortFilterProxyModel):
     et optionnellement les vidéos non exploitables.
     """
 
+    _NON_EXPLOITABLE = {"non", "no"}
+
     def __init__(self, parent=None):
         """Initialise le proxy avec le filtre non-exploitables désactivé."""
         super().__init__(parent)
@@ -108,7 +111,7 @@ class VideoFilterProxyModel(QtCore.QSortFilterProxyModel):
         self.invalidateFilter()
 
     def filterAcceptsRow(self, source_row: int, source_parent: QtCore.QModelIndex) -> bool:
-        """Exclut les vidéos dans .trash et, si activé, les non-exploitables."""
+        """Exclut les vidéos dans .trash et, si activé, les vidéos dont l'exploitabilité est 'non'."""
         model = self.sourceModel()
         if model is None:
             return True
@@ -122,9 +125,20 @@ class VideoFilterProxyModel(QtCore.QSortFilterProxyModel):
         if video_path and ".trash" in str(video_path).replace("\\", "/"):
             return False
 
-        if self._filter_non_exploitable:
-            exploitable = item.data(QtCore.Qt.ItemDataRole.UserRole + 1)
-            if exploitable is not None and exploitable == "Non exploitable":
-                return False
+        if self._filter_non_exploitable and video_path:
+            stem = os.path.splitext(os.path.basename(str(video_path)))[0]
+            folder = os.path.dirname(os.path.normpath(str(video_path)))
+            temp_json = os.path.join(folder, f"{stem}_temp.json")
+            if os.path.isfile(temp_json):
+                try:
+                    with open(temp_json, 'r', encoding='utf-8') as _f:
+                        _data = json.load(_f)
+                    expl = _data.get("video_observation", {}).get("exploitable", {})
+                    expl_val = expl.get("value", "") if isinstance(expl, dict) else str(expl or "")
+                    expl_val = str(expl_val or "").strip().lower()
+                    if expl_val in self._NON_EXPLOITABLE:
+                        return False
+                except Exception:
+                    pass
 
         return True

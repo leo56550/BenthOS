@@ -151,6 +151,7 @@ class EvenementsController:
         self.proxy_model.setSourceModel(self.video_model)
         self.proxy_model.setSortRole(QtCore.Qt.ItemDataRole.UserRole + 2)
         self.proxy_model.sort(0, QtCore.Qt.SortOrder.AscendingOrder)
+        self.proxy_model.set_filter_non_exploitable(True)
 
         if self.player_container_events:
             layout = self.player_container_events.layout() or QtWidgets.QVBoxLayout(self.player_container_events)

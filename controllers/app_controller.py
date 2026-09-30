@@ -383,6 +383,7 @@ class AppController(QtCore.QObject):
         self.refresh_status_bar()
         self.metadonnees_ctrl.refresh_feuille_terrain()
         self.qualif_ctrl.refresh_map_marker_colors()
+        self.evenements_ctrl.proxy_model.invalidateFilter()
 
     def _on_events_changed(self, *_):
         """Callback déclenché quand des événements sont ajoutés/supprimés/modifiés."""
