@@ -13,3 +13,4 @@ requests==2.33.1
 folium==0.20.0
 branca==0.8.2
 pywin32==312
+openpyxl

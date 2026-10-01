@@ -4123,16 +4123,9 @@ class MetadonneesController:
                 print(f"[TEMP_JSON] {os.path.basename(json_path)} ← video_observation.{json_key} = {val!r}")
             with open(json_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
-            # NE PAS appeler load_all_data ici : cette méthode fusionne le bloc "system" du
-            # JSON brut d'acquisition (qui peut avoir un format plat legacy) dans _json_data
-            # puis le réécrit sur disque, ce qui écrase la structure détaillée du _temp.json.
-            # En mode campagne, _rebuild_ft_table relit les données depuis le fichier.
-            # En mode historique, _update_ft_table_weather_cells met à jour les cellules en place.
-            if self.video_model and self.video_model.rowCount() > 0:
-                self._rebuild_ft_table()
-            else:
-                # Mode historique : mettre à jour les cellules météo directement dans le tableau
-                self._update_ft_table_weather_cells(target_path, api_data)
+            # Mise à jour ciblée de la ligne : évite de vider et reconstruire tout le tableau
+            # (ce qui causerait des lignes vides si plusieurs vidéos sont appliquées en série).
+            self._update_ft_table_weather_cells(target_path, api_data)
         except Exception as e:
             print(f"[WEATHER APPLY] Erreur : {e}")
 
