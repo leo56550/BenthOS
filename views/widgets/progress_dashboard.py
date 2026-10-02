@@ -90,12 +90,13 @@ class _StatsWorker(QtCore.QThread):
             surv = data.get("survey", {})
             sys_ = data.get("system", {})
 
-            if bool((obs.get("timecode_ardoise") or {}).get("value")):
-                ardoise += 1
-
             expl = obs.get("exploitable", {})
             expl_val = expl.get("value", "") if isinstance(expl, dict) else str(expl or "")
             expl_val = str(expl_val or "").strip()
+            code_obs_val = str((obs.get("codeObs") or {}).get("value") or "").strip()
+            if code_obs_val and expl_val and expl_val != "?":
+                ardoise += 1
+
             if expl_val and expl_val != "?":
                 key = expl_val.lower()
                 expl_breakdown[key] = expl_breakdown.get(key, 0) + 1
@@ -178,70 +179,24 @@ class _MiniBar(QtWidgets.QProgressBar):
 
 class _ExploitabilityPopup(QtWidgets.QDialog):
     def __init__(self, breakdown: dict[str, int], parent=None):
-        super().__init__(parent,
-                         QtCore.Qt.WindowType.FramelessWindowHint |
-                         QtCore.Qt.WindowType.WindowStaysOnTopHint)
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, False)
-        self._drag_pos: QtCore.QPoint | None = None
+        super().__init__(parent, QtCore.Qt.WindowType.WindowStaysOnTopHint)
+        self.setWindowTitle("Répartition exploitabilité")
+        self.setMinimumWidth(280)
+        self.setStyleSheet("""
+            QDialog { background-color: #0e1d2c; }
+            QLabel  { color: #c8e0f0; background: transparent; border: none; }
+        """)
         self._build(breakdown)
-
-    # ── Drag pour déplacer la fenêtre ──────────────────────────────────────
-    def mousePressEvent(self, event):
-        if event.button() == QtCore.Qt.MouseButton.LeftButton:
-            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-
-    def mouseMoveEvent(self, event):
-        if self._drag_pos is not None and event.buttons() == QtCore.Qt.MouseButton.LeftButton:
-            self.move(event.globalPosition().toPoint() - self._drag_pos)
-
-    def mouseReleaseEvent(self, _event):
-        self._drag_pos = None
+        self.adjustSize()
 
     def _build(self, breakdown: dict[str, int]):
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #0e1d2c;
-                border: 1px solid #1e3448;
-                border-radius: 12px;
-            }
-        """)
         layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(18, 15, 18, 15)
+        layout.setContentsMargins(18, 16, 18, 16)
         layout.setSpacing(4)
-
-        # En-tête : titre + bouton fermer
-        header = QtWidgets.QHBoxLayout()
-        header.setContentsMargins(0, 0, 0, 0)
-        header.setSpacing(8)
-
-        title = QtWidgets.QLabel("RÉPARTITION EXPLOITABILITÉ")
-        title.setStyleSheet(
-            "color: #5a8eaa; font-size: 10px; font-weight: bold; letter-spacing: 1.2px;"
-            " border: none; background: transparent;")
-        header.addWidget(title, 1)
-
-        close_btn = QtWidgets.QLabel("✕")
-        close_btn.setStyleSheet(
-            "color: #3a5468; font-size: 12px; border: none; background: transparent;"
-            " padding: 0px 2px;")
-        close_btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        close_btn.mousePressEvent = lambda _e: self.close()
-        header.addWidget(close_btn)
-
-        header_w = QtWidgets.QWidget()
-        header_w.setStyleSheet("background: transparent;")
-        header_w.setLayout(header)
-        layout.addWidget(header_w)
-
-        sep = QtWidgets.QFrame()
-        sep.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        sep.setStyleSheet("background: #1a3048; border: none; max-height: 1px; margin: 4px 0px;")
-        layout.addWidget(sep)
 
         if not breakdown:
             lbl = QtWidgets.QLabel("Aucun statut renseigné")
-            lbl.setStyleSheet("color: #3a5468; font-size: 12px; border: none; background: transparent;")
+            lbl.setStyleSheet("color: #3a5468; font-size: 12px;")
             layout.addWidget(lbl)
             return
 
@@ -257,14 +212,12 @@ class _ExploitabilityPopup(QtWidgets.QDialog):
             label_text = _EXPL_LABELS.get(val, val.capitalize())
             pct        = int(count / total * 100) if total else 0
 
-            # Bloc : texte + barre
             block = QtWidgets.QWidget()
             block.setStyleSheet("background: transparent;")
             bl = QtWidgets.QVBoxLayout(block)
             bl.setContentsMargins(0, 4, 0, 2)
             bl.setSpacing(5)
 
-            # Ligne texte
             text_row = QtWidgets.QWidget()
             text_row.setStyleSheet("background: transparent;")
             hl = QtWidgets.QHBoxLayout(text_row)
@@ -272,25 +225,20 @@ class _ExploitabilityPopup(QtWidgets.QDialog):
             hl.setSpacing(9)
 
             dot = QtWidgets.QLabel("●")
-            dot.setStyleSheet(
-                f"color: {color_hex}; font-size: 13px; border: none; background: transparent;")
+            dot.setStyleSheet(f"color: {color_hex}; font-size: 13px;")
             hl.addWidget(dot)
 
             lbl_status = QtWidgets.QLabel(label_text)
-            lbl_status.setStyleSheet(
-                "color: #c8e0f0; font-size: 12px; border: none; background: transparent;")
+            lbl_status.setStyleSheet("font-size: 12px;")
             hl.addWidget(lbl_status, 1)
 
             lbl_count = QtWidgets.QLabel(f"{count}")
             lbl_count.setStyleSheet(
-                f"color: {color_hex}; font-size: 13px; font-weight: bold;"
-                " border: none; background: transparent;")
+                f"color: {color_hex}; font-size: 13px; font-weight: bold;")
             hl.addWidget(lbl_count)
 
             lbl_pct = QtWidgets.QLabel(f"{pct} %")
-            lbl_pct.setStyleSheet(
-                "color: #7aa8c0; font-size: 11px; min-width: 38px;"
-                " border: none; background: transparent;")
+            lbl_pct.setStyleSheet("color: #7aa8c0; font-size: 11px; min-width: 38px;")
             lbl_pct.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight |
                                   QtCore.Qt.AlignmentFlag.AlignVCenter)
             hl.addWidget(lbl_pct)
@@ -298,9 +246,6 @@ class _ExploitabilityPopup(QtWidgets.QDialog):
             bl.addWidget(text_row)
             bl.addWidget(_MiniBar(pct, color_hex))
             layout.addWidget(block)
-
-    def mousePressEvent(self, _event):
-        self.close()
 
 
 # ── Constantes visuelles ──────────────────────────────────────────────────────
@@ -325,7 +270,7 @@ class _DonutBase(QtWidgets.QWidget):
         self._elapsed.start()
         self._timer = QtCore.QTimer(self)
         self._timer.timeout.connect(self._step)
-        self.setFixedSize(148, 178)
+        self.setFixedSize(148, 190)
 
     def _start_anim(self, delay_ms: int = 0):
         self._timer.stop()
@@ -608,31 +553,21 @@ class _DonutMetaSplit(_DonutBase):
         p.drawText(QtCore.QRectF(cx - ds_in / 2, cy - 20, ds_in, 22),
                    QtCore.Qt.AlignmentFlag.AlignCenter, f"{pct_ess}%")
 
-        # Légende : ● ess X%   ● opt Y%
-        y_leg = top + _DS + 8
-        p.setFont(QtGui.QFont("Segoe UI", 8, QtGui.QFont.Weight.Bold))
+        # Légende deux lignes : Essentielles / Optionnelles
+        y_leg = top + _DS + 6
+        p.setFont(QtGui.QFont("Segoe UI", 7, QtGui.QFont.Weight.Bold))
 
-        # Essentiels — droite du centre
         p.setPen(self._C_ESSENTIAL)
-        p.drawText(QtCore.QRectF(2, y_leg, cx - 5, 14),
-                   QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter,
-                   f"● ess {pct_ess}%")
+        p.drawText(QtCore.QRectF(0, y_leg, w, 13),
+                   QtCore.Qt.AlignmentFlag.AlignCenter,
+                   f"● Essentielles  {pct_ess}%")
 
-        # Séparateur
-        p.setFont(QtGui.QFont("Segoe UI", 8))
-        p.setPen(QtGui.QColor("#1e3448"))
-        p.drawText(QtCore.QRectF(cx - 5, y_leg, 10, 14),
-                   QtCore.Qt.AlignmentFlag.AlignCenter | QtCore.Qt.AlignmentFlag.AlignVCenter,
-                   "·")
-
-        # Optionnels — gauche du centre
-        p.setFont(QtGui.QFont("Segoe UI", 8, QtGui.QFont.Weight.Bold))
         p.setPen(self._C_OPTIONAL)
-        p.drawText(QtCore.QRectF(cx + 5, y_leg, w - cx - 7, 14),
-                   QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
-                   f"● opt {pct_opt}%")
+        p.drawText(QtCore.QRectF(0, y_leg + 14, w, 13),
+                   QtCore.Qt.AlignmentFlag.AlignCenter,
+                   f"● Optionnelles  {pct_opt}%")
 
-        self._paint_title(p, self._title, w, y_leg + 16)
+        self._paint_title(p, self._title, w, y_leg + 30)
         p.end()
 
 
@@ -730,7 +665,7 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
         dl.setSpacing(0)
 
         self._card_kept    = _DonutBiColor("Gardées / Jetées")
-        self._card_ardoise = _DonutCard("Ardoise",     "#fbbf24")
+        self._card_ardoise = _DonutCard("Validation", "#fbbf24")
         self._card_meta    = _DonutMetaSplit("Métadonnées")
         self._card_derush  = _DonutCard("Dérushées",   "#a78bfa")
 
@@ -774,33 +709,20 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
         self._stack.setCurrentIndex(1)
 
     def _show_expl_popup(self):
-        popup = _ExploitabilityPopup(self._expl_breakdown, None)
-        # sizeHint() est fiable avant show() ; adjustSize() ne l'est pas toujours.
-        sh = popup.sizeHint()
-        cg = self._card_ardoise.mapToGlobal(QtCore.QPoint(0, 0))
-        x  = cg.x() + self._card_ardoise.width() // 2 - sh.width() // 2
-        y  = cg.y() - sh.height() - 6
-        sc = self._card_ardoise.screen()
-        if sc:
-            sg = sc.availableGeometry()
-            x = max(sg.left(), min(x, sg.right()  - sh.width()))
-            y = max(sg.top(),  min(y, sg.bottom() - sh.height()))
-        popup.move(x, y)
-        # Qt.Popup est fermé par le mouseRelease qui suit le double-clic.
-        # On diffère le show() de 50 ms pour laisser la file d'événements se vider.
-        QtCore.QTimer.singleShot(50, popup.show)
+        self._expl_popup = _ExploitabilityPopup(self._expl_breakdown, None)
+        self._expl_popup.show()
 
     def set_language(self, lang: str):
         if lang == 'en':
             self._card_kept._title    = "Kept / Trashed"
-            self._card_ardoise._title = "Slate"
+            self._card_ardoise._title = "Validation"
             self._card_ardoise.setToolTip("Double-click to see breakdown by exploitability status")
             self._card_meta._title    = "Metadata"
             self._card_derush._title  = "Processed"
             self._title_lbl.setText("Campaign progress")
         else:
             self._card_kept._title    = "Gardées / Jetées"
-            self._card_ardoise._title = "Ardoise"
+            self._card_ardoise._title = "Validation"
             self._card_ardoise.setToolTip(
                 "Double-cliquer pour voir la répartition par statut d'exploitabilité")
             self._card_meta._title    = "Métadonnées"
