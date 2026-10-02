@@ -236,7 +236,10 @@ class TelemetryDialog(QtWidgets.QDialog):
             pass
         self._master_vb.sigXRangeChanged.connect(self._on_vb_range_changed)
 
-        # Vue initiale complète → scrollbar désactivé
+        # Vue initiale : plage complète (données + durée vidéo) dès l'ouverture
+        self._master_vb.setXRange(x_min, x_max, padding=0.02)
+        for pw in self.plot_widgets.values():
+            pw.getViewBox().enableAutoRange(axis='y')
         self._hscroll.setRange(0, 0)
         self._hscroll.setEnabled(False)
 
@@ -284,10 +287,17 @@ class TelemetryDialog(QtWidgets.QDialog):
         self._scroll_busy = False
 
     def _reset_all_views(self):
-        """Remet tous les graphes visibles en vue auto (zoom/pan réinitialisé)."""
-        for pw in self.plot_widgets.values():
-            pw.enableAutoRange()
-            pw.autoRange()
+        """Remet tous les graphes visibles sur la plage exacte des données."""
+        if self._master_vb is not None and hasattr(self, '_x_data_min'):
+            # Réinitialise X sur les bornes exactes des données (évite autoRange élargi)
+            self._master_vb.setXRange(self._x_data_min, self._x_data_max, padding=0.02)
+            # Laisse chaque graphe auto-ranger son Y indépendamment
+            for pw in self.plot_widgets.values():
+                pw.getViewBox().enableAutoRange(axis='y')
+        else:
+            for pw in self.plot_widgets.values():
+                pw.enableAutoRange()
+                pw.autoRange()
         self._hscroll.setRange(0, 0)
         self._hscroll.setEnabled(False)
 
@@ -306,8 +316,9 @@ class TelemetryDialog(QtWidgets.QDialog):
 
     # ── Chargement des données (une seule fois) ───────────────────────────
 
-    def update_data(self, df):
+    def update_data(self, df, video_duration_s: float = 0.0):
         """Charge le DataFrame de télémétrie et trace les courbes (ou affiche 'manquant')."""
+        self._video_duration_s = video_duration_s
         if df is None or df.empty:
             for key, stack in self.stacks.items():
                 self._show_missing(key, stack)
@@ -359,7 +370,10 @@ class TelemetryDialog(QtWidgets.QDialog):
         else:
             self._show_missing("lux_rgb", self.stacks["lux_rgb"])
 
-        self._init_scroll_links(float(x_data.min()), float(x_data.max()))
+        x_max = float(x_data.max())
+        if self._video_duration_s > x_max:
+            x_max = self._video_duration_s
+        self._init_scroll_links(float(x_data.min()), x_max)
 
     def _show_missing(self, key: str, stack: QtWidgets.QStackedWidget):
         """Bascule le stack sur la page 'données manquantes' (bandeau compact)."""

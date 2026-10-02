@@ -1223,7 +1223,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                 df.drop(columns=['pression'], inplace=True)
 
             self.df_telemetry = df
-            self.telemetry_dialog.update_data(df)
+            dur_s = self.player.duration() / 1000.0
+            self.telemetry_dialog.update_data(df, video_duration_s=dur_s)
             self.btn_telemetry.setEnabled(True)
 
             # Profil de profondeur → timeline

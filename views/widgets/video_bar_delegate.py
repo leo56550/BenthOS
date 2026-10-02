@@ -70,10 +70,8 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
         obs  = data.get("video_observation", {})
         surv = data.get("survey", {})
 
-        has_ardoise = bool((obs.get("timecode_ardoise") or {}).get("value"))
         _pn = obs.get("point_name")
         has_point_name = bool((_pn.get("value") if isinstance(_pn, dict) else _pn) or "")
-        has_identified = has_ardoise or has_point_name
 
         expl = obs.get("exploitable", {})
         expl_val = expl.get("value", "") if isinstance(expl, dict) else str(expl or "")
@@ -81,11 +79,11 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
         has_status = bool(expl_val and expl_val != "?")
 
         if has_point_name and has_status:
-            color = QtGui.QColor("#5DBB63")
-        elif has_identified:
-            color = QtGui.QColor("#E8A838")
+            color = QtGui.QColor("#5DBB63")   # vert  : numéro de station + exploitabilité
+        elif has_point_name or has_status:
+            color = QtGui.QColor("#E8A838")   # orange : l'un des deux seulement
         else:
-            color = QtGui.QColor("#D94F38")
+            color = QtGui.QColor("#D94F38")   # rouge  : ni numéro ni exploitabilité
 
         # Code station calculé depuis point_name uniquement (jamais station_number/codeObs brut)
         def _sv(block, key):

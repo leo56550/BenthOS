@@ -26,7 +26,8 @@ class _ToggleFrame(QtWidgets.QFrame):
         self._choice = choice
         self._checked = checked
         self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        self.setMinimumHeight(40)
+        self.setMinimumHeight(36)
+        self.setMinimumWidth(70)
         self.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Preferred,
@@ -35,7 +36,6 @@ class _ToggleFrame(QtWidgets.QFrame):
         lay.setContentsMargins(6, 4, 6, 4)
         self._lbl = QtWidgets.QLabel(choice)
         self._lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        # Transparent pour que les clics passent au QFrame parent
         self._lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         lay.addWidget(self._lbl)
 
@@ -58,22 +58,20 @@ class _ToggleFrame(QtWidgets.QFrame):
         if checked is not None:
             self._checked = checked
         bg_c, col_c, brd_c, hint_bg = colors
-        if self._checked:
-            self.setStyleSheet(
-                f"QFrame {{ background-color: {bg_c}; border: 2px solid {brd_c}; border-radius: 5px; }}"
-            )
-            self._lbl.setStyleSheet(
-                f"color: {col_c}; font-size: 13px; font-weight: bold;"
-                " font-family: 'Segoe UI', sans-serif; background: transparent; border: none;"
-            )
-        else:
-            self.setStyleSheet(
-                f"QFrame {{ background-color: {hint_bg}; border: 1px solid #2a4a6a; border-radius: 5px; }}"
-            )
-            self._lbl.setStyleSheet(
-                "color: #cce0f0; font-size: 13px; font-weight: bold;"
-                " font-family: 'Segoe UI', sans-serif; background: transparent; border: none;"
-            )
+        text_color = col_c if self._checked else "#cce0f0"
+        border_color = brd_c if self._checked else "#3a6080"
+        bg_color = bg_c if self._checked else hint_bg
+        border_w = "2px" if self._checked else "1px"
+
+        self.setStyleSheet(
+            f"QFrame {{ background-color: {bg_color}; border: {border_w} solid {border_color};"
+            " border-radius: 5px; }}"
+        )
+        # Sélecteur QLabel {{ }} plus spécifique que les cascades du parent
+        self._lbl.setStyleSheet(
+            f"QLabel {{ color: {text_color}; font-size: 13px; font-weight: bold;"
+            " font-family: 'Segoe UI', sans-serif; background: transparent; border: none; }}"
+        )
 
 
 class ValidationController:
@@ -297,7 +295,8 @@ class ValidationController:
         # Séparateur
         sep = QtWidgets.QFrame()
         sep.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        sep.setStyleSheet("background-color: #1e3448; border: none; max-height: 1px;")
+        sep.setFixedHeight(1)
+        sep.setStyleSheet("background-color: #1e3448; border: none;")
         layout.addWidget(sep)
 
         # Zone des boutons toggle (remplie dynamiquement par _rebuild_choice_buttons)
@@ -322,7 +321,8 @@ class ValidationController:
         # ── Commentaires vidéo ──────────────────────────────────────────
         sep2 = QtWidgets.QFrame()
         sep2.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        sep2.setStyleSheet("background-color: #1e3448; border: none; max-height: 1px;")
+        sep2.setFixedHeight(1)
+        sep2.setStyleSheet("background-color: #1e3448; border: none;")
         layout.addWidget(sep2)
 
         self.lbl_comment = QtWidgets.QLabel(self.translate("Commentaires vidéo", "Video comments"))

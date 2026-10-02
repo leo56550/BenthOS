@@ -9,23 +9,44 @@ from PyQt6 import QtWidgets, QtCore, QtGui
 from services.campaign_service import get_temp_json_path
 
 
-# ── Métadonnées clés ──────────────────────────────────────────────────────────
+# ── Métadonnées : champs essentiels vs optionnels ─────────────────────────────
 
-_META_KEY_FIELDS: list[tuple[str, str]] = [
-    ("video_observation", "point_name"),
+# Essentiels : bloquants pour la qualité des données livrées
+_META_ESSENTIAL_FIELDS: list[tuple[str, str]] = [
+    ("survey",            "zone"),
+    ("survey",            "type"),
+    ("system",            "type_system"),
     ("video_observation", "latitude"),
     ("video_observation", "longitude"),
+    ("survey",            "date"),
+    ("video_observation", "time"),
+    ("video_observation", "point_name"),
+    ("survey",            "region"),
     ("video_observation", "depth"),
+    ("video_observation", "video_path"),       # dossier datawork
+    ("video_observation", "video_number"),     # nom de la vidéo
+    ("video_observation", "exploitable"),
+    ("survey",            "boat_name"),
+    ("survey",            "pilot_name"),
+    ("survey",            "crew_names"),
+    ("survey",            "partners"),
+]
+
+# Optionnels : utiles mais non bloquants
+_META_OPTIONAL_FIELDS: list[tuple[str, str]] = [
     ("video_observation", "habitat"),
     ("video_observation", "estimated_visibility"),
-    ("video_observation", "exploitable"),
     ("video_observation", "tide"),
     ("video_observation", "moon"),
     ("video_observation", "weather"),
     ("video_observation", "wind"),
     ("video_observation", "seaState"),
+    ("video_observation", "site"),
+    ("video_observation", "gps_waypoint"),
 ]
-_N_META_FIELDS = len(_META_KEY_FIELDS)
+
+_N_ESSENTIAL = len(_META_ESSENTIAL_FIELDS)
+_N_OPTIONAL  = len(_META_OPTIONAL_FIELDS)
 
 
 def _is_filled(val) -> bool:
@@ -51,7 +72,8 @@ class _StatsWorker(QtCore.QThread):
         total = len(self._paths)
         ardoise = 0
         derushees = 0
-        meta_filled = 0
+        essential_filled = 0
+        optional_filled  = 0
         expl_breakdown: dict[str, int] = {}
 
         for vp in self._paths:
@@ -66,6 +88,7 @@ class _StatsWorker(QtCore.QThread):
 
             obs  = data.get("video_observation", {})
             surv = data.get("survey", {})
+            sys_ = data.get("system", {})
 
             if bool((obs.get("timecode_ardoise") or {}).get("value")):
                 ardoise += 1
@@ -92,19 +115,24 @@ class _StatsWorker(QtCore.QThread):
             if has_events:
                 derushees += 1
 
-            sections = {"video_observation": obs, "survey": surv}
-            for section, field_key in _META_KEY_FIELDS:
+            sections = {"video_observation": obs, "survey": surv, "system": sys_}
+            for section, field_key in _META_ESSENTIAL_FIELDS:
                 if _is_filled(sections.get(section, {}).get(field_key)):
-                    meta_filled += 1
+                    essential_filled += 1
+            for section, field_key in _META_OPTIONAL_FIELDS:
+                if _is_filled(sections.get(section, {}).get(field_key)):
+                    optional_filled += 1
 
         self.stats_ready.emit({
-            "total":          total,
-            "trashed":        self._trash_count,
-            "ardoise":        ardoise,
-            "expl_breakdown": expl_breakdown,
-            "derushees":      derushees,
-            "meta_filled":    meta_filled,
-            "meta_total":     _N_META_FIELDS * total,
+            "total":             total,
+            "trashed":           self._trash_count,
+            "ardoise":           ardoise,
+            "expl_breakdown":    expl_breakdown,
+            "derushees":         derushees,
+            "essential_filled":  essential_filled,
+            "essential_total":   _N_ESSENTIAL * total,
+            "optional_filled":   optional_filled,
+            "optional_total":    _N_OPTIONAL  * total,
         })
 
 
@@ -125,39 +153,95 @@ _EXPL_LABELS = {
 }
 
 
-class _ExploitabilityPopup(QtWidgets.QFrame):
+class _MiniBar(QtWidgets.QProgressBar):
+    """Petite barre de progression stylisée."""
+    def __init__(self, pct: int, color: str, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(5)
+        self.setMinimumWidth(160)
+        self.setMinimum(0)
+        self.setMaximum(100)
+        self.setValue(max(0, min(100, pct)))
+        self.setTextVisible(False)
+        self.setStyleSheet(f"""
+            QProgressBar {{
+                background-color: #162535;
+                border-radius: 2px;
+                border: none;
+            }}
+            QProgressBar::chunk {{
+                background-color: {color};
+                border-radius: 2px;
+            }}
+        """)
+
+
+class _ExploitabilityPopup(QtWidgets.QDialog):
     def __init__(self, breakdown: dict[str, int], parent=None):
-        super().__init__(parent, QtCore.Qt.WindowType.Popup |
-                         QtCore.Qt.WindowType.FramelessWindowHint)
+        super().__init__(parent,
+                         QtCore.Qt.WindowType.FramelessWindowHint |
+                         QtCore.Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, False)
+        self._drag_pos: QtCore.QPoint | None = None
         self._build(breakdown)
+
+    # ── Drag pour déplacer la fenêtre ──────────────────────────────────────
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+
+    def mouseMoveEvent(self, event):
+        if self._drag_pos is not None and event.buttons() == QtCore.Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+
+    def mouseReleaseEvent(self, _event):
+        self._drag_pos = None
 
     def _build(self, breakdown: dict[str, int]):
         self.setStyleSheet("""
-            QFrame {
+            QDialog {
                 background-color: #0e1d2c;
                 border: 1px solid #1e3448;
-                border-radius: 10px;
+                border-radius: 12px;
             }
         """)
         layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(16, 13, 16, 13)
-        layout.setSpacing(7)
+        layout.setContentsMargins(18, 15, 18, 15)
+        layout.setSpacing(4)
 
-        title = QtWidgets.QLabel("Répartition exploitabilité")
+        # En-tête : titre + bouton fermer
+        header = QtWidgets.QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(8)
+
+        title = QtWidgets.QLabel("RÉPARTITION EXPLOITABILITÉ")
         title.setStyleSheet(
-            "color: #4a6e88; font-size: 9px; font-weight: bold; letter-spacing: 1.5px;"
-            " text-transform: uppercase; border: none; background: transparent;")
-        layout.addWidget(title)
+            "color: #5a8eaa; font-size: 10px; font-weight: bold; letter-spacing: 1.2px;"
+            " border: none; background: transparent;")
+        header.addWidget(title, 1)
+
+        close_btn = QtWidgets.QLabel("✕")
+        close_btn.setStyleSheet(
+            "color: #3a5468; font-size: 12px; border: none; background: transparent;"
+            " padding: 0px 2px;")
+        close_btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        close_btn.mousePressEvent = lambda _e: self.close()
+        header.addWidget(close_btn)
+
+        header_w = QtWidgets.QWidget()
+        header_w.setStyleSheet("background: transparent;")
+        header_w.setLayout(header)
+        layout.addWidget(header_w)
 
         sep = QtWidgets.QFrame()
         sep.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        sep.setStyleSheet("background: #162535; border: none; max-height: 1px;")
+        sep.setStyleSheet("background: #1a3048; border: none; max-height: 1px; margin: 4px 0px;")
         layout.addWidget(sep)
 
         if not breakdown:
             lbl = QtWidgets.QLabel("Aucun statut renseigné")
-            lbl.setStyleSheet("color: #3a5468; font-size: 11px; border: none; background: transparent;")
+            lbl.setStyleSheet("color: #3a5468; font-size: 12px; border: none; background: transparent;")
             layout.addWidget(lbl)
             return
 
@@ -169,39 +253,51 @@ class _ExploitabilityPopup(QtWidgets.QFrame):
         total = sum(breakdown.values())
 
         for val, count in sorted_items:
-            row = QtWidgets.QWidget()
-            row.setStyleSheet("background: transparent;")
-            hl = QtWidgets.QHBoxLayout(row)
-            hl.setContentsMargins(0, 0, 0, 0)
-            hl.setSpacing(10)
+            color_hex  = _EXPL_COLORS.get(val, _EXPL_DEFAULT_COLOR)
+            label_text = _EXPL_LABELS.get(val, val.capitalize())
+            pct        = int(count / total * 100) if total else 0
 
-            # Dot coloré
-            color_hex = _EXPL_COLORS.get(val, _EXPL_DEFAULT_COLOR)
+            # Bloc : texte + barre
+            block = QtWidgets.QWidget()
+            block.setStyleSheet("background: transparent;")
+            bl = QtWidgets.QVBoxLayout(block)
+            bl.setContentsMargins(0, 4, 0, 2)
+            bl.setSpacing(5)
+
+            # Ligne texte
+            text_row = QtWidgets.QWidget()
+            text_row.setStyleSheet("background: transparent;")
+            hl = QtWidgets.QHBoxLayout(text_row)
+            hl.setContentsMargins(0, 0, 0, 0)
+            hl.setSpacing(9)
+
             dot = QtWidgets.QLabel("●")
             dot.setStyleSheet(
-                f"color: {color_hex}; font-size: 11px; border: none; background: transparent;")
+                f"color: {color_hex}; font-size: 13px; border: none; background: transparent;")
             hl.addWidget(dot)
 
-            lbl_status = QtWidgets.QLabel(_EXPL_LABELS.get(val, val.capitalize()))
+            lbl_status = QtWidgets.QLabel(label_text)
             lbl_status.setStyleSheet(
-                "color: #b0cfe0; font-size: 11px; border: none; background: transparent;")
+                "color: #c8e0f0; font-size: 12px; border: none; background: transparent;")
             hl.addWidget(lbl_status, 1)
 
-            pct = int(count / total * 100) if total else 0
             lbl_count = QtWidgets.QLabel(f"{count}")
             lbl_count.setStyleSheet(
-                "color: #d8eef8; font-size: 11px; font-weight: bold;"
+                f"color: {color_hex}; font-size: 13px; font-weight: bold;"
                 " border: none; background: transparent;")
             hl.addWidget(lbl_count)
 
-            lbl_pct = QtWidgets.QLabel(f"{pct}%")
+            lbl_pct = QtWidgets.QLabel(f"{pct} %")
             lbl_pct.setStyleSheet(
-                "color: #3a5468; font-size: 10px; min-width: 30px;"
+                "color: #7aa8c0; font-size: 11px; min-width: 38px;"
                 " border: none; background: transparent;")
-            lbl_pct.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+            lbl_pct.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight |
+                                  QtCore.Qt.AlignmentFlag.AlignVCenter)
             hl.addWidget(lbl_pct)
 
-            layout.addWidget(row)
+            bl.addWidget(text_row)
+            bl.addWidget(_MiniBar(pct, color_hex))
+            layout.addWidget(block)
 
     def mousePressEvent(self, _event):
         self.close()
@@ -422,6 +518,124 @@ class _DonutCard(_DonutBase):
         p.end()
 
 
+# ── Donut métadonnées : anneaux concentriques ─────────────────────────────────
+# Anneau extérieur (vert)  = essentiels   — chaque arc = % de complétion indépendant
+# Anneau intérieur (bleu)  = optionnels
+
+class _DonutMetaSplit(_DonutBase):
+    _C_ESSENTIAL = QtGui.QColor("#5DBB63")
+    _C_OPTIONAL  = QtGui.QColor("#60a5fa")
+    _DS_IN = 74     # diamètre anneau intérieur
+    _RW_IN = 6      # épaisseur anneau intérieur
+
+    def __init__(self, title: str, parent=None):
+        super().__init__(parent)
+        self._title      = title
+        self._ess_filled = 0
+        self._ess_total  = 1
+        self._opt_filled = 0
+        self._opt_total  = 1
+        self._p          = 0.0
+
+    def set_data(self, ess_filled: int, ess_total: int,
+                 opt_filled: int, opt_total: int, delay_ms: int = 0):
+        self._ess_filled = ess_filled
+        self._ess_total  = max(ess_total, 1)
+        self._opt_filled = opt_filled
+        self._opt_total  = max(opt_total, 1)
+        self._p          = 0.0
+        self.update()
+        self._start_anim(delay_ms)
+
+    def _step(self):
+        t = min(self._elapsed.elapsed() / _ANIM_DURATION_MS, 1.0)
+        self._p = _ease_out_quart(t)
+        self.update()
+        if t >= 1.0:
+            self._p = 1.0
+            self._timer.stop()
+
+    def _paint_inner_arc(self, p: QtGui.QPainter, rect: QtCore.QRectF,
+                         start_deg: float, span_deg: float, color: QtGui.QColor):
+        if abs(span_deg) < 0.3:
+            return
+        sq, sp = int(start_deg * 16), int(span_deg * 16)
+        gc = QtGui.QColor(color)
+        gc.setAlpha(22)
+        p.setPen(QtGui.QPen(gc, self._RW_IN + 10,
+                            QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.RoundCap))
+        p.drawArc(rect, sq, sp)
+        p.setPen(QtGui.QPen(color, self._RW_IN,
+                            QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.RoundCap))
+        p.drawArc(rect, sq, sp)
+
+    def paintEvent(self, _event):
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QtGui.QPainter.RenderHint.TextAntialiasing)
+
+        w = self.width()
+        cx, top = w // 2, 10
+        cy = top + _DS / 2.0
+
+        rect_out = QtCore.QRectF(cx - _DS / 2, top, _DS, _DS)
+        ds_in    = self._DS_IN
+        rect_in  = QtCore.QRectF(cx - ds_in / 2,
+                                  top + (_DS - ds_in) / 2,
+                                  ds_in, ds_in)
+
+        # Tracks (fond des deux anneaux)
+        p.setPen(QtGui.QPen(QtGui.QColor("#111f2d"), _RW,
+                            QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.FlatCap))
+        p.drawArc(rect_out, 0, 360 * 16)
+        p.setPen(QtGui.QPen(QtGui.QColor("#111f2d"), self._RW_IN,
+                            QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.FlatCap))
+        p.drawArc(rect_in, 0, 360 * 16)
+
+        # Arcs animés (chacun en % de son propre total)
+        ess_angle = self._ess_filled / self._ess_total * 360.0 * self._p
+        opt_angle = self._opt_filled / self._opt_total * 360.0 * self._p
+
+        self._paint_arc(p, rect_out, 90.0, -ess_angle, self._C_ESSENTIAL)
+        self._paint_inner_arc(p, rect_in,  90.0, -opt_angle, self._C_OPTIONAL)
+
+        # Centre : % essentiels
+        pct_ess = int(self._ess_filled / self._ess_total * 100)
+        pct_opt = int(self._opt_filled / self._opt_total * 100)
+
+        p.setFont(QtGui.QFont("Segoe UI", 15, QtGui.QFont.Weight.Bold))
+        p.setPen(self._C_ESSENTIAL)
+        p.drawText(QtCore.QRectF(cx - ds_in / 2, cy - 20, ds_in, 22),
+                   QtCore.Qt.AlignmentFlag.AlignCenter, f"{pct_ess}%")
+
+        # Légende : ● ess X%   ● opt Y%
+        y_leg = top + _DS + 8
+        p.setFont(QtGui.QFont("Segoe UI", 8, QtGui.QFont.Weight.Bold))
+
+        # Essentiels — droite du centre
+        p.setPen(self._C_ESSENTIAL)
+        p.drawText(QtCore.QRectF(2, y_leg, cx - 5, 14),
+                   QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter,
+                   f"● ess {pct_ess}%")
+
+        # Séparateur
+        p.setFont(QtGui.QFont("Segoe UI", 8))
+        p.setPen(QtGui.QColor("#1e3448"))
+        p.drawText(QtCore.QRectF(cx - 5, y_leg, 10, 14),
+                   QtCore.Qt.AlignmentFlag.AlignCenter | QtCore.Qt.AlignmentFlag.AlignVCenter,
+                   "·")
+
+        # Optionnels — gauche du centre
+        p.setFont(QtGui.QFont("Segoe UI", 8, QtGui.QFont.Weight.Bold))
+        p.setPen(self._C_OPTIONAL)
+        p.drawText(QtCore.QRectF(cx + 5, y_leg, w - cx - 7, 14),
+                   QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
+                   f"● opt {pct_opt}%")
+
+        self._paint_title(p, self._title, w, y_leg + 16)
+        p.end()
+
+
 # ── Spinner ───────────────────────────────────────────────────────────────────
 
 class _Spinner(QtWidgets.QWidget):
@@ -517,7 +731,7 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
 
         self._card_kept    = _DonutBiColor("Gardées / Jetées")
         self._card_ardoise = _DonutCard("Ardoise",     "#fbbf24")
-        self._card_meta    = _DonutCard("Métadonnées", "#60a5fa")
+        self._card_meta    = _DonutMetaSplit("Métadonnées")
         self._card_derush  = _DonutCard("Dérushées",   "#a78bfa")
 
         self._card_ardoise.double_clicked.connect(self._show_expl_popup)
@@ -549,15 +763,18 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
         total = stats["total"]
 
         # Entrée en cascade
-        self._card_kept.set_data(total, stats["trashed"],                            delay_ms=0)
-        self._card_ardoise.set_data(stats["ardoise"],   total,                       delay_ms=160)
-        self._card_meta.set_data(stats["meta_filled"],  max(stats["meta_total"], 1), delay_ms=320)
-        self._card_derush.set_data(stats["derushees"],  total,                       delay_ms=480)
+        self._card_kept.set_data(total, stats["trashed"],                              delay_ms=0)
+        self._card_ardoise.set_data(stats["ardoise"],   total,                         delay_ms=160)
+        self._card_meta.set_data(
+            stats["essential_filled"], max(stats["essential_total"], 1),
+            stats["optional_filled"],  max(stats["optional_total"],  1),
+            delay_ms=320)
+        self._card_derush.set_data(stats["derushees"],  total,                         delay_ms=480)
 
         self._stack.setCurrentIndex(1)
 
     def _show_expl_popup(self):
-        popup = _ExploitabilityPopup(self._expl_breakdown, self)
+        popup = _ExploitabilityPopup(self._expl_breakdown, None)
         # sizeHint() est fiable avant show() ; adjustSize() ne l'est pas toujours.
         sh = popup.sizeHint()
         cg = self._card_ardoise.mapToGlobal(QtCore.QPoint(0, 0))
@@ -589,32 +806,36 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
             self._card_meta._title    = "Métadonnées"
             self._card_derush._title  = "Dérushées"
             self._title_lbl.setText("Avancement de la campagne")
+        self._card_meta.update()
         for card in (self._card_kept, self._card_ardoise,
                      self._card_meta, self._card_derush):
             card.update()
 
 
-# ── Panneau flottant ──────────────────────────────────────────────────────────
+# ── Dialogue d'avancement (non-modal, reste ouvert hors focus) ────────────────
 
-class AvancementPanel(QtWidgets.QFrame):
+class AvancementPanel(QtWidgets.QDialog):
     def __init__(self, parent=None):
-        super().__init__(parent, QtCore.Qt.WindowType.Tool |
-                         QtCore.Qt.WindowType.FramelessWindowHint |
-                         QtCore.Qt.WindowType.NoDropShadowWindowHint)
+        super().__init__(parent)
+        self.setWindowFlags(
+            QtCore.Qt.WindowType.Window |
+            QtCore.Qt.WindowType.WindowTitleHint |
+            QtCore.Qt.WindowType.WindowCloseButtonHint |
+            QtCore.Qt.WindowType.WindowMinimizeButtonHint
+        )
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, False)
+        self.setWindowTitle("Avancement de la campagne")
         self.setStyleSheet("""
-            AvancementPanel {
+            QDialog {
                 background-color: #0c1b29;
                 border: 1px solid #1a3048;
-                border-top: none;
-                border-radius: 0px 0px 10px 10px;
             }
         """)
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self.dashboard = ProgressDashboardWidget(self)
         layout.addWidget(self.dashboard)
-        self.setFixedWidth(640)
+        self.setFixedWidth(660)
 
     def show_below(self, anchor_widget: QtWidgets.QWidget):
         gp = anchor_widget.mapToGlobal(QtCore.QPoint(0, anchor_widget.height()))
@@ -624,18 +845,15 @@ class AvancementPanel(QtWidgets.QFrame):
         if sc:
             sg = sc.availableGeometry()
             x = max(sg.left(), min(x, sg.right() - self.width()))
+            y = min(y, sg.bottom() - self.sizeHint().height())
         self.move(x, y)
         self.adjustSize()
         self.show()
         self.raise_()
+        self.activateWindow()
 
     def toggle(self, anchor_widget: QtWidgets.QWidget):
         if self.isVisible():
             self.hide()
         else:
             self.show_below(anchor_widget)
-
-    def changeEvent(self, event):
-        super().changeEvent(event)
-        if event.type() == QtCore.QEvent.Type.ActivationChange and not self.isActiveWindow():
-            self.hide()
