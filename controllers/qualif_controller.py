@@ -957,8 +957,11 @@ class QualifController:
         if not video_path:
             return
         color = self._get_completion_color(str(video_path))
-        color.setAlpha(35)
-        brush = QtGui.QBrush(color)
+        if color.name().lower() == "#d94f38":
+            brush = QtGui.QBrush(QtCore.Qt.GlobalColor.transparent)
+        else:
+            color.setAlpha(35)
+            brush = QtGui.QBrush(color)
         for col in range(self.video_model.columnCount()):
             cell = self.video_model.item(row, col)
             if cell:

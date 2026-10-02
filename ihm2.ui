@@ -373,7 +373,7 @@ QPushButton[actif=&quot;true&quot;] {
             </size>
            </property>
            <property name="styleSheet">
-            <string notr="true">background-color: rgb(32, 65, 93);</string>
+            <string notr="true">QFrame#frame_3 { background-color: rgb(32, 65, 93); }</string>
            </property>
            <property name="frameShape">
             <enum>QFrame::Shape::StyledPanel</enum>
@@ -434,10 +434,7 @@ background-color: rgb(39, 120, 162);
                 </size>
                </property>
                <property name="styleSheet">
-                <string notr="true">background-color: rgb(39, 120, 162);
-border: 1px solid #ababab;
-border-radius: 10px;
-</string>
+                <string notr="true">QFrame#exploitable_container { background-color: #0d1b2a; border: none; border-radius: 8px; }</string>
                </property>
                <property name="frameShape">
                 <enum>QFrame::Shape::StyledPanel</enum>
@@ -489,7 +486,7 @@ QPushButton[actif=&quot;true&quot;] {
             <bool>true</bool>
            </property>
            <property name="styleSheet">
-            <string notr="true">background-color: rgb(39, 120, 162);
+            <string notr="true">background-color: #000000;
 </string>
            </property>
            <property name="frameShape">

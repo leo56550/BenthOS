@@ -288,16 +288,11 @@ class ValidationController:
         self.lbl_exploitable.setStyleSheet(
             "color: #F2BFB4; font-size: 12px; font-weight: bold;"
             " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif;"
-            " letter-spacing: 0.3px;"
+            " letter-spacing: 0.3px; background: transparent;"
         )
         layout.addWidget(self.lbl_exploitable)
 
-        # Séparateur
-        sep = QtWidgets.QFrame()
-        sep.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        sep.setFixedHeight(1)
-        sep.setStyleSheet("background-color: #1e3448; border: none;")
-        layout.addWidget(sep)
+        layout.addSpacing(4)
 
         # Zone des boutons toggle (remplie dynamiquement par _rebuild_choice_buttons)
         self._choice_container = QtWidgets.QWidget()
@@ -314,21 +309,17 @@ class ValidationController:
         self._status_badge = QtWidgets.QLabel(self.translate("Aucune sélection", "No selection"))
         self._status_badge.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self._status_badge.setStyleSheet(
-            "color: #3a5568; font-size: 10px; font-family: 'Segoe UI', sans-serif;"
+            "color: #3a5568; font-size: 10px; font-family: 'Segoe UI', sans-serif; background: transparent;"
         )
         layout.addWidget(self._status_badge)
 
         # ── Commentaires vidéo ──────────────────────────────────────────
-        sep2 = QtWidgets.QFrame()
-        sep2.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        sep2.setFixedHeight(1)
-        sep2.setStyleSheet("background-color: #1e3448; border: none;")
-        layout.addWidget(sep2)
+        layout.addSpacing(4)
 
         self.lbl_comment = QtWidgets.QLabel(self.translate("Commentaires vidéo", "Video comments"))
         self.lbl_comment.setStyleSheet(
             "color: #F2BFB4; font-size: 11px; font-weight: bold;"
-            " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif;"
+            " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif; background: transparent;"
         )
         layout.addWidget(self.lbl_comment)
 
