@@ -717,6 +717,40 @@ class MetadonneesController:
 
         outer.addWidget(title_bar)
 
+        # ── Barre de filtres (visible uniquement en mode import CSV) ──────
+        self._filter_bar = QtWidgets.QWidget()
+        self._filter_bar.setStyleSheet(
+            "background-color: #0c1720; border-bottom: 1px solid #1a2e40;")
+        self._filter_bar.setFixedHeight(26)
+        fb_row = QtWidgets.QHBoxLayout(self._filter_bar)
+        fb_row.setContentsMargins(10, 0, 10, 0)
+        fb_row.setSpacing(8)
+
+        _lbl_filter = QtWidgets.QLabel(self.translate("Filtres :", "Filters:"))
+        _lbl_filter.setStyleSheet(
+            "color: #4a7a9a; font-size: 10px; font-weight: bold; border: none;"
+            " font-family: 'Segoe UI', sans-serif;")
+        fb_row.addWidget(_lbl_filter)
+
+        self._btn_json_filter = QtWidgets.QPushButton(
+            self.translate("Avec JSON", "With JSON"))
+        self._btn_json_filter.setCheckable(True)
+        self._btn_json_filter.setToolTip(self.translate(
+            "Afficher uniquement les lignes dont le _temp.json a été créé",
+            "Show only rows whose _temp.json has been created"))
+        self._btn_json_filter.setStyleSheet(
+            "QPushButton{background:#0d2a1a;color:#5cd88a;border:1px solid #2a7a4a;"
+            "border-radius:3px;padding:1px 10px;font-size:10px;font-weight:bold;"
+            "font-family:'Segoe UI',sans-serif;}"
+            "QPushButton:hover{background:#1a5a30;color:white;}"
+            "QPushButton:checked{background:#1a5a30;color:#80ffb0;border-color:#5cd88a;}"
+        )
+        self._btn_json_filter.toggled.connect(self._toggle_json_filter)
+        fb_row.addWidget(self._btn_json_filter)
+        fb_row.addStretch()
+        self._filter_bar.setVisible(False)
+        outer.addWidget(self._filter_bar)
+
         # ── En-tête campagne ─────────────────────────────────────────────
         _lbl_h = ("color: #7ec8e3; font-size: 10px; font-weight: bold; border: none;"
                   " font-family: 'Segoe UI', sans-serif;")
@@ -878,6 +912,10 @@ class MetadonneesController:
         """Reconstruit le tableau infostation depuis les JSONs de toutes les vidéos."""
         if not hasattr(self, '_ft_table') or self._ft_table is None:
             return
+        if hasattr(self, '_filter_bar'):
+            self._filter_bar.setVisible(False)
+            if hasattr(self, '_btn_json_filter'):
+                self._btn_json_filter.setChecked(False)
         self._set_video_buttons_enabled(False)
         self._ft_table.setSortingEnabled(False)
         self._ft_table.blockSignals(True)
@@ -1102,6 +1140,8 @@ class MetadonneesController:
         # Ré-appliquer les couleurs système (au cas où Systeme a été complété)
         self._apply_ft_table_system_colors()
         # Ré-appliquer le filtre actif si besoin
+        if hasattr(self, '_btn_json_filter') and self._btn_json_filter.isChecked():
+            self._toggle_json_filter(True)
 
     def _toggle_json_filter(self, checked: bool):
         """Masque les lignes sans _temp.json quand le filtre est actif."""
@@ -2512,6 +2552,8 @@ class MetadonneesController:
         self._apply_ft_table_json_bold()
         if self._ft_table.rowCount() > 0:
             self._set_video_buttons_enabled(True)
+        if hasattr(self, '_filter_bar'):
+            self._filter_bar.setVisible(True)
 
     def _resolve_video_path_from_row(self, row: int, folder_path: str,
                                        vpath_col: int | None, vnum_col: int | None) -> str | None:
