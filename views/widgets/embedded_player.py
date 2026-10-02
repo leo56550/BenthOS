@@ -7,6 +7,7 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 
+from services.image_service import process_image_dehaze, calculate_water_light
 from views.widgets.timeline_widget import VideoTimeline
 from views.dialogs.telemetry_dialog import TelemetryDialog
 from views.style import (C_INDIGO, C_CERULEAN, C_JASPER, C_MELON,
@@ -751,12 +752,10 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         return result
 
     def _dehaze(self, img: np.ndarray) -> np.ndarray:
-        """Applique un CLAHE sur le canal L (LAB) pour réduire le voile sous-marin."""
+        """Débrumage Dark Channel Prior (même algo que l'export de lot, mode sous-marin)."""
         try:
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-            lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
-            lab[:, :, 0] = clahe.apply(lab[:, :, 0])
-            return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+            a_vector = calculate_water_light(img)
+            return process_image_dehaze(img, a_vector, is_water=True)
         except Exception:
             return img
 
