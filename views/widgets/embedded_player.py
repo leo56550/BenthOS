@@ -7,7 +7,7 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 
-from services.image_service import process_image_dehaze, calculate_water_light
+from services.image_service import process_image_dehaze, calculate_water_light, process_image_he
 from views.widgets.timeline_widget import VideoTimeline
 from views.dialogs.telemetry_dialog import TelemetryDialog
 from views.style import (C_INDIGO, C_CERULEAN, C_JASPER, C_MELON,
@@ -740,9 +740,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         """Applique les corrections actives (HE, dehaze, contraste, luminosité) sur frame_bgr."""
         result = frame_bgr.copy()
         if self._corr_he:
-            hsv = cv2.cvtColor(result, cv2.COLOR_BGR2HSV)
-            hsv[:, :, 2] = cv2.equalizeHist(hsv[:, :, 2])
-            result = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+            result = process_image_he(result)
         if self._corr_dehaze:
             result = self._dehaze(result)
         if self._corr_contrast != 1.0 or self._corr_brightness != 0:
