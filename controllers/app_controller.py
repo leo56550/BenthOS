@@ -625,6 +625,9 @@ class AppController(QtCore.QObject):
         generated, total, failures = self.metadonnees_ctrl.generate_temp_from_table(
             folder, mode=mode
         )
+        # Recharge le tableau depuis les temp.json pour afficher les données fusionnées
+        # (historiques + champs déjà renseignés dans les temp.json existants)
+        self.metadonnees_ctrl._rebuild_ft_table()
         self.metadonnees_ctrl._apply_ft_table_json_bold()
         self._show_generate_result(generated, total, failures)
 

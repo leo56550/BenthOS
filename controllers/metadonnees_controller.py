@@ -717,39 +717,6 @@ class MetadonneesController:
 
         outer.addWidget(title_bar)
 
-        # ── Barre de filtres ──────────────────────────────────────────────
-        filter_bar = QtWidgets.QWidget()
-        filter_bar.setStyleSheet(
-            "background-color: #0c1720; border-bottom: 1px solid #1a2e40;")
-        filter_bar.setFixedHeight(26)
-        fb_row = QtWidgets.QHBoxLayout(filter_bar)
-        fb_row.setContentsMargins(10, 0, 10, 0)
-        fb_row.setSpacing(8)
-
-        _lbl_filter = QtWidgets.QLabel(self.translate("Filtres :", "Filters:"))
-        _lbl_filter.setStyleSheet(
-            "color: #4a7a9a; font-size: 10px; font-weight: bold; border: none;"
-            " font-family: 'Segoe UI', sans-serif;")
-        fb_row.addWidget(_lbl_filter)
-
-        self._btn_json_filter = QtWidgets.QPushButton(
-            self.translate("Avec JSON", "With JSON"))
-        self._btn_json_filter.setCheckable(True)
-        self._btn_json_filter.setToolTip(self.translate(
-            "Afficher uniquement les lignes dont le _temp.json a été créé",
-            "Show only rows whose _temp.json has been created"))
-        self._btn_json_filter.setStyleSheet(
-            "QPushButton{background:#0d2a1a;color:#5cd88a;border:1px solid #2a7a4a;"
-            "border-radius:3px;padding:1px 10px;font-size:10px;font-weight:bold;"
-            "font-family:'Segoe UI',sans-serif;}"
-            "QPushButton:hover{background:#1a5a30;color:white;}"
-            "QPushButton:checked{background:#1a5a30;color:#80ffb0;border-color:#5cd88a;}"
-        )
-        self._btn_json_filter.toggled.connect(self._toggle_json_filter)
-        fb_row.addWidget(self._btn_json_filter)
-        fb_row.addStretch()
-        outer.addWidget(filter_bar)
-
         # ── En-tête campagne ─────────────────────────────────────────────
         _lbl_h = ("color: #7ec8e3; font-size: 10px; font-weight: bold; border: none;"
                   " font-family: 'Segoe UI', sans-serif;")
@@ -1107,8 +1074,6 @@ class MetadonneesController:
         # Ré-appliquer les couleurs système (au cas où Systeme a été complété)
         self._apply_ft_table_system_colors()
         # Ré-appliquer le filtre actif si besoin
-        if hasattr(self, '_btn_json_filter') and self._btn_json_filter.isChecked():
-            self._toggle_json_filter(True)
 
     def _toggle_json_filter(self, checked: bool):
         """Masque les lignes sans _temp.json quand le filtre est actif."""
@@ -1613,8 +1578,6 @@ class MetadonneesController:
             self._btn_copier.setText(self.translate("Copier ↓", "Copy ↓"))
         if hasattr(self, '_btn_map'):
             self._btn_map.setText(self.translate("OUVRIR CARTE", "OPEN MAP"))
-        if hasattr(self, '_btn_json_filter'):
-            self._btn_json_filter.setText(self.translate("Avec JSON", "With JSON"))
         if hasattr(self, '_ft_table'):
             self._ft_table.setHorizontalHeaderLabels(self._get_ft_header_labels())
 
