@@ -945,6 +945,34 @@ class MetadonneesController:
         self._ft_table.blockSignals(False)
         self._ft_table.setSortingEnabled(True)
 
+    def _refresh_table_cells_from_jsons(self):
+        """Met à jour les valeurs des cellules depuis les temp.json sans reconstruire la table.
+
+        Utilisé après generate_temp_from_table(fill_empty) quand le video_model est vide
+        (import CSV seul, sans campagne ouverte). Le chemin vidéo doit déjà être stocké
+        dans UserRole de la colonne 0 (posé par generate_temp_from_table).
+        """
+        if not hasattr(self, '_ft_table') or self._ft_table is None:
+            return
+        self._ft_table.blockSignals(True)
+        for row in range(self._ft_table.rowCount()):
+            first_item = self._ft_table.item(row, 0)
+            if not first_item:
+                continue
+            video_path = first_item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if not video_path:
+                continue
+            row_data = self._build_infostation_row(str(video_path))
+            for col_i in range(len(_FT_TABLE_COLS)):
+                cell = self._ft_table.item(row, col_i)
+                if cell is None:
+                    continue
+                val = str(row_data[col_i] if col_i < len(row_data) else "")
+                cell.setText(val)
+        self._ft_table.blockSignals(False)
+        self._apply_ft_table_system_colors()
+        self._apply_ft_table_json_bold()
+
     def _apply_ft_table_system_colors(self):
         """Applique la colorisation par système sur toutes les lignes actuelles du tableau."""
         if not hasattr(self, '_ft_table') or not self._ft_table:

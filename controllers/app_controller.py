@@ -625,10 +625,14 @@ class AppController(QtCore.QObject):
         generated, total, failures = self.metadonnees_ctrl.generate_temp_from_table(
             folder, mode=mode
         )
-        # Recharge le tableau depuis les temp.json pour afficher les données fusionnées
-        # (historiques + champs déjà renseignés dans les temp.json existants)
-        self.metadonnees_ctrl._rebuild_ft_table()
-        self.metadonnees_ctrl._apply_ft_table_json_bold()
+        # Affiche les données fusionnées (historiques + temp.json existants) :
+        # - si une campagne est ouverte (video_model peuplé) → reconstruction complète avec tri
+        # - sinon (import CSV seul) → mise à jour des cellules en place depuis les temp.json
+        if self.metadonnees_ctrl.video_model.rowCount() > 0:
+            self.metadonnees_ctrl._rebuild_ft_table()
+            self.metadonnees_ctrl._apply_ft_table_json_bold()
+        else:
+            self.metadonnees_ctrl._refresh_table_cells_from_jsons()
         self._show_generate_result(generated, total, failures)
 
     def _show_generate_result(self, generated: int, total: int, failures: list):
