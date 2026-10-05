@@ -425,10 +425,10 @@ class EvenementsController:
         if hasattr(self, 'lbl_valeur_event'):
             self.lbl_valeur_event.setText(self.translate("Caractéristiques", "Characteristics"))
         if hasattr(self, 'lbl_commentaire_input'):
-            self.lbl_commentaire_input.setText(self.translate("Commentaire rapide", "Quick Comment"))
-        if hasattr(self, 'input_commentaire_event'):
-            self.input_commentaire_event.setPlaceholderText(
-                self.translate("Écrivez un commentaire...", "Write a comment here..."))
+            self.lbl_commentaire_input.setText(self.translate("Commentaires vidéo", "Video comments"))
+        if hasattr(self, '_evt_comment_edit'):
+            self._evt_comment_edit.setPlaceholderText(
+                self.translate("Observations sur la vidéo…", "Video observations…"))
         if hasattr(self, 'btn_finir') and self.capture_start_time is None:
             self.btn_finir.setText(self.translate("⏹ FIN D'ÉVÉNEMENT", "⏹ END EVENT"))
         self._rebuild_event_buttons()
@@ -1348,21 +1348,25 @@ class EvenementsController:
         sep.setStyleSheet("border: none; border-top: 1px solid #1e3448; max-height: 1px;")
         menu_layout.addWidget(sep)
 
-        # ── Commentaire ──────────────────────────────────────────────────
+        # ── Commentaire vidéo (derush_comment) ──────────────────────────
         self.lbl_commentaire_input = QtWidgets.QLabel(
-            self.translate("Commentaire rapide", "Quick Comment"))
+            self.translate("Commentaires vidéo", "Video comments"))
         self.lbl_commentaire_input.setStyleSheet(
-            "color: #a0b8c8; font-size: 10px; font-weight: bold; border: none;")
+            "color: #F2BFB4; font-size: 10px; font-weight: bold; border: none;")
         menu_layout.addWidget(self.lbl_commentaire_input)
 
-        self.input_commentaire_event = QtWidgets.QLineEdit()
-        self.input_commentaire_event.setPlaceholderText(
-            self.translate("Écrivez un commentaire...", "Write a comment here..."))
-        self.input_commentaire_event.setStyleSheet(
-            "QLineEdit { background-color: #212a35; color: white; border: 1px solid #2778a2;"
-            " border-radius: 5px; padding: 3px 6px; font-size: 10px; }"
+        self._evt_comment_edit = QtWidgets.QPlainTextEdit()
+        self._evt_comment_edit.setPlaceholderText(
+            self.translate("Observations sur la vidéo…", "Video observations…"))
+        self._evt_comment_edit.setMaximumHeight(72)
+        self._evt_comment_edit.setStyleSheet(
+            "QPlainTextEdit { background-color: #162433; color: #F2BFB4;"
+            " border: 1px solid #2a4057; border-radius: 4px;"
+            " padding: 4px 6px; font-size: 10px; }"
         )
-        menu_layout.addWidget(self.input_commentaire_event)
+        self._evt_comment_edit.setEnabled(False)
+        self._evt_comment_edit.textChanged.connect(self._on_evt_comment_changed)
+        menu_layout.addWidget(self._evt_comment_edit)
 
         # ── Bouton FIN (visible seulement pendant capture durée) ─────────
         self.btn_finir = QtWidgets.QPushButton(self.translate("⏹ FIN D'ÉVÉNEMENT", "⏹ END EVENT"))
@@ -1862,7 +1866,6 @@ class EvenementsController:
             return
         current_type = getattr(self, '_selected_type', '') or self.combo_type_event.currentText()
         current_value = getattr(self, '_selected_value', '') or self.combo_valeur_event.currentText()
-        quick_comment = self.input_commentaire_event.text().strip() if hasattr(self, 'input_commentaire_event') else ""
         pos_ms = self.event_player.timeline.get_current_position() if hasattr(self.event_player, 'timeline') else 0
         time_str = self.event_player.timeline._format_ms(pos_ms) if hasattr(self.event_player, 'timeline') else "00:00:00"
 
@@ -1883,7 +1886,7 @@ class EvenementsController:
                 "type": "custom_event",
                 "zone": self._zone_index_for_event_type(current_type),
                 "single_frame": True,
-                "comment": quick_comment,
+                "comment": "",
                 "_json_key": self._get_json_key_from_label(current_type),
                 "_event_uid": self._generate_event_uid()
             }
@@ -1892,7 +1895,7 @@ class EvenementsController:
 
             if hasattr(self, 'tree_captures') and self.tree_captures:
                 tree_item = QtWidgets.QTreeWidgetItem(
-                    [time_str, "-", clean_category_name, current_value, quick_comment, ""]
+                    [time_str, "-", clean_category_name, current_value, "", ""]
                 )
                 tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                 tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#e68c14")))
@@ -1900,11 +1903,9 @@ class EvenementsController:
                 self.add_tree_thumbnail(tree_item, pos_ms)
 
             self.save_event_to_json(new_evt, current_type)
-            if hasattr(self, 'input_commentaire_event'):
-                self.input_commentaire_event.clear()
         else:
             self.capture_start_time = pos_ms
-            self._current_comment = quick_comment
+            self._current_comment = ""
             # Marquer le bouton actif en "recording"
             if hasattr(self, '_active_event_btn') and self._active_event_btn:
                 s = self._active_event_btn.property("_zone_s") or self._ZONE_STYLES[0]
@@ -1916,7 +1917,6 @@ class EvenementsController:
             return
         current_type = getattr(self, '_selected_type', '') or self.combo_type_event.currentText()
         current_value = getattr(self, '_selected_value', '') or self.combo_valeur_event.currentText()
-        saved_comment = getattr(self, '_current_comment', "")
         t_start = self.capture_start_time
         t_end = self.event_player.timeline.get_current_position() if hasattr(self.event_player, 'timeline') else 0
         if t_end < t_start:
@@ -1932,7 +1932,7 @@ class EvenementsController:
             "type": "custom_event",
             "zone": self._zone_index_for_event_type(current_type),
             "single_frame": False,
-            "comment": saved_comment,
+            "comment": "",
             "_json_key": self._get_json_key_from_label(current_type),
             "_event_uid": self._generate_event_uid()
         }
@@ -1945,7 +1945,7 @@ class EvenementsController:
 
         if hasattr(self, 'tree_captures') and self.tree_captures:
             tree_item = QtWidgets.QTreeWidgetItem(
-                [start_str, end_str, clean_category, current_value, saved_comment, ""]
+                [start_str, end_str, clean_category, current_value, "", ""]
             )
             tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
             self.tree_captures.addTopLevelItem(tree_item)
@@ -1953,9 +1953,6 @@ class EvenementsController:
 
         self.save_event_to_json(new_evt, current_type)
         self.capture_start_time = None
-        self._current_comment = ""
-        if hasattr(self, 'input_commentaire_event'):
-            self.input_commentaire_event.clear()
         # Réinitialiser le bouton actif
         if hasattr(self, '_active_event_btn') and self._active_event_btn:
             s = self._active_event_btn.property("_zone_s") or self._ZONE_STYLES[0]
@@ -2079,6 +2076,7 @@ class EvenementsController:
         self._nettoyer_json_misplaced_events()
         self._update_export_button_state()
         self._load_analysis_fields()
+        self._load_evt_comment()
 
         video_fps = 25.0
         if os.path.exists(self.current_video_path):
@@ -2966,6 +2964,55 @@ class EvenementsController:
             if top_index != -1:
                 self.tree_captures.takeTopLevelItem(top_index)
         self.delete_event_from_json(event_dict)
+
+    # --- Commentaire vidéo (derush_comment) ---
+
+    def _load_evt_comment(self):
+        """Charge derush_comment depuis le JSON et l'affiche dans _evt_comment_edit."""
+        if not hasattr(self, '_evt_comment_edit'):
+            return
+        self._evt_comment_edit.blockSignals(True)
+        if self.current_json_path and os.path.isfile(self.current_json_path):
+            try:
+                with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                entry = data.get("video_observation", {}).get("derush_comment", {})
+                comment = (entry.get("value", "") if isinstance(entry, dict) else entry) or ""
+                self._evt_comment_edit.setPlainText(str(comment))
+            except Exception:
+                self._evt_comment_edit.setPlainText("")
+            self._evt_comment_edit.setEnabled(True)
+        else:
+            self._evt_comment_edit.setPlainText("")
+            self._evt_comment_edit.setEnabled(False)
+        self._evt_comment_edit.blockSignals(False)
+
+    def _on_evt_comment_changed(self):
+        """Déclenche une sauvegarde différée (800 ms) du commentaire vidéo."""
+        if not hasattr(self, '_evt_comment_timer'):
+            self._evt_comment_timer = QtCore.QTimer()
+            self._evt_comment_timer.setSingleShot(True)
+            self._evt_comment_timer.setInterval(800)
+            self._evt_comment_timer.timeout.connect(self._flush_evt_comment)
+        self._evt_comment_timer.start()
+
+    def _flush_evt_comment(self):
+        """Écrit derush_comment dans le JSON temp."""
+        if not self.current_json_path or not os.path.isfile(self.current_json_path):
+            return
+        text = self._evt_comment_edit.toPlainText().strip() if hasattr(self, '_evt_comment_edit') else ""
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            vob = data.setdefault("video_observation", {})
+            if "derush_comment" in vob and isinstance(vob["derush_comment"], dict):
+                vob["derush_comment"]["value"] = text or None
+            else:
+                vob["derush_comment"] = {"value": text or None}
+            with open(self.current_json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            print(f"[EvenementsCtrl] erreur sauvegarde commentaire vidéo : {e}")
 
     # --- Thumbnails ---
 
