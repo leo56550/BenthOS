@@ -20,6 +20,8 @@ from views.widgets.video_bar_delegate import VideoBarDelegate
 from views.dialogs.export_options_dialog import ExportOptionsDialog
 from models.video_model import VideoFilterProxyModel
 from services.thumbnail_service import THUMB_W, THUMB_H
+from controllers.qualif_controller import _CameraFrameWorker
+from views.style import BTN_PRIMARY
 
 class _DeleteKeyFilter(QtCore.QObject):
     """Intercepte la touche Suppr sur le tree des événements."""
@@ -162,7 +164,37 @@ class EvenementsController:
                 {"label": "Images",         "color": QtGui.QColor(200, 168,   0, 180)}, # jaune
             ]
             self.event_player = EmbeddedVideoPlayer(parent=self.player_container_events, zone_definitions=zones)
+
+            # ── Bascule lecteur / vue des secteurs ────────────────────────
+            self._sector_pixmaps: list = []
+            self._sector_slot_labels: dict = {}
+            self._sector_worker = None
+            self._sector_view_active = False
+
+            toggle_row = QtWidgets.QWidget()
+            toggle_row.setStyleSheet("background: transparent;")
+            toggle_layout = QtWidgets.QHBoxLayout(toggle_row)
+            toggle_layout.setContentsMargins(0, 0, 0, 4)
+            toggle_layout.addStretch()
+            self.btn_toggle_sector_view = QtWidgets.QPushButton(
+                self.translate("📷 Vue des secteurs", "📷 Sector view"))
+            self.btn_toggle_sector_view.setStyleSheet(BTN_PRIMARY)
+            self.btn_toggle_sector_view.clicked.connect(self._toggle_sector_view)
+            self.btn_toggle_sector_view.setEnabled(False)
+            toggle_layout.addWidget(self.btn_toggle_sector_view)
+            layout.addWidget(toggle_row)
             layout.addWidget(self.event_player)
+
+            self._sector_scroll = QtWidgets.QScrollArea()
+            self._sector_scroll.setWidgetResizable(True)
+            self._sector_scroll.setStyleSheet("background-color: #111820; border: none;")
+            _sector_content = QtWidgets.QWidget()
+            self._sector_layout = QtWidgets.QVBoxLayout(_sector_content)
+            self._sector_layout.setContentsMargins(10, 10, 10, 10)
+            self._sector_layout.setSpacing(15)
+            self._sector_scroll.setWidget(_sector_content)
+            self._sector_scroll.setVisible(False)
+            layout.addWidget(self._sector_scroll)
 
             self.event_player.btn_ardoise.setVisible(False)
             # Boutons annotation déplacés dans le panneau "Sélection d'événement" (sous
@@ -241,6 +273,11 @@ class EvenementsController:
         self.current_language = language
         if hasattr(self, 'event_player'):
             self.event_player.set_language(language)
+        if hasattr(self, 'btn_toggle_sector_view'):
+            if not self._sector_view_active:
+                self.btn_toggle_sector_view.setText(self.translate("📷 Vue des secteurs", "📷 Sector view"))
+            else:
+                self.btn_toggle_sector_view.setText(self.translate("🎬 Lecteur", "🎬 Player"))
         if hasattr(self, '_bar_delegate'):
             self._bar_delegate.set_language(language)
             if hasattr(self, 'tree_view_events') and self.tree_view_events:
@@ -2089,6 +2126,178 @@ class EvenementsController:
                 self.event_player.df_telemetry = None
                 self.event_player.btn_telemetry.setEnabled(False)
                 self.event_player.btn_telemetry.setChecked(False)
+
+        if hasattr(self, '_sector_view_active'):
+            if self._sector_view_active:
+                self._toggle_sector_view()
+            csv_system = os.path.join(video_dir, "systemEvent.csv")
+            has_system = os.path.exists(csv_system)
+            self.btn_toggle_sector_view.setEnabled(has_system)
+            if has_system:
+                self._load_sector_view(self.current_video_path, csv_system, self.current_json_path)
+            else:
+                while self._sector_layout.count():
+                    item = self._sector_layout.takeAt(0)
+                    if item.widget():
+                        item.widget().deleteLater()
+
+    # ── Visionneur de secteurs ────────────────────────────────────────────────
+
+    def _toggle_sector_view(self):
+        """Alterne entre le lecteur vidéo et la vue des secteurs."""
+        self._sector_view_active = not self._sector_view_active
+        self.event_player.setVisible(not self._sector_view_active)
+        self._sector_scroll.setVisible(self._sector_view_active)
+        self.btn_toggle_sector_view.setText(
+            self.translate("🎬 Lecteur", "🎬 Player") if self._sector_view_active
+            else self.translate("📷 Vue des secteurs", "📷 Sector view")
+        )
+        if self._sector_view_active:
+            self.event_player.pause()
+
+    def _load_sector_view(self, video_path: str, csv_path: str, json_path: str = None):
+        """Construit la grille de photos de rotation moteur (même logique que Validation)."""
+        while self._sector_layout.count():
+            item = self._sector_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self._sector_pixmaps.clear()
+        self._sector_slot_labels.clear()
+
+        if self._sector_worker and self._sector_worker.isRunning():
+            self._sector_worker.requestInterruption()
+            self._sector_worker.wait(400)
+
+        try:
+            motor_events = []
+            if json_path and os.path.isfile(json_path):
+                with open(json_path, 'r', encoding='utf-8') as _f:
+                    _jdata = json.load(_f)
+                for _entry in (_jdata.get("video_observation", {}).get("events_motor") or []):
+                    if not isinstance(_entry, dict):
+                        continue
+                    _ms = int(_entry.get("start_ms", 0))
+                    _desc = _entry.get("description_fr", "")
+                    import re as _re
+                    _m = _re.search(r'\((\d+)°\)', _desc)
+                    _angle = int(_m.group(1)) if _m else 0
+                    _etype = "rotation_360°" if _angle == 360 else f"rotation_{_angle}°"
+                    motor_events.append({
+                        "timestamp": _ms / 1000.0,
+                        "angle": _angle,
+                        "type": _etype,
+                        "start": _ms,
+                    })
+            if not motor_events:
+                motor_events = get_motor_stable_timestamps(csv_path, delay=6.0)
+            if not motor_events:
+                lbl = QtWidgets.QLabel(self.translate(
+                    "Aucune rotation moteur trouvée dans le fichier CSV.",
+                    "No motor rotation found in the CSV file."))
+                lbl.setStyleSheet("color: white; font-size: 14px;")
+                self._sector_layout.addWidget(lbl)
+                self._sector_layout.addStretch()
+                return
+
+            tasks = []
+            slot_id = 0
+            rotation_groups = [motor_events[i:i + 6] for i in range(0, len(motor_events), 6)]
+
+            for rotation_events in rotation_groups:
+                frame_rotation = QtWidgets.QFrame()
+                frame_rotation.setFixedHeight(230)
+                frame_rotation.setStyleSheet(
+                    "background-color: #20415d; border-radius: 8px; border: 1px solid #3d3d3d;")
+                hbox = QtWidgets.QHBoxLayout(frame_rotation)
+                hbox.setContentsMargins(15, 10, 15, 10)
+                hbox.setSpacing(15)
+
+                for evt in rotation_events:
+                    ts, angle, evt_type = evt["timestamp"], evt["angle"], evt["type"]
+                    is_360 = evt_type == "rotation_360"
+                    fw, fh = (248, 188) if is_360 else (240, 180)
+                    border = "3px solid #ff3333" if is_360 else "1px solid #555555"
+
+                    w_photo = QtWidgets.QFrame()
+                    w_photo.setFixedSize(fw, fh)
+                    w_photo.setStyleSheet(
+                        f"background-color: #111a24; border-radius: 6px; border: {border};")
+                    ph_layout = QtWidgets.QVBoxLayout(w_photo)
+                    ph_layout.setContentsMargins(0, 0, 0, 0)
+                    ph_lbl = QtWidgets.QLabel("⏳")
+                    ph_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+                    ph_lbl.setStyleSheet("color: #405060; font-size: 22px; background: transparent;")
+                    ph_layout.addWidget(ph_lbl)
+
+                    self._sector_pixmaps.append(None)
+                    self._sector_slot_labels[slot_id] = (w_photo, angle, ts)
+                    tasks.append((slot_id, video_path, ts))
+                    slot_id += 1
+                    hbox.addWidget(w_photo)
+
+                if len(rotation_events) < 6:
+                    for _ in range(6 - len(rotation_events)):
+                        hbox.addSpacing(240)
+                hbox.addStretch()
+                self._sector_layout.addWidget(frame_rotation)
+
+            self._sector_layout.addStretch()
+            if tasks:
+                self._sector_worker = _CameraFrameWorker(tasks)
+                self._sector_worker.frame_ready.connect(self._on_sector_frame_ready)
+                self._sector_worker.start()
+        except Exception as e:
+            print(f"[EVENEMENTS] Erreur vue des secteurs : {e}")
+
+    def _on_sector_frame_ready(self, slot_id: int, frame_data):
+        """Remplace le placeholder par la frame extraite."""
+        if frame_data is None or slot_id not in self._sector_slot_labels:
+            return
+        w_photo, angle, ts = self._sector_slot_labels[slot_id]
+
+        h_f, w_f, ch = frame_data.shape
+        q_img = QtGui.QImage(frame_data.tobytes(), w_f, h_f, ch * w_f, QtGui.QImage.Format.Format_RGB888)
+        pixmap = QtGui.QPixmap.fromImage(q_img)
+        self._sector_pixmaps[slot_id] = pixmap
+
+        old = w_photo.layout()
+        if old:
+            while old.count():
+                item = old.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+            QtWidgets.QWidget().setLayout(old)
+
+        new_layout = QtWidgets.QVBoxLayout(w_photo)
+        new_layout.setContentsMargins(0, 0, 0, 0)
+        lbl = QtWidgets.QLabel(w_photo)
+        lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        lbl.setPixmap(pixmap.scaled(
+            w_photo.size(),
+            QtCore.Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            QtCore.Qt.TransformationMode.SmoothTransformation,
+        ))
+        new_layout.addWidget(lbl)
+
+        minutes = int(ts // 60)
+        seconds_i = int(ts % 60)
+        ms_val = int((ts - int(ts)) * 1000)
+
+        angle_lbl = QtWidgets.QLabel(f" {angle}° ", lbl)
+        angle_lbl.setStyleSheet(
+            "background-color: rgba(0,0,0,160); color: #55ff55;"
+            " font-weight: bold; border-radius: 3px; font-size: 10px;")
+        angle_lbl.adjustSize()
+        angle_lbl.move(5, 5)
+        angle_lbl.show()
+
+        time_lbl = QtWidgets.QLabel(f" {minutes:02d}:{seconds_i:02d}.{ms_val:03d} ", lbl)
+        time_lbl.setStyleSheet(
+            "background-color: rgba(0,0,0,160); color: #aaddff;"
+            " border-radius: 3px; font-size: 9px;")
+        time_lbl.adjustSize()
+        time_lbl.move(5, lbl.height() - time_lbl.height() - 5)
+        time_lbl.show()
 
     def charger_evenements_du_json(self):
         """Lit le JSON vidéo courant, construit event_dictionary et reconstruit les boutons."""
