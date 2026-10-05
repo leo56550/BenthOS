@@ -10,6 +10,7 @@ from services.motor_service import get_motor_stable_timestamps
 from services.campaign_service import (
     get_video_json_path, get_campaign_output_dir,
     resolve_video_json_path, build_video_output_name,
+    get_temp_json_path,
 )
 from services.image_service import extract_frame_at_time
 from services.video_service import check_stereo_status
@@ -87,6 +88,121 @@ class _CodestationColumnDelegate(QtWidgets.QStyledItemDelegate):
         super().initStyleOption(option, index)
         vp = index.sibling(index.row(), 0).data(QtCore.Qt.ItemDataRole.UserRole)
         option.text = self._resolver(str(vp)) if vp else ""
+
+
+class _BatchLandingWorker(QtCore.QThread):
+    """Détecte atterrissage/décollage sur toutes les vidéos de la campagne en tâche de fond."""
+    progress = QtCore.pyqtSignal(int, int)           # (done, total)
+    result   = QtCore.pyqtSignal(int, int, int, list) # (processed, skipped, failed, errors)
+
+    # Constantes de conversion identiques à EmbeddedVideoPlayer
+    _P_ATM_HPA   = 1013.25
+    _HPA_TO_METER = 1.0 / 100.55
+    _TELEMETRY_COL_ALIASES = {
+        'delta(s)': 'Delta', 'delta_s': 'Delta', 'delta': 'Delta',
+        'pression': 'pression', 'pressure': 'pression', 'press': 'pression',
+    }
+
+    def __init__(self, video_paths: list[str], overwrite: bool = False, parent=None):
+        super().__init__(parent)
+        self._video_paths = video_paths
+        self._overwrite = overwrite
+
+    def run(self):
+        import pandas as pd
+        processed = skipped = failed = 0
+        errors: list[tuple[str, str]] = []
+        total = len(self._video_paths)
+
+        for i, video_path in enumerate(self._video_paths):
+            if self.isInterruptionRequested():
+                break
+            self.progress.emit(i, total)
+            name = os.path.basename(video_path)
+
+            temp_path = get_temp_json_path(video_path)
+            if not os.path.isfile(temp_path):
+                skipped += 1
+                continue
+
+            # Vérifier si déjà renseigné (sauf overwrite)
+            if not self._overwrite:
+                try:
+                    with open(temp_path, 'r', encoding='utf-8') as f:
+                        jdata = json.load(f)
+                    vobs = jdata.get("video_observation", {})
+                    has_landing  = bool((vobs.get("timecode_landing")  or {}).get("value"))
+                    has_takeoff  = bool((vobs.get("timecode_takeoff")   or {}).get("value"))
+                    if has_landing and has_takeoff:
+                        skipped += 1
+                        continue
+                except Exception:
+                    pass
+
+            csv_path = video_path.replace(".mp4", ".csv")
+            if not os.path.isfile(csv_path):
+                skipped += 1
+                continue
+
+            try:
+                df = pd.read_csv(csv_path, sep=None, engine='python')
+                df.columns = df.columns.str.strip()
+                rename_map = {col: self._TELEMETRY_COL_ALIASES[col.lower()]
+                              for col in df.columns
+                              if col.lower() in self._TELEMETRY_COL_ALIASES}
+                df.rename(columns=rename_map, inplace=True)
+                if 'Delta' not in df.columns or 'pression' not in df.columns:
+                    skipped += 1
+                    continue
+                for col in ['Delta', 'pression']:
+                    if df[col].dtype == object:
+                        df[col] = pd.to_numeric(
+                            df[col].astype(str).str.replace(',', '.'), errors='coerce')
+                df['profondeur'] = (df['pression'] - self._P_ATM_HPA) * self._HPA_TO_METER
+                df['profondeur'] = df['profondeur'].clip(lower=0)
+
+                smooth_window = max(3, len(df) // 60)
+                smoothed = df['profondeur'].rolling(window=smooth_window, center=True, min_periods=1).mean()
+                times_s  = df['Delta'].values
+                max_depth = smoothed.max()
+                if max_depth < 0.3:
+                    skipped += 1
+                    continue
+                threshold = max_depth * 0.70
+                above = smoothed >= threshold
+                landing_idx = above.idxmax() if above.any() else None
+                takeoff_idx = above[::-1].idxmax() if above.any() else None
+                if landing_idx is None or takeoff_idx is None:
+                    failed += 1
+                    errors.append((name, "Détection impossible"))
+                    continue
+
+                landing_ms = int(float(times_s[landing_idx]) * 1000)
+                takeoff_ms  = int(float(times_s[takeoff_idx])  * 1000)
+
+                def _ms_to_tc(ms: int) -> str:
+                    s = ms // 1000
+                    h, rem = divmod(s, 3600)
+                    m, sec = divmod(rem, 60)
+                    return f"{h:02d}:{m:02d}:{sec:02d}"
+
+                with open(temp_path, 'r', encoding='utf-8') as f:
+                    jdata = json.load(f)
+                vobs = jdata.setdefault("video_observation", {})
+                for key, ms_val in (("timecode_landing", landing_ms), ("timecode_takeoff", takeoff_ms)):
+                    if key in vobs and isinstance(vobs[key], dict):
+                        vobs[key]["value"] = _ms_to_tc(ms_val)
+                    else:
+                        vobs[key] = {"value": _ms_to_tc(ms_val)}
+                with open(temp_path, 'w', encoding='utf-8') as f:
+                    json.dump(jdata, f, indent=4, ensure_ascii=False)
+                processed += 1
+            except Exception as e:
+                failed += 1
+                errors.append((name, str(e)))
+
+        self.progress.emit(total, total)
+        self.result.emit(processed, skipped, failed, errors)
 
 
 class EvenementsController:
@@ -278,6 +394,13 @@ class EvenementsController:
                 self.btn_toggle_sector_view.setText(self.translate("📷 Vue des secteurs", "📷 Sector view"))
             else:
                 self.btn_toggle_sector_view.setText(self.translate("🎬 Lecteur", "🎬 Player"))
+        if hasattr(self, 'btn_batch_landing'):
+            self.btn_batch_landing.setText(self.translate("Calculer ATT/DEC", "Calculate LND/TKF"))
+            self.btn_batch_landing.setToolTip(self.translate(
+                "Détecte automatiquement atterrissage et décollage pour toutes les vidéos "
+                "qui ont un CSV de télémétrie (ne remplace pas les valeurs déjà saisies).",
+                "Auto-detect landing and takeoff for all videos that have a telemetry CSV "
+                "(does not overwrite already set values)."))
         if hasattr(self, '_bar_delegate'):
             self._bar_delegate.set_language(language)
             if hasattr(self, 'tree_view_events') and self.tree_view_events:
@@ -1253,6 +1376,24 @@ class EvenementsController:
         self.btn_finir.clicked.connect(self.on_finir_clicked)
         menu_layout.addWidget(self.btn_finir)
 
+        # ── Séparateur ───────────────────────────────────────────────────
+        sep2 = QtWidgets.QFrame()
+        sep2.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        sep2.setStyleSheet("border: none; border-top: 1px solid #1e3448; max-height: 1px;")
+        menu_layout.addWidget(sep2)
+
+        # ── Calcul atterrissage/décollage (lot) ──────────────────────────
+        self.btn_batch_landing = QtWidgets.QPushButton(
+            self.translate("Calculer ATT/DEC", "Calculate LND/TKF"))
+        self.btn_batch_landing.setStyleSheet(BTN_PRIMARY)
+        self.btn_batch_landing.setToolTip(self.translate(
+            "Détecte automatiquement atterrissage et décollage pour toutes les vidéos "
+            "qui ont un CSV de télémétrie (ne remplace pas les valeurs déjà saisies).",
+            "Auto-detect landing and takeoff for all videos that have a telemetry CSV "
+            "(does not overwrite already set values)."))
+        self.btn_batch_landing.clicked.connect(self._batch_detect_landing_takeoff)
+        menu_layout.addWidget(self.btn_batch_landing)
+
     def _apply_evt_btn_style(self, btn: QtWidgets.QPushButton, s: dict, state: str):
         """Applique le style visuel d'un bouton d'événement (normal / selected / active)."""
         if state == "active":
@@ -2140,6 +2281,76 @@ class EvenementsController:
                     item = self._sector_layout.takeAt(0)
                     if item.widget():
                         item.widget().deleteLater()
+
+    # ── Détection atterrissage/décollage en lot ───────────────────────────────
+
+    def _batch_detect_landing_takeoff(self):
+        """Lance la détection atterrissage/décollage sur toutes les vidéos de la campagne."""
+        total = self.video_model.rowCount()
+        if total == 0:
+            QtWidgets.QMessageBox.information(
+                self.page,
+                self.translate("Lot", "Batch"),
+                self.translate("Aucune vidéo dans la campagne.", "No video in campaign."))
+            return
+
+        # Demander si on écrase les valeurs existantes
+        dlg = QtWidgets.QMessageBox(self.page)
+        dlg.setWindowTitle(self.translate("Atterrissage/Décollage — lot", "Landing/Take-off — batch"))
+        dlg.setText(self.translate(
+            f"Traitement de {total} vidéo(s).\n\nQue faire pour les vidéos dont l'atterrissage "
+            "et le décollage sont déjà renseignés ?",
+            f"Processing {total} video(s).\n\nWhat to do for videos whose landing and take-off "
+            "are already set?"))
+        btn_skip     = dlg.addButton(self.translate("Conserver", "Keep"), QtWidgets.QMessageBox.ButtonRole.AcceptRole)
+        btn_overwrite= dlg.addButton(self.translate("Écraser",   "Overwrite"), QtWidgets.QMessageBox.ButtonRole.DestructiveRole)
+        dlg.addButton(self.translate("Annuler", "Cancel"), QtWidgets.QMessageBox.ButtonRole.RejectRole)
+        dlg.exec()
+        clicked = dlg.clickedButton()
+        if clicked is None or clicked is dlg.button(QtWidgets.QMessageBox.StandardButton.NoButton):
+            return
+        if clicked not in (btn_skip, btn_overwrite):
+            return
+        overwrite = clicked is btn_overwrite
+
+        video_paths = []
+        for row in range(total):
+            item = self.video_model.item(row, 0)
+            if item:
+                vp = item.data(QtCore.Qt.ItemDataRole.UserRole)
+                if vp:
+                    video_paths.append(str(vp))
+
+        progress_dlg = QtWidgets.QProgressDialog(
+            self.translate("Détection en cours…", "Detection in progress…"),
+            self.translate("Annuler", "Cancel"),
+            0, len(video_paths), self.page)
+        progress_dlg.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
+        progress_dlg.setMinimumDuration(0)
+        progress_dlg.setValue(0)
+
+        self._batch_worker = _BatchLandingWorker(video_paths, overwrite=overwrite)
+        self._batch_worker.progress.connect(lambda done, _t: progress_dlg.setValue(done))
+        progress_dlg.canceled.connect(self._batch_worker.requestInterruption)
+
+        def _on_result(processed, skipped, failed, errors):
+            progress_dlg.close()
+            msg = self.translate(
+                f"{processed} vidéo(s) traitée(s), {skipped} ignorée(s), {failed} échec(s).",
+                f"{processed} video(s) processed, {skipped} skipped, {failed} failed.")
+            if errors:
+                detail = "\n".join(f"• {n}: {r}" for n, r in errors[:10])
+                msg += f"\n\n{detail}"
+            QtWidgets.QMessageBox.information(
+                self.page,
+                self.translate("Résultat", "Result"),
+                msg)
+            # Recharger la vidéo courante si son timecode a pu changer
+            if self.current_video_path:
+                self.charger_evenements_du_json()
+
+        self._batch_worker.result.connect(_on_result)
+        self._batch_worker.start()
 
     # ── Visionneur de secteurs ────────────────────────────────────────────────
 
