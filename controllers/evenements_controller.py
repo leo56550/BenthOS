@@ -2092,6 +2092,8 @@ class EvenementsController:
                 video_fps = 25.0
 
         timeline_events = []
+        self._thumb_bulkload = True
+        self._thumb_queue = []
 
         if self.current_json_path and os.path.exists(self.current_json_path):
             try:
@@ -2257,6 +2259,9 @@ class EvenementsController:
 
         if hasattr(self, 'tree_captures') and self.tree_captures:
             self.tree_captures.blockSignals(False)
+
+        self._thumb_bulkload = False
+        self._start_thumb_loader()
 
         if hasattr(self, 'event_player') and self.event_player:
             self.event_player.load_video_and_events(video_to_load, timeline_events, is_stereo=is_stereo)
@@ -2965,29 +2970,79 @@ class EvenementsController:
     # --- Thumbnails ---
 
     def add_tree_thumbnail(self, tree_item: QtWidgets.QTreeWidgetItem, timestamp_ms: int):
-        """Extrait une miniature vidéo et l'insère dans la colonne Aperçu de tree_item."""
-        thumbnail_label = QtWidgets.QLabel()
-        thumbnail_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        thumbnail_label.setStyleSheet(
-            "background-color: #0c141c; margin: 3px; border: 1px solid #2a4057; border-radius: 4px;")
-        vignette_pixmap = None
-        if self.current_video_path and os.path.exists(self.current_video_path):
-            frame_rgb = extract_frame_at_time(self.current_video_path, timestamp_ms / 1000.0)
-            if frame_rgb is not None:
-                h, w, ch = frame_rgb.shape
-                q_img = QtGui.QImage(frame_rgb.data, w, h, ch * w, QtGui.QImage.Format.Format_RGB888)
-                vignette_pixmap = QtGui.QPixmap.fromImage(q_img)
-        if vignette_pixmap and not vignette_pixmap.isNull():
-            thumbnail_label.setPixmap(
-                vignette_pixmap.scaled(58, 32, QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-                                       QtCore.Qt.TransformationMode.SmoothTransformation)
+        """Insère une miniature placeholder et lance l'extraction asynchrone."""
+        _placeholder = (
+            "background-color: #0c141c; margin: 3px; border: 1px solid #2a4057;"
+            " border-radius: 4px; color: #4a6478; font-size: 10px; font-weight: bold;"
+        )
+        lbl = QtWidgets.QLabel("…")
+        lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        lbl.setStyleSheet(_placeholder)
+        self.tree_captures.setItemWidget(tree_item, 5, lbl)
+
+        if not self.current_video_path or not os.path.exists(self.current_video_path):
+            lbl.setText("—")
+            return
+
+        if not hasattr(self, '_thumb_queue'):
+            self._thumb_queue = []
+        self._thumb_queue.append((lbl, self.current_video_path, timestamp_ms / 1000.0))
+
+        if not getattr(self, '_thumb_bulkload', False):
+            self._start_thumb_loader()
+
+    def _start_thumb_loader(self):
+        """Démarre le chargement asynchrone des miniatures en attente."""
+        queue = getattr(self, '_thumb_queue', [])
+        if not queue:
+            return
+        self._thumb_queue = []
+
+        gen = getattr(self, '_thumb_generation', 0) + 1
+        self._thumb_generation = gen
+
+        old = getattr(self, '_thumb_loader', None)
+        if old and old.isRunning():
+            old.requestInterruption()
+
+        # slot_id encode la génération pour ignorer les résultats périmés
+        tasks = [(gen * 100000 + i, path, ts) for i, (_, path, ts) in enumerate(queue)]
+        self._thumb_slot_map = {gen * 100000 + i: lbl for i, (lbl, _, _) in enumerate(queue)}
+
+        loader = _CameraFrameWorker(tasks)
+        loader.frame_ready.connect(self._on_evt_thumb_ready)
+        loader.start()
+        self._thumb_loader = loader
+
+    def _on_evt_thumb_ready(self, slot_id: int, frame):
+        """Applique la frame extraite à la miniature correspondante (thread principal)."""
+        lbl = getattr(self, '_thumb_slot_map', {}).get(slot_id)
+        if lbl is None:
+            return
+        try:
+            lbl.parent()  # lève RuntimeError si le widget Qt a été détruit
+        except RuntimeError:
+            return
+
+        _normal = "background-color: #0c141c; margin: 3px; border: 1px solid #2a4057; border-radius: 4px;"
+        _empty = _normal + " color: #4a6478; font-size: 10px; font-weight: bold;"
+
+        if frame is not None:
+            h, w, ch = frame.shape
+            q_img = QtGui.QImage(
+                bytes(frame.data), w, h, ch * w, QtGui.QImage.Format.Format_RGB888
             )
-        else:
-            thumbnail_label.setText("—")
-            thumbnail_label.setStyleSheet(
-                "background-color: #0c141c; margin: 3px; border: 1px solid #2a4057; border-radius: 4px;"
-                " color: #4a6478; font-size: 10px; font-weight: bold;")
-        self.tree_captures.setItemWidget(tree_item, 5, thumbnail_label)
+            pix = QtGui.QPixmap.fromImage(q_img)
+            if not pix.isNull():
+                lbl.setPixmap(
+                    pix.scaled(58, 32, QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                                QtCore.Qt.TransformationMode.SmoothTransformation)
+                )
+                lbl.setStyleSheet(_normal)
+                return
+
+        lbl.setText("—")
+        lbl.setStyleSheet(_empty)
 
     # --- JSON cleanup ---
 
