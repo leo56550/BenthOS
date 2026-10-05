@@ -638,31 +638,27 @@ class VideoTimeline(QtWidgets.QWidget):
             self.active_resize_marker = "end"
             return
 
+        ctrl = bool(event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier)
+
         for idx, (evt, rect) in self.rects_evenements.items():
             if rect.contains(int(pos_x), int(pos_y)):
                 self.set_selected_event(evt)
-                self.eventSelected.emit(evt)
+                if not ctrl:
+                    self.eventSelected.emit(evt)
 
-                if evt.get("zone", -1) == 2 or evt.get("single_frame", False) or evt.get("start") == evt.get("end"):
+                if ctrl:
+                    # Ctrl+click: always move the event, never resize
+                    evt["_pre_drag_start"] = evt["start"]
+                    evt["_pre_drag_end"] = evt["end"]
                     self.active_move_event = evt
                     self.drag_start_mouse_x = pos_x
                     self.drag_start_event_start = evt["start"]
                     self.drag_start_event_end = evt["end"]
-                    return
-
-                if abs(pos_x - rect.left()) <= self.resize_margin:
-                    self.active_resize_event = evt
-                    self.resize_edge = "left"
-                    return
-                elif abs(pos_x - rect.right()) <= self.resize_margin:
-                    self.active_resize_event = evt
-                    self.resize_edge = "right"
                     return
                 else:
-                    self.active_move_event = evt
-                    self.drag_start_mouse_x = pos_x
-                    self.drag_start_event_start = evt["start"]
-                    self.drag_start_event_end = evt["end"]
+                    # Normal click on event: only move the video cursor
+                    self.is_dragging = True
+                    self.calculate_and_emit_position(pos_x)
                     return
 
         # Marqueurs verticaux (rotation_manual, timecode_marker, etc.) : sélection par proximité x
@@ -774,8 +770,9 @@ class VideoTimeline(QtWidgets.QWidget):
                 self.eventResized.emit(self.active_resize_event)
                 self.active_resize_event = None
             if self.active_move_event:
-                self.eventMoved.emit(self.active_move_event)
+                moved = self.active_move_event
                 self.active_move_event = None
+                self.eventMoved.emit(moved)
             if self.active_marker_move:
                 self.eventMoved.emit(self.active_marker_move)
                 self.active_marker_move = None

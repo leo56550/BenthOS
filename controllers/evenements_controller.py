@@ -1603,14 +1603,14 @@ class EvenementsController:
         s = btn.property("_zone_s") or self._ZONE_STYLES[0]
 
         if self._is_single_frame_event(type_label, value):
-            # Flash visuel puis capture
+            # Flash visuel puis capture — désactiver pendant 500 ms pour absorber les doubles-clics
             self._apply_evt_btn_style(btn, s, "active")
-            QtCore.QTimer.singleShot(
-                500,
-                lambda b=btn: self._apply_evt_btn_style(
-                    b, b.property("_zone_s") or self._ZONE_STYLES[0], "normal"
-                ) if b else None
-            )
+            btn.setEnabled(False)
+            def _re_enable(b=btn, _s=s):
+                if b:
+                    b.setEnabled(True)
+                    self._apply_evt_btn_style(b, b.property("_zone_s") or _s, "normal")
+            QtCore.QTimer.singleShot(500, _re_enable)
             self.on_capturer_clicked()
         else:
             if self.capture_start_time is not None and self._active_event_btn is btn:
@@ -2549,6 +2549,12 @@ class EvenementsController:
             fps = self._get_video_fps()
             frame_start = self._ms_to_frame(event_dict["start"], fps)
             frame_end = self._ms_to_frame(event_dict["end"], fps)
+            # When drag info is present (Ctrl+drag move), use delete+insert so no stale
+            # entry can remain regardless of how UUID/position matching performs.
+            is_drag_move = "_pre_drag_start" in event_dict
+            pre_drag_start = event_dict.pop("_pre_drag_start", event_dict["start"])
+            pre_drag_end = event_dict.pop("_pre_drag_end", event_dict["end"])
+            search_frame_start = self._ms_to_frame(pre_drag_start, fps)
             event_uid = self._ensure_event_uid(event_dict)
             label = event_dict["title"].replace("Pic: ", "")
 
@@ -2565,18 +2571,32 @@ class EvenementsController:
                     "comment": event_dict.get("comment", "")
                 }
                 flat_list = data["video_observation"][json_key]
-                existing_index = next((i for i, v in enumerate(flat_list) if v.get("event_id") == event_uid), -1)
-                if existing_index == -1:
+                if is_drag_move:
+                    # Delete all stale entries matching this event before inserting
                     tolerance = max(1, int(fps * 0.25))
-                    existing_index = next(
-                        (i for i, v in enumerate(flat_list)
-                         if v.get("description_fr") == label and abs(v.get("frame_number", 0) - frame_start) <= tolerance),
-                        -1
-                    )
-                if existing_index != -1:
-                    flat_list[existing_index] = saved_value
-                else:
+                    flat_list = [
+                        v for v in flat_list
+                        if not (
+                            v.get("event_id") == event_uid
+                            or (v.get("description_fr") == label and abs(v.get("frame_number", 0) - search_frame_start) <= tolerance)
+                            or (v.get("description_fr") == label and abs(v.get("frame_number", 0) - frame_start) <= tolerance)
+                        )
+                    ]
                     flat_list.append(saved_value)
+                    data["video_observation"][json_key] = flat_list
+                else:
+                    existing_index = next((i for i, v in enumerate(flat_list) if v.get("event_id") == event_uid), -1)
+                    if existing_index == -1:
+                        tolerance = max(1, int(fps * 0.25))
+                        existing_index = next(
+                            (i for i, v in enumerate(flat_list)
+                             if v.get("description_fr") == label and abs(v.get("frame_number", 0) - search_frame_start) <= tolerance),
+                            -1
+                        )
+                    if existing_index != -1:
+                        flat_list[existing_index] = saved_value
+                    else:
+                        flat_list.append(saved_value)
             else:
                 if json_key not in data["video_observation"] or not data["video_observation"][json_key]:
                     data["video_observation"][json_key] = [{"authorized_values_fr": [], "values": []}]
@@ -2592,18 +2612,31 @@ class EvenementsController:
                     "comment": event_dict.get("comment", "")
                 }
                 values_list = data["video_observation"][json_key][0].get("values", [])
-                existing_index = next((i for i, v in enumerate(values_list) if v.get("event_id") == event_uid), -1)
-                if existing_index == -1:
+                if is_drag_move:
+                    # Delete all stale entries matching this event before inserting
                     tolerance = max(1, int(fps * 0.25))
-                    existing_index = next(
-                        (i for i, v in enumerate(values_list)
-                         if v.get("value") == label and abs(v.get("frame_number_start", 0) - frame_start) <= tolerance),
-                        -1
-                    )
-                if existing_index != -1:
-                    values_list[existing_index] = saved_value
-                else:
+                    values_list = [
+                        v for v in values_list
+                        if not (
+                            v.get("event_id") == event_uid
+                            or (v.get("value") == label and abs(v.get("frame_number_start", 0) - search_frame_start) <= tolerance)
+                            or (v.get("value") == label and abs(v.get("frame_number_start", 0) - frame_start) <= tolerance)
+                        )
+                    ]
                     values_list.append(saved_value)
+                else:
+                    existing_index = next((i for i, v in enumerate(values_list) if v.get("event_id") == event_uid), -1)
+                    if existing_index == -1:
+                        tolerance = max(1, int(fps * 0.25))
+                        existing_index = next(
+                            (i for i, v in enumerate(values_list)
+                             if v.get("value") == label and abs(v.get("frame_number_start", 0) - search_frame_start) <= tolerance),
+                            -1
+                        )
+                    if existing_index != -1:
+                        values_list[existing_index] = saved_value
+                    else:
+                        values_list.append(saved_value)
                 data["video_observation"][json_key][0]["values"] = values_list
 
             event_dict["_json_key"] = json_key
