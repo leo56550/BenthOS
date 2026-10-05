@@ -471,7 +471,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.btn_ardoise.setStyleSheet(_BTN_STYLE)
         self.btn_ardoise.setEnabled(False)
         self.btn_ardoise.setToolTip("Saisir l'ardoise à la position courante")
-        buttons_layout.addWidget(self.btn_ardoise)
+        # Pas ajouté au layout : le bouton n'est visible que dans la page Validation
+        # où validation_controller remplace cet attribut par son propre widget ardoise.
 
         self.btn_telemetry = QtWidgets.QPushButton("Télémétrie")
         self.btn_telemetry.setCheckable(True)
