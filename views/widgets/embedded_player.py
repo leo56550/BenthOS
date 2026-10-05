@@ -932,6 +932,14 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             if self.apply_histogram or self.apply_dehaze:
                 self.apply_histogram = False
                 self.apply_dehaze = False
+            # Décocher HE/DH sans déclencher leurs slots (qui remettraient en pause)
+            for btn, flag in ((self.btn_corr_he, '_corr_he'),
+                              (self.btn_corr_dehaze, '_corr_dehaze')):
+                if btn.isChecked():
+                    btn.blockSignals(True)
+                    btn.setChecked(False)
+                    btn.blockSignals(False)
+                    setattr(self, flag, False)
             self._smooth_timer.start()
         else:
             self._smooth_timer.stop()
