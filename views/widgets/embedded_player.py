@@ -75,6 +75,7 @@ class _FullscreenWindow(QtWidgets.QWidget):
 
     exit_requested  = QtCore.pyqtSignal()
     step_frame      = QtCore.pyqtSignal(int)   # nombre de frames (signée)
+    seek_seconds    = QtCore.pyqtSignal(int)   # saut en secondes entières (signé)
     toggle_play     = QtCore.pyqtSignal()
     speed_up        = QtCore.pyqtSignal()
     speed_down      = QtCore.pyqtSignal()
@@ -170,21 +171,21 @@ class _FullscreenWindow(QtWidgets.QWidget):
                 self.show_osd("▶  +1 img")
                 self.step_frame.emit(+1)
             elif ctrl:
-                self.show_osd("▶▶  +5 img")
-                self.step_frame.emit(+5)
-            else:
-                self.show_osd("▶▶▶  +10 img")
+                self.show_osd("▶▶  +10 img")
                 self.step_frame.emit(+10)
+            else:
+                self.show_osd("▶▶▶  +5 s")
+                self.seek_seconds.emit(+5)
         elif key == QtCore.Qt.Key.Key_Left:
             if shift:
                 self.show_osd("◀  -1 img")
                 self.step_frame.emit(-1)
             elif ctrl:
-                self.show_osd("◀◀  -5 img")
-                self.step_frame.emit(-5)
-            else:
-                self.show_osd("◀◀◀  -10 img")
+                self.show_osd("◀◀  -10 img")
                 self.step_frame.emit(-10)
+            else:
+                self.show_osd("◀◀◀  -5 s")
+                self.seek_seconds.emit(-5)
         elif key in (QtCore.Qt.Key.Key_Plus, QtCore.Qt.Key.Key_Equal):
             self.speed_up.emit()
         elif key == QtCore.Qt.Key.Key_Minus:
@@ -637,10 +638,10 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         sc_space.activated.connect(self._toggle_play_pause)
         sc_right = QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Right), self)
         sc_right.setContext(_ctx)
-        sc_right.activated.connect(lambda: self._step_frame(+10))
+        sc_right.activated.connect(lambda: self.jump_time_offset(+5000))
         sc_left = QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Left), self)
         sc_left.setContext(_ctx)
-        sc_left.activated.connect(lambda: self._step_frame(-10))
+        sc_left.activated.connect(lambda: self.jump_time_offset(-5000))
         sc_right_1 = QtGui.QShortcut(
             QtGui.QKeySequence(QtCore.Qt.Modifier.SHIFT | QtCore.Qt.Key.Key_Right), self)
         sc_right_1.setContext(_ctx)
@@ -649,14 +650,14 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             QtGui.QKeySequence(QtCore.Qt.Modifier.SHIFT | QtCore.Qt.Key.Key_Left), self)
         sc_left_1.setContext(_ctx)
         sc_left_1.activated.connect(lambda: self._step_frame(-1))
-        sc_right_5 = QtGui.QShortcut(
+        sc_right_10 = QtGui.QShortcut(
             QtGui.QKeySequence(QtCore.Qt.Modifier.CTRL | QtCore.Qt.Key.Key_Right), self)
-        sc_right_5.setContext(_ctx)
-        sc_right_5.activated.connect(lambda: self._step_frame(+5))
-        sc_left_5 = QtGui.QShortcut(
+        sc_right_10.setContext(_ctx)
+        sc_right_10.activated.connect(lambda: self._step_frame(+10))
+        sc_left_10 = QtGui.QShortcut(
             QtGui.QKeySequence(QtCore.Qt.Modifier.CTRL | QtCore.Qt.Key.Key_Left), self)
-        sc_left_5.setContext(_ctx)
-        sc_left_5.activated.connect(lambda: self._step_frame(-5))
+        sc_left_10.setContext(_ctx)
+        sc_left_10.activated.connect(lambda: self._step_frame(-10))
         # +/- (accélérer/ralentir) : géré globalement par AppController.eventFilter,
         # pas ici, pour ne pas dépendre du focus précis du widget dès l'arrivée sur
         # la page (cf. _speed_step ci-dessous, appelée directement par ce filtre).
@@ -807,6 +808,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             "Double-click or Escape to exit fullscreen"))
         win.exit_requested.connect(self._exit_fullscreen)
         win.step_frame.connect(self._step_frame)
+        win.seek_seconds.connect(lambda s: self.jump_time_offset(s * 1000))
         win.toggle_play.connect(self._toggle_play_pause)
 
         def _on_speed_up():
