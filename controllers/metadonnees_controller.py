@@ -733,7 +733,7 @@ class MetadonneesController:
         fb_row.addWidget(_lbl_filter)
 
         self._btn_json_filter = QtWidgets.QPushButton(
-            self.translate("Avec JSON", "With JSON"))
+            self.translate("Données appariées", "Matched data"))
         self._btn_json_filter.setCheckable(True)
         self._btn_json_filter.setToolTip(self.translate(
             "Afficher uniquement les lignes dont le _temp.json a été créé",
@@ -1010,6 +1010,8 @@ class MetadonneesController:
         self._ft_table.blockSignals(False)
         self._apply_ft_table_system_colors()
         self._apply_ft_table_json_bold()
+        if hasattr(self, '_filter_bar'):
+            self._filter_bar.setVisible(True)
 
     def _apply_ft_table_system_colors(self):
         """Applique la colorisation par système sur toutes les lignes actuelles du tableau."""
@@ -1646,6 +1648,8 @@ class MetadonneesController:
             self._btn_copier.setText(self.translate("Copier ↓", "Copy ↓"))
         if hasattr(self, '_btn_map'):
             self._btn_map.setText(self.translate("OUVRIR CARTE", "OPEN MAP"))
+        if hasattr(self, '_btn_json_filter'):
+            self._btn_json_filter.setText(self.translate("Données appariées", "Matched data"))
         if hasattr(self, '_ft_table'):
             self._ft_table.setHorizontalHeaderLabels(self._get_ft_header_labels())
 
@@ -2072,7 +2076,8 @@ class MetadonneesController:
         t = self.trash_model.rowCount()
         self.lbl_video_count.setText(self.translate(f"● {v} vidéo(s)", f"● {v} video(s)"))
         self.lbl_trash_count.setText(self.translate(f"● {t} poubelle", f"● {t} trash"))
-        self._rebuild_ft_table()
+        if v > 0:
+            self._rebuild_ft_table()
 
     # ── Infostation — persisté dans video_observation du JSON ────────────
 
