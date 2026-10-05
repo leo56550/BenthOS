@@ -564,6 +564,8 @@ class AppController(QtCore.QObject):
         self.metadonnees_ctrl._csv_folder = folder
         self.metadonnees_ctrl.load_csv_into_table(path)
         self._last_infostation_folder = os.path.dirname(path)
+        # Mode données historiques : Accueil + Métadonnées accessibles, reste verrouillé
+        self.window.actionMetadonnees.setEnabled(True)
         self._auto_generate_temp_jsons(folder)
 
     def _auto_generate_temp_jsons(self, folder: str):
@@ -936,10 +938,11 @@ class AppController(QtCore.QObject):
         """Active ou désactive les actions de navigation (verrouillé tant qu'aucune campagne n'est chargée)."""
         w = self.window
         w.actionQualification.setEnabled(not locked)
-        w.actionExtraction.setEnabled(True)
+        w.actionExtraction.setEnabled(not locked)
         w.actionValidation.setEnabled(not locked)
         w.actionEvenements.setEnabled(not locked)
         w.actionMetadonnees.setEnabled(not locked)
+        w.actionA_propos.setEnabled(not locked)
 
     def _release_file_in_all_players(self, path: str):
         """Libère le verrou Windows sur un fichier vidéo dans tous les players embarqués."""

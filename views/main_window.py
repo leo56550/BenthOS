@@ -181,6 +181,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 border: 1px solid #F2BFB4;
                 border-radius: 5px;
             }
+            QToolButton:disabled {
+                background-color: #131f2a;
+                color: #3a5060;
+                border-color: #1e2e3a;
+            }
             QToolButton#lang_fr, QToolButton#lang_en {
                 background-color: transparent;
                 border: 1px solid transparent;
