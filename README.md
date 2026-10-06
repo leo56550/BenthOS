@@ -15,6 +15,71 @@ All campaign data is persisted as per-video `_temp.json` sidecar files. The orig
 
 ---
 
+## Screenshots
+
+### Home
+![Home](img/screenshots/acceuil.png)
+
+The home page lets you open an existing campaign or create a new one by selecting the raw footage folder, the campaign output directory, and the working directory. Recent campaigns are accessible in one click, and a quick single-video mode is available for ad-hoc review.
+
+---
+
+### Qualification
+![Qualification](img/screenshots/qualification.png)
+
+The qualification page is the first processing step. All videos of the campaign are displayed in the left panel with their name, duration and file size. Each video is also pinned as a marker on the interactive GPS map on the right. The operator watches each video through the embedded player and decides to **Keep** (Garder) or **Discard** (Jeter) it. Discarded videos are moved to a trash bin and can be restored at any time. `Ctrl+Z` undoes the last keep/discard action.
+
+---
+
+### Validation
+![Validation](img/screenshots/validation.png)
+
+The validation page is a secondary review pass over the qualified videos. For each video the operator can set its **exploitability** status (exploitable / partially exploitable / not exploitable) and confirm the stereo/mono camera configuration. All choices are persisted in the per-video `_temp.json` sidecar file. `Ctrl+Z` undoes the last exploitability change.
+
+---
+
+### Event annotation
+![Events](img/screenshots/event.png)
+
+The event annotation page allows the operator to stamp timestamped biological observations directly on the video timeline. Supported event types include fish, birds, turtles and motor events, each with a configurable sub-type, count and free-text comment. A sound cue plays on each capture. Events are displayed in a tree view on the right and can be moved along the timeline with `Ctrl+drag`. `Ctrl+Z` undoes the last placement, deletion or move. The full event list can be exported to CSV.
+
+---
+
+### Metadata editing
+![Metadata](img/screenshots/metadata.png)
+
+The metadata page exposes all structured observation fields defined in `template.json`: zone, date, boat name, pilot, GPS coordinates, depth, visibility, sea state, and more. Campaign-level fields (zone, date, crew) are read-only and shared across all videos; video-level fields are editable per video. A weather lookup button fetches current conditions from Open-Meteo and pre-fills the relevant fields. A GPS map view lets the operator verify or correct the deployment position.
+
+---
+
+### Extraction
+![Extraction](img/screenshots/extraction.png)
+
+The extraction page is used to produce deliverables from each video. The operator sets in/out markers on the timeline to clip a segment, or captures individual still frames. Several image enhancement options are available: histogram equalisation, CLAHE dehazing, underwater colour correction, and stereo rectification for dual-camera footage. All extracted segments and frames are listed in a deliverables tree with thumbnails and can be re-exported at any time.
+
+---
+
+### SFTP transfer
+![SFTP](img/screenshots/sftp.py.png)
+
+The SFTP dialog connects directly to the KOSMOS device over SSH/SFTP (via paramiko) without needing to mount the SD card. The operator enters the device's IP address and credentials, browses the remote file system, and transfers the raw footage and JSON telemetry files to the local campaign folder in one operation.
+
+---
+
+### Deployment planner
+![Planner](img/screenshots/planification.png)
+
+The deployment planner is an interactive Leaflet map (embedded via Qt WebEngine) that lets the team plan the spatial coverage of a mission before heading to the field. Deployment points can be placed, moved and annotated directly on the map. The planned stations can be exported as a waypoint list.
+
+---
+
+### Progress dashboard
+![Progress](img/screenshots/progress.py.png)
+
+The progress dashboard gives a real-time overview of the campaign processing status. It shows how many videos have been qualified, validated, annotated and have their metadata filled in, so the operator can see at a glance what still needs to be done before generating the final PDF report.
+
+---
+
 ## Features
 
 | Page | Description |
