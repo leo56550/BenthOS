@@ -203,7 +203,6 @@ class QualifController:
         self._configure_left_splitter()
         self._init_minimap()
         self._init_miniature_area()
-        self._set_default_left_panel_width()
         self.set_language(self.current_language)
 
     # --- Language ---
@@ -322,24 +321,33 @@ class QualifController:
         splitter.setStretchFactor(2, 0)  # container poubelle masqué
 
     def _set_default_left_panel_width(self):
-        """Fixe une largeur par défaut confortable pour le panneau gauche (propriétés +
-        liste vidéo) au démarrage de l'IHM, et une largeur minimale plancher en dessous de
-        laquelle le splitter ne peut pas descendre — pour que GARDER/JETER restent toujours
-        visibles, même si l'utilisateur redimensionne la fenêtre/le splitter.
+        """Fixe une largeur initiale de 430px pour le panneau gauche.
 
-        Largeur mini mesurée (via minimumSizeHint réel de _build_video_row_widget, labels
-        compressés à 1px) : ligne vidéo ≈ 253px + marges du conteneur scrollable (8)
-        + barre de défilement verticale (~20) + marges du layout de frame_gauche (~18)
-        ≈ 299px → 320px avec marge de sécurité.
+        Utilise setMaximumWidth(430) qui empêche Qt de redonner au panneau son
+        sizeHint naturel (trop large). La contrainte est relâchée dès que l'utilisateur
+        déplace le séparateur (signal splitterMoved), sans aucun timer.
         """
         frame_gauche = self.widget.findChild(QtWidgets.QFrame, "frame_gauche")
-        if isinstance(frame_gauche, QtWidgets.QFrame):
-            frame_gauche.setMinimumWidth(320)
+        if not isinstance(frame_gauche, QtWidgets.QFrame):
+            return
+        frame_gauche.setMinimumWidth(320)
+        # Cap à 510px : assez pour vignette + nom + durée/taille + boutons, panneau compact.
+        frame_gauche.setMaximumWidth(510)
 
         splitter = self.widget.findChild(QtWidgets.QSplitter, "splitter")
         if not isinstance(splitter, QtWidgets.QSplitter):
             return
-        splitter.setSizes([620, 10000])
+
+        def _on_user_resize(pos, index, fg=frame_gauche, sp=splitter):
+            """Libère la contrainte dès que l'utilisateur déplace le séparateur."""
+            fg.setMinimumWidth(320)
+            fg.setMaximumWidth(16777215)
+            try:
+                sp.splitterMoved.disconnect(_on_user_resize)
+            except TypeError:
+                pass
+
+        splitter.splitterMoved.connect(_on_user_resize)
 
     def _reset_left_splitter_sizes(self):
         """Réinitialise les tailles du splitter gauche après chargement de campagne (fenêtre visible).

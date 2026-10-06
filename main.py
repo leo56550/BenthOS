@@ -69,6 +69,8 @@ def main():
                           min(window.height(), max(new_h, 400)))
         # Force le QMainWindowLayout à recalculer les positions des toolbars
         window.layout().activate()
+        # Différé pour laisser tous les événements de layout se terminer avant de fixer le splitter
+        QtCore.QTimer.singleShot(50, window.controller.qualif_ctrl._set_default_left_panel_width)
 
     QtCore.QTimer.singleShot(0, _fit_window_to_screen)
 
