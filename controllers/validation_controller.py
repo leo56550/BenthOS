@@ -88,6 +88,7 @@ class ValidationController:
         self.current_json_path = None
         self.current_video_path = None
         self._working_dir = ""
+        self._undo_stack: list[dict] = []
 
         self.video_tree = self.page.findChild(QtWidgets.QTreeView, "tree_video_validation")
         self.player_container = self.page.findChild(QtWidgets.QFrame, "lecteur_timeline_container")
@@ -233,6 +234,11 @@ class ValidationController:
 
         if self.exploitable_container:
             self._build_exploitable_panel()
+
+        _undo_sc = QtGui.QKeySequence(QtCore.Qt.Key.Key_Z | QtCore.Qt.KeyboardModifier.ControlModifier)
+        self._undo_shortcut = QtGui.QShortcut(_undo_sc, self.page)
+        self._undo_shortcut.setContext(QtCore.Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self._undo_shortcut.activated.connect(self._undo_last_action)
 
     # ── Panel exploitabilité ──────────────────────────────────────────────────
 
@@ -409,6 +415,8 @@ class ValidationController:
         """Exclusion mutuelle + persistance quand un _ToggleFrame est cliqué."""
         if getattr(self, '_rebuilding_buttons', False):
             return
+        # Capture l'ancienne valeur pour undo
+        old_value = next((f.text() for f in self._exploitable_btns if f.isChecked()), None)
         for frame in self._exploitable_btns:
             new_state = (frame is clicked_frame)
             if frame.isChecked() != new_state:
@@ -419,6 +427,38 @@ class ValidationController:
                 frame.apply_style(colors)
         self._update_status_badge(choice)
         self.on_exploitable_changed(choice)
+        if not getattr(self, '_undo_in_progress', False):
+            self._undo_stack.append({"action": "exploitable", "old": old_value, "new": choice})
+
+    def _undo_last_action(self):
+        """Ctrl+Z : annule le dernier changement d'exploitabilité."""
+        if not self._undo_stack:
+            return
+        entry = self._undo_stack.pop()
+        if entry["action"] == "exploitable":
+            old = entry["old"]
+            self._undo_in_progress = True
+            try:
+                if old:
+                    # Retrouver et cliquer le bouton correspondant à l'ancienne valeur
+                    for frame in self._exploitable_btns:
+                        if frame.text() == old:
+                            self._on_frame_toggled(old, frame)
+                            break
+                else:
+                    # Aucune valeur précédente → effacer l'exploitabilité
+                    self._rebuilding_buttons = True
+                    for frame in self._exploitable_btns:
+                        frame.setChecked(False)
+                        colors = self._EXPLOITABLE_COLORS.get(
+                            frame.text().lower().strip(), ("#1a3a4a", "#4a9fcf", "#2778A2", "#101e28")
+                        )
+                        frame.apply_style(colors)
+                    self._rebuilding_buttons = False
+                    self._update_status_badge("")
+                    self.on_exploitable_changed("")
+            finally:
+                self._undo_in_progress = False
 
     def _update_status_badge(self, current: str):
         """Met à jour le badge de statut sous les boutons avec la couleur de la valeur."""

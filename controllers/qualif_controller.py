@@ -152,6 +152,8 @@ class QualifController:
         self._on_qualification_changed = on_qualification_changed
         self.on_qualification_resumed = None  # callback → appelé quand GARDER/JETER après qualif terminée
         self.current_language = 'en'
+        self._undo_stack: list[dict] = []   # pile undo JETER/GARDER
+        self._undo_in_progress = False      # évite les boucles undo↔action
         self.system_data = None
         self.video_model = QtGui.QStandardItemModel()
         self.trash_model = QtGui.QStandardItemModel()
@@ -204,6 +206,11 @@ class QualifController:
         self._init_minimap()
         self._init_miniature_area()
         self.set_language(self.current_language)
+
+        _undo_sc = QtGui.QKeySequence(QtCore.Qt.Key.Key_Z | QtCore.Qt.KeyboardModifier.ControlModifier)
+        self._undo_shortcut = QtGui.QShortcut(_undo_sc, self.widget)
+        self._undo_shortcut.setContext(QtCore.Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self._undo_shortcut.activated.connect(self._undo_last_action)
 
     # --- Language ---
 
@@ -727,6 +734,8 @@ class QualifController:
             item = self.video_model.item(row, 0)
             if item and str(item.data(QtCore.Qt.ItemDataRole.UserRole)) == video_path:
                 self.delete_video_by_index(self.video_model.index(row, 0))
+                if not self._undo_in_progress:
+                    self._undo_stack.append({"action": "jeter", "video_path": video_path})
                 return
 
     def _restore_from_trash_by_path(self, video_path: str):
@@ -737,7 +746,23 @@ class QualifController:
             item = self.trash_model.item(row, 0)
             if item and str(item.data(QtCore.Qt.ItemDataRole.UserRole)) == video_path:
                 self.restore_video_by_index(self.trash_model.index(row, 0))
+                if not self._undo_in_progress:
+                    self._undo_stack.append({"action": "garder", "video_path": video_path})
                 return
+
+    def _undo_last_action(self):
+        """Ctrl+Z : annule le dernier JETER ou GARDER."""
+        if not self._undo_stack:
+            return
+        entry = self._undo_stack.pop()
+        self._undo_in_progress = True
+        try:
+            if entry["action"] == "jeter":
+                self._restore_from_trash_by_path(entry["video_path"])
+            elif entry["action"] == "garder":
+                self._move_to_trash_by_path(entry["video_path"])
+        finally:
+            self._undo_in_progress = False
 
     def _init_minimap(self):
         """Crée le MapBridge, le WebChannel et le QDialog carte de campagne."""

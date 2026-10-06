@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import copy
 import shutil
 import uuid
 import cv2
@@ -232,6 +233,7 @@ class EvenementsController:
         self.event_dictionary = {}
         self.capture_start_time = None
         self._analysis_widgets: dict[str, QtWidgets.QLineEdit] = {}
+        self._undo_stack: list[dict] = []  # pile undo pour la pose d'événements
 
         self.left_frame_events = self.page.findChild(QtWidgets.QFrame, "frame_12")
         self.player_container_events = self.page.findChild(QtWidgets.QFrame, "video_timeline_container")
@@ -563,6 +565,12 @@ class EvenementsController:
 
         self._del_key_filter = _DeleteKeyFilter(self._delete_selected_tree_event, self.tree_captures)
         self.tree_captures.installEventFilter(self._del_key_filter)
+
+        # Ctrl+Z : annule la dernière pose d'événement
+        _undo_sc = QtGui.QKeySequence(QtCore.Qt.Key.Key_Z | QtCore.Qt.KeyboardModifier.ControlModifier)
+        self._undo_shortcut = QtGui.QShortcut(_undo_sc, self.page)
+        self._undo_shortcut.setContext(QtCore.Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self._undo_shortcut.activated.connect(self._undo_last_event)
 
         self._event_type_delegate = _EventTypeDelegate(lambda: list(self.event_dictionary.keys()))
         self.tree_captures.setItemDelegateForColumn(2, self._event_type_delegate)
@@ -1903,6 +1911,8 @@ class EvenementsController:
                 self.add_tree_thumbnail(tree_item, pos_ms)
 
             self.save_event_to_json(new_evt, current_type)
+            tree_item = self.tree_captures.topLevelItem(self.tree_captures.topLevelItemCount() - 1)
+            self._undo_stack.append({"event_dict": new_evt, "tree_item": tree_item})
         else:
             self.capture_start_time = pos_ms
             self._current_comment = ""
@@ -1952,6 +1962,8 @@ class EvenementsController:
             self.add_tree_thumbnail(tree_item, t_start)
 
         self.save_event_to_json(new_evt, current_type)
+        tree_item = self.tree_captures.topLevelItem(self.tree_captures.topLevelItemCount() - 1)
+        self._undo_stack.append({"event_dict": new_evt, "tree_item": tree_item})
         self.capture_start_time = None
         # Réinitialiser le bouton actif
         if hasattr(self, '_active_event_btn') and self._active_event_btn:
@@ -2049,6 +2061,7 @@ class EvenementsController:
         self.current_video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
         video_dir = os.path.dirname(self.current_video_path)
         self.current_json_path = resolve_video_json_path(self._working_dir, self.current_video_path)
+        self._undo_stack.clear()  # nouvelle vidéo → pile undo réinitialisée
         if self._on_video_focused:
             self._on_video_focused(item.text())
 
@@ -2557,6 +2570,15 @@ class EvenementsController:
             is_drag_move = "_pre_drag_start" in event_dict
             pre_drag_start = event_dict.pop("_pre_drag_start", event_dict["start"])
             pre_drag_end = event_dict.pop("_pre_drag_end", event_dict["end"])
+            # Enregistrer le déplacement dans la pile undo avant de persister
+            if is_drag_move and not getattr(self, '_undo_in_progress', False):
+                self._undo_stack.append({
+                    "action": "move",
+                    "event_dict": event_dict,
+                    "old_start": pre_drag_start,
+                    "old_end": pre_drag_end,
+                    "display_type": display_type,
+                })
             search_frame_start = self._ms_to_frame(pre_drag_start, fps)
             event_uid = self._ensure_event_uid(event_dict)
             label = event_dict["title"].replace("Pic: ", "")
@@ -2956,6 +2978,16 @@ class EvenementsController:
 
     def delete_event_unified(self, event_dict: dict, tree_item: QtWidgets.QTreeWidgetItem):
         """Supprime un événement de la timeline, de l'arbre et du JSON en une seule opération."""
+        # Capture pour undo AVANT suppression (sauf si c'est l'undo lui-même qui supprime)
+        if not getattr(self, '_undo_in_progress', False):
+            display_type = ""
+            if "_json_key" in event_dict:
+                display_type = self._get_label_from_json_key(event_dict["_json_key"])
+            self._undo_stack.append({
+                "action": "delete",
+                "event_dict": copy.deepcopy(event_dict),
+                "display_type": display_type,
+            })
         if event_dict in self.event_player.timeline.events:
             self.event_player.timeline.events.remove(event_dict)
             self.event_player.timeline.update()
@@ -2964,6 +2996,64 @@ class EvenementsController:
             if top_index != -1:
                 self.tree_captures.takeTopLevelItem(top_index)
         self.delete_event_from_json(event_dict)
+        # Retirer les entrées "add" de la pile si la suppression est manuelle
+        if not getattr(self, '_undo_in_progress', False):
+            self._undo_stack = [
+                e for e in self._undo_stack
+                if not (e.get("action") == "add" and e["event_dict"] is event_dict)
+            ]
+
+    def _undo_last_event(self):
+        """Ctrl+Z : annule la dernière action de pose ou de suppression d'événement."""
+        if not self._undo_stack:
+            return
+        entry = self._undo_stack.pop()
+        action = entry.get("action", "add")
+
+        if action == "add":
+            self._undo_in_progress = True
+            try:
+                self.delete_event_unified(entry["event_dict"], entry["tree_item"])
+            finally:
+                self._undo_in_progress = False
+
+        elif action == "delete":
+            # Restaurer l'événement supprimé
+            evt = entry["event_dict"]
+            self._undo_in_progress = True
+            try:
+                self.event_player.timeline.events.append(evt)
+                self.event_player.timeline.update()
+                # Reconstruire le tree_item depuis les données de l'événement
+                tl = self.event_player.timeline
+                start_str = tl._format_ms(evt["start"])
+                end_str = (tl._format_ms(evt["end"])
+                           if not evt.get("single_frame") else "-")
+                category = entry.get("display_type", "").split(" ")[0]
+                value = evt.get("title", "").replace("Pic: ", "")
+                comment = evt.get("comment", "")
+                tree_item = QtWidgets.QTreeWidgetItem(
+                    [start_str, end_str, category, value, comment, ""]
+                )
+                tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
+                self.tree_captures.addTopLevelItem(tree_item)
+                self.add_tree_thumbnail(tree_item, evt["start"])
+                self.save_event_to_json(evt, entry.get("display_type", ""))
+            finally:
+                self._undo_in_progress = False
+
+        elif action == "move":
+            # Restaurer l'événement à sa position avant déplacement
+            evt = entry["event_dict"]
+            evt["start"] = entry["old_start"]
+            evt["end"] = entry["old_end"]
+            self._undo_in_progress = True
+            try:
+                self.event_player.timeline.update()
+                # refresh_event_list met à jour l'arbre ET appelle save_event_to_json
+                self.refresh_event_list(evt)
+            finally:
+                self._undo_in_progress = False
 
     # --- Commentaire vidéo (derush_comment) ---
 
