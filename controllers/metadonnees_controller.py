@@ -522,6 +522,13 @@ class MetadonneesController:
         self._init_scroll_areas()
         self._init_infostation_panel()
 
+        # QStackedWidget calcule son minimum comme le max de toutes ses pages.
+        # Avec Ignored vertical, cette page contribue 0 au minimum du stacked widget
+        # (sans affecter son affichage qui remplit toujours la zone disponible).
+        self.widget.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Ignored)
+
         if self.tree_videos:
             self.tree_videos.selectionModel().selectionChanged.connect(self.on_selection_changed)
 
@@ -588,6 +595,9 @@ class MetadonneesController:
 
         self.graph_trash_container.setMaximumHeight(16777215)
         self.graph_trash_container.setMinimumHeight(0)
+        self.graph_trash_container.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding)
 
         old = self.graph_trash_container.layout()
         if old:
@@ -776,6 +786,12 @@ class MetadonneesController:
 
         # ── Tableau infostation (une ligne = une vidéo) ───────────────────
         self._ft_table = QtWidgets.QTableWidget()
+        self._ft_table.setMinimumHeight(0)
+        self._ft_table.setSizeAdjustPolicy(
+            QtWidgets.QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored)
+        self._ft_table.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding)
         self._ft_table.setColumnCount(len(_FT_TABLE_COLS))
         self._ft_table.setHorizontalHeaderLabels(self._get_ft_header_labels())
         self._ft_table.horizontalHeader().setStretchLastSection(False)

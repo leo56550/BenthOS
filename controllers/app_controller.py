@@ -158,6 +158,14 @@ class AppController(QtCore.QObject):
             self.evenements_ctrl, self.metadonnees_ctrl, self.apropos_ctrl, self.extraction_ctrl
         ]
 
+        # Empêche le QStackedWidget de forcer une hauteur minimale basée sur ses pages,
+        # ce qui poussait la barre de navigation du bas hors de l'écran.
+        # Ignored vertical = contribution 0 au minimum du QMainWindowLayout.
+        window.stackedWidget.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Ignored)
+        window.stackedWidget.setMinimumHeight(0)
+
         self._avancement_panel = AvancementPanel(window)
         if hasattr(window, 'btn_avancement'):
             window.btn_avancement.clicked.connect(
@@ -973,6 +981,13 @@ class AppController(QtCore.QObject):
             w.update_nav_highlight(page)
             if page == w.page_extraction:
                 self.extraction_ctrl.refresh_video_list()
+            if page == w.page_metadonnees:
+                def _refresh_meta_layout(p=page):
+                    if p.layout():
+                        p.layout().activate()
+                    p.updateGeometry()
+                    p.update()
+                QtCore.QTimer.singleShot(0, _refresh_meta_layout)
             self._focus_page_player(page)
             self._refresh_generate_temp_visibility(page)
             return

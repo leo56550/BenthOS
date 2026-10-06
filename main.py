@@ -4,6 +4,7 @@ import traceback
 
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QFont
+from PyQt6 import QtCore
 
 from views.main_window import MainWindow
 from controllers.app_controller import AppController
@@ -53,6 +54,24 @@ def main():
     window.controller.set_language("fr")
 
     window.show()
+
+    def _fit_window_to_screen():
+        # Utilise l'écran sur lequel la fenêtre est réellement affichée
+        scr = window.screen() or QApplication.primaryScreen()
+        avail = scr.availableGeometry()
+        frame = window.frameGeometry()
+        frame_h_extra = frame.height() - window.height()
+        frame_w_extra = frame.width() - window.width()
+        new_h = avail.height() - frame_h_extra
+        new_w = avail.width() - frame_w_extra
+        if window.height() > new_h or window.width() > new_w:
+            window.resize(min(window.width(), max(new_w, 800)),
+                          min(window.height(), max(new_h, 400)))
+        # Force le QMainWindowLayout à recalculer les positions des toolbars
+        window.layout().activate()
+
+    QtCore.QTimer.singleShot(0, _fit_window_to_screen)
+
     sys.exit(app.exec())
 
 if __name__ == "__main__":
