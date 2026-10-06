@@ -1,4 +1,4 @@
-# KOSMOS IHM
+# BenthOS
 
 > Desktop post-processing workstation for KOSMOS underwater camera deployments.  
 > Qualify, annotate, and export marine observation data from raw MP4 footage.
@@ -9,7 +9,7 @@
 
 ## About
 
-KOSMOS IHM (*Interface Homme-Machine*) is the companion desktop application for the **KOSMOS system** — an autonomous underwater video recorder developed at IMT Atlantique. After a field deployment, operators bring back a folder of raw MP4 files and run them through this workstation to qualify recordings, annotate biological events, fill in metadata, and extract deliverables.
+**BenthOS** (*Interface Homme-Machine*) is the companion desktop application for the **KOSMOS system** — an autonomous underwater video recorder developed at IMT Atlantique. After a field deployment, operators bring back a folder of raw MP4 files and run them through this workstation to qualify recordings, annotate biological events, fill in metadata, and extract deliverables.
 
 All campaign data is persisted as per-video `_temp.json` sidecar files. The original raw JSON files produced by the device are **never modified**.
 
@@ -164,9 +164,8 @@ python main.py
 
 On first launch, click **Open Campaign** and select:
 
-1. **Raw footage directory** — folder containing the `.mp4` files from the KOSMOS device.
-2. **Campaign output directory** — where processed results and sidecar JSON files will be written.
-3. **Working directory** — temporary workspace used by the extraction pipeline.
+1. **Raw footage directory** — the KOSMOS unit folder (e.g. `260730_K54/`).
+2. **Working directory** — BenthOS will create a `BenthOS_sorties/` folder next to it for all outputs.
 
 Crash logs are written to `kosmos_crash.log` next to `main.py`.
 
@@ -184,10 +183,10 @@ Output: `dist\KOSMOS_IHM\KOSMOS_IHM.exe` — ships with Qt WebEngine, OpenCV, an
 
 ---
 
-## Architecture
+## Code architecture
 
 ```
-KOSMOS-IHM/
+BenthOS/
 ├── main.py                   # Entry point
 ├── ihm2.ui                   # Qt Designer layout (loaded at runtime)
 ├── template.json             # Metadata schema (drives the Metadata editor)
@@ -216,63 +215,69 @@ KOSMOS-IHM/
 
 ## Data architecture
 
-### Input data
+### Input — campaign folder structure
 
-The IHM consumes the raw output of a KOSMOS deployment. A typical campaign folder looks like:
+A KOSMOS campaign is organised as follows. The top-level campaign folder contains one sub-folder per KOSMOS unit deployed. Each unit folder contains one sub-folder per station (deployment point), and each station folder holds the files recorded for that drop:
 
 ```
-campaign_raw/
-├── VID_20240615_143012.mp4       # Raw video file
-├── VID_20240615_143012.json      # Device metadata (read-only)
-├── VID_20240615_143012.csv       # GPS / telemetry timeseries (read-only)
-├── VID_20240615_150445.mp4
-├── VID_20240615_150445.json
-├── VID_20240615_150445.csv
-└── ...
+260805_ATL_CC_ENEZEG_pourceaux/       ← campaign folder
+├── 260730_K54/                        ← KOSMOS unit
+│   ├── 0102/                          ← station
+│   │   ├── 0102.mp4                   # raw video (never modified)
+│   │   ├── 0102.json                  # device metadata (never modified)
+│   │   ├── 0102.csv                   # GPS / sensor timeseries (never modified)
+│   │   ├── 0102.txt                   # device log (never modified)
+│   │   ├── 0102_temp.json             # ← BenthOS annotations (writable)
+│   │   └── systemEvent.csv            # system events log (never modified)
+│   ├── 0103/
+│   └── ...
+├── 260805_K52/
+└── 260805_K53/
 ```
 
 | File | Source | Description |
 |---|---|---|
-| `<stem>.mp4` | KOSMOS device | Raw video footage. Never modified. |
-| `<stem>.json` | KOSMOS device | Device metadata: camera model, firmware version, system config. **Read-only** — the IHM never writes to these files. |
-| `<stem>.csv` | KOSMOS device | Time-series telemetry: GPS coordinates, depth, heading, motor rotations. Read-only. |
+| `<stem>.mp4` | KOSMOS device | Raw video footage. Never modified by BenthOS. |
+| `<stem>.json` | KOSMOS device | Device metadata: camera, firmware, system config. Read-only. |
+| `<stem>.csv` | KOSMOS device | Time-series telemetry: GPS, depth, heading, motor rotations. Read-only. |
+| `<stem>.txt` | KOSMOS device | Device event log. Read-only. |
+| `systemEvent.csv` | KOSMOS device | System-level events (motor start/stop, etc.). Read-only. |
+| `<stem>_temp.json` | BenthOS | **The sole writable file.** Contains all operator annotations (see below). |
 
-### Output data
+The `_temp.json` structure mirrors `template.json` and stores:
 
-For each video the IHM creates and maintains a `_temp.json` sidecar file in the working directory. This is the **sole writable file** produced by the IHM.
-
-```
-working_dir/
-├── VID_20240615_143012_temp.json   # All operator annotations for this video
-├── VID_20240615_150445_temp.json
-├── 240615_infoStation.csv          # Campaign-level metadata export (InfoStation format)
-├── events_export.csv               # Annotated biological events export
-└── report_campaign.pdf             # PDF campaign report
-```
-
-The `_temp.json` structure mirrors `template.json` and contains:
-
-```
+```json
 {
-  "survey":            { … }   // Campaign-level fields (zone, date, boat, crew)
-  "video_observation": { … }   // Video-level fields (GPS, depth, visibility, time)
-                                // + qualification status (keep/discard)
-                                // + exploitability and stereo/mono status
-                                // + biological events (fish, birds, turtles…)
-                                // + extraction deliverables (segments, frames)
+  "survey":            {},   // Campaign-level fields: zone, date, boat, crew
+  "video_observation": {}    // Video-level fields: GPS, depth, visibility, time,
+                             // qualification status, exploitability, stereo/mono,
+                             // biological events, extraction deliverables
 }
 ```
 
-| Output file | Format | Generated by |
+### Output — BenthOS_sorties
+
+When a campaign is opened, BenthOS automatically creates a `BenthOS_sorties/` folder next to the campaign folder. All deliverables are written there.
+
+```
+BenthOS_sorties/
+├── 261006_infoStation.csv                  ← generated via "Générer InfoStation" button
+└── 202608051148_Lolo_CC260080/             ← one folder per video, renamed on export
+    ├── IMG/                                 # extracted image batch (lot d'images)
+    ├── 202608051148_Lolo_CC260080.json      # renamed _temp.json
+    ├── 202608051148_Lolo_CC260080.lnk       # Windows shortcut → raw .mp4
+    └── Annotation_VIAME.csv                 # annotation file ready for VIAME
+```
+
+The per-video folder name follows the convention `YYYYMMDDhhmm_ZONE_StationCode`, derived from the metadata filled in on the Metadata page.
+
+| Output | Format | Generated by |
 |---|---|---|
-| `<stem>_temp.json` | JSON | Created on campaign open, updated on every operator action |
-| `YYMMDD_infoStation.csv` | CSV | Metadata export — one row per video, InfoStation column format |
-| `events_export.csv` | CSV | Biological events — timecodes, types, values, comments |
-| `report_campaign.pdf` | PDF | Campaign report with stats, GPS scatter and per-video sheets |
-| Extracted frames / segments | JPG / MP4 | Produced by the Extraction page |
-| Image batch (`lot d'images`) | JPG | Set of still frames extracted at marked positions, with optional image enhancement (CLAHE, colour correction, stereo rectification) |
-| Video shortcut (`raccourci vidéo`) | MP4 | Trimmed video clip between the in/out markers set on the Extraction page |
-| `BenthOS_sorties/` | folder | Main deliverable folder generated from the Metadata page. One sub-folder per video, named `YYYYMMDDhhmm_ZONE_StationCode/`, containing: the renamed `_temp.json`, an `IMG/` folder (receives the extracted frames), an `Annotation_VIAME.csv` stub ready to receive event annotations, and a Windows shortcut (`.lnk`) pointing back to the raw video file. |
+| `YYMMDD_infoStation.csv` | CSV | "Générer InfoStation" button on the Metadata page — one row per video |
+| `<renamed>/IMG/` | JPG | Extraction page — image batch with optional CLAHE / colour correction |
+| `<renamed>.json` | JSON | Export — the `_temp.json` copied and renamed to the final station code |
+| `<renamed>.lnk` | Windows shortcut | Export — points back to the raw `.mp4` on the original drive |
+| `Annotation_VIAME.csv` | CSV | Export — events pre-formatted for [VIAME](https://github.com/VIAME/VIAME), an open-source tool for fish detection and annotation |
 
 ---
 
