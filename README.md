@@ -34,7 +34,7 @@ The qualification page is the first processing step. All videos of the campaign 
 ### Validation
 ![Validation](img/screenshots/validation.png)
 
-The validation page is a secondary review pass over the qualified videos. For each video the operator can set its **exploitability** status (exploitable / partially exploitable / not exploitable) and confirm the stereo/mono camera configuration. All choices are persisted in the per-video `_temp.json` sidecar file. `Ctrl+Z` undoes the last exploitability change.
+The validation page is a secondary review pass over the qualified videos. For each video the operator can set its **exploitability** status (exploitable / partially exploitable / not exploitable) and confirm the stereo/mono camera configuration. Filling in the **slate** (ardoise) is mandatory on this page before the video can be considered validated. All choices are persisted in the per-video `_temp.json` sidecar file. `Ctrl+Z` undoes the last exploitability change.
 
 ---
 
@@ -66,10 +66,24 @@ The SFTP dialog connects directly to the KOSMOS device over SSH/SFTP (via parami
 
 ---
 
+### Telemetry
+![Telemetry](img/screenshots/telemetry.png)
+
+The telemetry dialog displays the raw sensor data recorded by the KOSMOS device during a deployment. It reads the CSV telemetry file associated with the current video and presents the time-series data (motor rotations, depth, heading, etc.) so the operator can cross-check the deployment conditions alongside the video footage.
+
+---
+
 ### Deployment planner
 ![Planner](img/screenshots/planification.png)
 
 The deployment planner is an interactive Leaflet map (embedded via Qt WebEngine) that lets the team plan the spatial coverage of a mission before heading to the field. Deployment points can be placed, moved and annotated directly on the map. The planned stations can be exported as a waypoint list.
+
+---
+
+### Historical data
+![Historical data](img/screenshots/historical_data.png)
+
+The historical data dialog allows the operator to load and browse observation records from previous campaigns. This makes it possible to cross-reference past deployments at the same site, compare event counts over time, and avoid duplicating annotations already recorded in earlier missions.
 
 ---
 
