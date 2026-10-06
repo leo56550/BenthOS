@@ -27,7 +27,7 @@ The home page lets you open an existing campaign or create a new one by selectin
 ### Qualification
 ![Qualification](img/screenshots/qualification.png)
 
-The qualification page is the first processing step. All videos of the campaign are displayed in the left panel with their name, duration and file size. Each video is also pinned as a marker on the interactive GPS map on the right. The operator watches each video through the embedded player and decides to **Keep** (Garder) or **Discard** (Jeter) it. Discarded videos are moved to a trash bin and can be restored at any time. `Ctrl+Z` undoes the last keep/discard action.
+The qualification page is the first processing step. All videos of the campaign are displayed in the left panel with their name, duration and file size. The operator watches each video through the embedded player and decides to **Keep** (Garder) or **Discard** (Jeter) it. The right panel shows the motor rotations for the selected video. Discarded videos are moved to a trash bin and can be restored at any time. `Ctrl+Z` undoes the last keep/discard action.
 
 ---
 
