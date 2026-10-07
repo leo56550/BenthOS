@@ -535,7 +535,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.btn_reset_corr.setStyleSheet(_TOGGLE_STYLE)
         self.btn_reset_corr.clicked.connect(self._reset_corrections)
 
-        self.lbl_pause_hint = QtWidgets.QLabel("⏸ pause pour activer")
+        self.lbl_pause_hint = QtWidgets.QLabel("⏸ pause pour contraste/luminosité")
         self.lbl_pause_hint.setStyleSheet(f"color: {C_BORDER_SUB}; font-size: 10px; border: none; font-style: italic;")
 
         for w in [self.btn_corr_he, self.btn_corr_dehaze, sep1,
@@ -710,7 +710,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.btn_reset_corr.setText(self.translate("Réinitialiser", "Reset"))
         self.btn_reset_corr.setToolTip(self.translate(
             "Réinitialiser toutes les corrections", "Reset all corrections"))
-        self.lbl_pause_hint.setText(self.translate("⏸ pause pour activer", "⏸ pause to activate"))
+        self.lbl_pause_hint.setText(self.translate("⏸ pause pour contraste/luminosité", "⏸ pause for contrast/brightness"))
         self.btn_telemetry.setText(self.translate("Télémétrie", "Telemetry"))
         self.btn_telemetry.setToolTip(self.translate(
             "Afficher / masquer le graphe de télémétrie", "Show / hide the telemetry graph"))
@@ -1004,6 +1004,9 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         if self.slider_was_playing:
             self.player.play()
             self.slider_was_playing = False
+        elif self.left_display.currentIndex() == 1:
+            # Seek manuel avec corrections actives : désactiver HE/Dehaze et afficher la frame brute
+            self._reset_corrections()
         self.center_scroll_on_cursor()
 
     def on_player_position_changed(self, position_ms: int):
