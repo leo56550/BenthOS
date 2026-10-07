@@ -1394,18 +1394,6 @@ class EvenementsController:
         sep2.setStyleSheet("border: none; border-top: 1px solid #1e3448; max-height: 1px;")
         menu_layout.addWidget(sep2)
 
-        # ── Calcul atterrissage/décollage (lot) ──────────────────────────
-        self.btn_batch_landing = QtWidgets.QPushButton(
-            self.translate("Calculer ATT/DEC", "Calculate LND/TKF"))
-        self.btn_batch_landing.setStyleSheet(BTN_PRIMARY)
-        self.btn_batch_landing.setToolTip(self.translate(
-            "Détecte automatiquement atterrissage et décollage pour toutes les vidéos "
-            "qui ont un CSV de télémétrie (ne remplace pas les valeurs déjà saisies).",
-            "Auto-detect landing and takeoff for all videos that have a telemetry CSV "
-            "(does not overwrite already set values)."))
-        self.btn_batch_landing.clicked.connect(self._batch_detect_landing_takeoff)
-        menu_layout.addWidget(self.btn_batch_landing)
-
     def _apply_evt_btn_style(self, btn: QtWidgets.QPushButton, s: dict, state: str):
         """Applique le style visuel d'un bouton d'événement (normal / selected / active)."""
         if state == "active":
@@ -1524,6 +1512,18 @@ class EvenementsController:
 
         self._btn_debut_annotation = btn_debut_annot
         self._btn_fin_annotation = btn_fin_annot
+
+        # ── Bouton Calculer ATT/DEC (lot) dans la section Déploiement ───
+        self.btn_batch_landing = QtWidgets.QPushButton(
+            self.translate("Calculer ATT/DEC", "Calculate LND/TKF"))
+        self.btn_batch_landing.setStyleSheet(BTN_PRIMARY)
+        self.btn_batch_landing.setToolTip(self.translate(
+            "Détecte automatiquement atterrissage et décollage pour toutes les vidéos "
+            "qui ont un CSV de télémétrie (ne remplace pas les valeurs déjà saisies).",
+            "Auto-detect landing and takeoff for all videos that have a telemetry CSV "
+            "(does not overwrite already set values)."))
+        self.btn_batch_landing.clicked.connect(self._batch_detect_landing_takeoff)
+        layout.insertWidget(layout.count() - 1, self.btn_batch_landing)
 
         gap0 = QtWidgets.QWidget()
         gap0.setFixedHeight(6)
