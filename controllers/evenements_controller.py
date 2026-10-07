@@ -2385,6 +2385,7 @@ class EvenementsController:
             # Recharger la vidéo courante si son timecode a pu changer
             if self.current_video_path:
                 self.charger_evenements_du_json()
+                self._refresh_timecode_markers_on_timeline()
 
         self._batch_worker.result.connect(_on_result)
         self._batch_worker.start()
@@ -2564,6 +2565,47 @@ class EvenementsController:
                 print(f"[ERROR] Failed to read JSON event schema: {e}")
         self.combo_type_event.blockSignals(False)
         self._rebuild_event_buttons()
+
+    def _refresh_timecode_markers_on_timeline(self):
+        """Relit les timecodes atterrissage/décollage du JSON courant et met à jour les marqueurs visuels."""
+        if not self.current_json_path or not os.path.exists(self.current_json_path):
+            return
+        if not hasattr(self, 'event_player') or not getattr(self.event_player, 'timeline', None):
+            return
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception:
+            return
+        video_obs = data.get("video_observation", {})
+        tl = self.event_player.timeline
+        _TC_MARKERS = {
+            "timecode_landing": self.translate("Atterrissage", "Landing"),
+            "timecode_takeoff": self.translate("Décollage",    "Takeoff"),
+        }
+        for tc_key, tc_label in _TC_MARKERS.items():
+            tc_val = (video_obs.get(tc_key) or {}).get("value")
+            tl.events = [e for e in tl.events if e.get("_json_key") != tc_key]
+            if not tc_val:
+                continue
+            try:
+                parts = str(tc_val).split(":")
+                if len(parts) == 3:
+                    tc_ms = int(parts[0])*3600000 + int(parts[1])*60000 + int(parts[2])*1000
+                elif len(parts) == 2:
+                    tc_ms = int(parts[0])*60000 + int(parts[1])*1000
+                else:
+                    continue
+                tl.events.append({
+                    "start": tc_ms, "end": tc_ms,
+                    "title": tc_label,
+                    "type": "timecode_marker",
+                    "zone": 0,
+                    "_json_key": tc_key,
+                })
+            except Exception:
+                pass
+        tl.update()
 
     # --- JSON persistence ---
 
