@@ -178,8 +178,9 @@ class _BatchLandingWorker(QtCore.QThread):
                     errors.append((name, "Détection impossible"))
                     continue
 
-                landing_ms = int(float(times_s[landing_idx]) * 1000)
-                takeoff_ms  = int(float(times_s[takeoff_idx])  * 1000)
+                MARGIN_MS = 3000
+                landing_ms = max(0, int(float(times_s[landing_idx]) * 1000) + MARGIN_MS)
+                takeoff_ms  = max(0, int(float(times_s[takeoff_idx])  * 1000) - MARGIN_MS)
 
                 def _ms_to_tc(ms: int) -> str:
                     s = ms // 1000
@@ -851,13 +852,26 @@ class EvenementsController:
             print(f"[EVENTS] Erreur écriture {field_key} @ {timecode}: {e}")
 
     def _on_timeline_event_moved(self, evt: dict):
-        """Appelé quand l'utilisateur déplace un timecode_marker sur la timeline → persiste dans le JSON."""
-        if evt.get("type") != "timecode_marker":
-            return
-        field_key = evt.get("_json_key")
-        if not field_key:
-            return
-        self._write_timecode_at_ms(field_key, evt["start"])
+        """Appelé quand l'utilisateur déplace un marqueur sur la timeline → persiste dans le JSON."""
+        if evt.get("type") == "timecode_marker":
+            field_key = evt.get("_json_key")
+            if not field_key:
+                return
+            self._write_timecode_at_ms(field_key, evt["start"])
+        elif evt.get("type") == "rotation_manual":
+            # Ctrl+drag sur un événement moteur : delete+insert via le chemin drag standard
+            # (_pre_drag_start a été posé par timeline_widget avant le drag)
+            display_type = self._get_label_from_json_key(evt.get("_json_key", "events_motor"))
+            self.save_event_to_json(evt, display_type)
+            # Mettre à jour uniquement l'arbre (sans re-sauvegarder)
+            tl = self.event_player.timeline
+            for i in range(self.tree_captures.topLevelItemCount()):
+                item = self.tree_captures.topLevelItem(i)
+                uid = getattr(item, '_event_uid', None) or (evt.get("_event_uid"))
+                if item.text(3) == evt.get("title", "").replace("Pic: ", "") and uid == evt.get("_event_uid"):
+                    item.setText(0, tl._format_ms(evt["start"]))
+                    item.setText(1, "-")
+                    break
 
     def _show_landing_context_menu(self, btn: QtWidgets.QPushButton, pos):
         """Menu contextuel (clic droit) sur Atterrissage ou Décollage."""
@@ -1104,8 +1118,15 @@ class EvenementsController:
             )
             return
 
-        landing_ms = int(float(times_s[landing_idx]) * 1000)
-        takeoff_ms  = int(float(times_s[takeoff_idx])  * 1000)
+        MARGIN_MS = 3000
+        landing_ms = int(float(times_s[landing_idx]) * 1000) + MARGIN_MS
+        takeoff_ms  = int(float(times_s[takeoff_idx])  * 1000) - MARGIN_MS
+        # Clamp pour rester dans la durée de la vidéo
+        total_dur = getattr(getattr(self, 'event_player', None), 'timeline', None)
+        total_dur = total_dur.total_duration if total_dur else None
+        landing_ms = max(0, landing_ms)
+        if total_dur:
+            takeoff_ms = min(total_dur, takeoff_ms)
 
         self._write_timecode_at_ms("timecode_landing", landing_ms,
                                    getattr(self, '_btn_atterrissage', None))

@@ -663,6 +663,7 @@ class VideoTimeline(QtWidgets.QWidget):
 
         # Marqueurs verticaux (rotation_manual, timecode_marker, etc.) : sélection par proximité x
         # Les timecode_marker (atterrissage/décollage) activent aussi le drag horizontal
+        # Les rotation_manual activent le drag horizontal avec Ctrl
         TOLERANCE_PX = 6
         for evt in self.events:
             if evt.get("type") != "custom_event":
@@ -671,6 +672,12 @@ class VideoTimeline(QtWidgets.QWidget):
                     self.set_selected_event(evt)
                     self.eventSelected.emit(evt)
                     if evt.get("type") == "timecode_marker":
+                        self.active_marker_move = evt
+                        self.drag_marker_mouse_x = pos_x
+                        self.drag_marker_start_ms = evt["start"]
+                    elif evt.get("type") == "rotation_manual" and ctrl:
+                        evt["_pre_drag_start"] = evt["start"]
+                        evt["_pre_drag_end"] = evt["end"]
                         self.active_marker_move = evt
                         self.drag_marker_mouse_x = pos_x
                         self.drag_marker_start_ms = evt["start"]
@@ -754,9 +761,11 @@ class VideoTimeline(QtWidgets.QWidget):
         elif inside_block:
             self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.SizeAllCursor))
         else:
-            # Hover sur un timecode_marker → curseur de déplacement horizontal
+            # Hover sur un timecode_marker ou rotation_manual+Ctrl → curseur de déplacement horizontal
+            hover_ctrl = bool(event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier)
             for evt in self.events:
-                if evt.get("type") == "timecode_marker":
+                etype = evt.get("type")
+                if etype == "timecode_marker" or (etype == "rotation_manual" and hover_ctrl):
                     x_line = int((evt.get("start", 0) / total_duration) * width)
                     if abs(pos_x - x_line) <= 6:
                         self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.SizeHorCursor))
