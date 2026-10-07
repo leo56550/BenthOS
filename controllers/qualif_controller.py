@@ -1689,7 +1689,7 @@ class QualifController:
                     html=marker_html, icon_size=(76, 40), icon_anchor=(38, 26),
                     class_name="kosmos-marker-icon",
                 )
-                marker = folium.Marker(location=coords, popup=popup, icon=icon, draggable=True)
+                marker = folium.Marker(location=coords, popup=popup, icon=icon, draggable=False)
                 marker.add_to(m)
                 js_name = name.replace("\\", "\\\\").replace('"', '\\"')
                 js_reg = f"""
