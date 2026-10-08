@@ -28,12 +28,24 @@ var infoMarkers = [];
 function _infoIcon(code) {
   return L.divIcon({
     className: '',
-    html: '<div style="background:#e68c14;color:#fff;border:2px solid #f09624;'
-        + 'border-radius:4px;min-width:20px;height:20px;line-height:16px;'
-        + 'text-align:center;font:bold 9px sans-serif;padding:0 3px;'
+    html: '<div style="background:#e68c14;color:#fff;border:2px solid #f5a623;'
+        + 'border-radius:50%;min-width:26px;height:26px;line-height:22px;'
+        + 'text-align:center;font:bold 9px sans-serif;padding:0 4px;'
         + 'box-shadow:0 2px 6px #0008;white-space:nowrap;">'
         + code + '</div>',
-    iconSize: null, iconAnchor: [10, 10], popupAnchor: [0, -14]
+    iconSize: null, iconAnchor: [13, 13], popupAnchor: [0, -16]
+  });
+}
+
+function _importedIcon(n) {
+  return L.divIcon({
+    className: '',
+    html: '<div style="background:#16a0a0;color:#fff;border:2px solid #4fd4d4;'
+        + 'border-radius:50%;min-width:26px;height:26px;line-height:22px;'
+        + 'text-align:center;font:bold 11px sans-serif;padding:0 4px;'
+        + 'box-shadow:0 2px 6px #0008;white-space:nowrap;">'
+        + n + '</div>',
+    iconSize: null, iconAnchor: [13, 13], popupAnchor: [0, -16]
   });
 }
 
@@ -66,6 +78,32 @@ function loadInfostationPoints(data) {
 function clearInfostationMarkers() {
   infoMarkers.forEach(function (m) { map.removeLayer(m); });
   infoMarkers = [];
+}
+
+function loadImportedPoints(data) {
+  var points = data;
+  if (typeof data === 'string') {
+    try { points = JSON.parse(data); } catch(e) { return; }
+  }
+  if (!Array.isArray(points)) { return; }
+  points.forEach(function (p) {
+    if (p.lat == null || p.lng == null) return;
+    var idx   = markers.length;
+    var label = p.nom || p.code || ('Point ' + (idx + 1));
+    var m = L.marker([p.lat, p.lng], { icon: _importedIcon(idx + 1) })
+             .addTo(map)
+             .bindPopup(
+               '<b>' + label + '</b><br>'
+               + p.lat.toFixed(6) + ',&nbsp;' + p.lng.toFixed(6)
+               + (p.date ? '<br><span style="color:#aaa;font-size:11px;">' + p.date + '</span>' : '')
+             );
+    markers.push(m);
+    if (bridge) {
+      bridge.onPointAdded(JSON.stringify({
+        index: idx, lat: p.lat, lng: p.lng, label: label, date: p.date || ''
+      }));
+    }
+  });
 }
 
 function _icon(n, label) {

@@ -1,0 +1,244 @@
+{
+  "mission": null,
+  "date_deploiement": "2026-10-08",
+  "waypoints": [
+    {
+      "index": 1,
+      "label": "Point 1",
+      "latitude": 47.73421,
+      "longitude": -4.02588,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 2,
+      "label": "312",
+      "latitude": 47.73771,
+      "longitude": -4.02104,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 3,
+      "label": "312",
+      "latitude": 47.73617,
+      "longitude": -4.02609,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 4,
+      "label": "312",
+      "latitude": 47.73454,
+      "longitude": -4.03002,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 5,
+      "label": "314",
+      "latitude": 47.73287,
+      "longitude": -4.02761,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 6,
+      "label": "Point 6",
+      "latitude": 47.73292,
+      "longitude": -4.02815,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 7,
+      "label": "Point 7",
+      "latitude": 47.7387,
+      "longitude": -3.97887,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 8,
+      "label": "Point 8",
+      "latitude": 47.73995,
+      "longitude": -3.97497,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 9,
+      "label": "Point 9",
+      "latitude": 47.74357,
+      "longitude": -3.96857,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 10,
+      "label": "Point 10",
+      "latitude": 47.73919,
+      "longitude": -3.96867,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 11,
+      "label": "Point 11",
+      "latitude": 47.73661,
+      "longitude": -3.96859,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 12,
+      "label": "Point 12",
+      "latitude": 47.73526,
+      "longitude": -3.9665,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 13,
+      "label": "Point 13",
+      "latitude": 47.73302,
+      "longitude": -3.96572,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 14,
+      "label": "Point 14",
+      "latitude": 47.73013,
+      "longitude": -3.96643,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 15,
+      "label": "Point 15",
+      "latitude": 47.7352,
+      "longitude": -3.97443,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 16,
+      "label": "311",
+      "latitude": 47.73586,
+      "longitude": -4.02158,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 17,
+      "label": "312",
+      "latitude": 47.73388,
+      "longitude": -4.0264,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 18,
+      "label": "312",
+      "latitude": 47.73375,
+      "longitude": -4.02978,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 19,
+      "label": "313",
+      "latitude": 47.73249,
+      "longitude": -4.03176,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 20,
+      "label": "315",
+      "latitude": 47.73,
+      "longitude": -4.03377,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 21,
+      "label": "Point 21",
+      "latitude": 47.74159,
+      "longitude": -3.97951,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 22,
+      "label": "Point 22",
+      "latitude": 47.74339,
+      "longitude": -3.9745,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 23,
+      "label": "Point 23",
+      "latitude": 47.73926,
+      "longitude": -3.96502,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 24,
+      "label": "Point 24",
+      "latitude": 47.7392,
+      "longitude": -3.96494,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 25,
+      "label": "Point 25",
+      "latitude": 47.73681,
+      "longitude": -3.96399,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 26,
+      "label": "Point 26",
+      "latitude": 47.73463,
+      "longitude": -3.9633,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 27,
+      "label": "Point 27",
+      "latitude": 47.73195,
+      "longitude": -3.96264,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 28,
+      "label": "Point 28",
+      "latitude": 47.73433,
+      "longitude": -3.96979,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 29,
+      "label": "Point 29",
+      "latitude": 47.73736,
+      "longitude": -3.97479,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 30,
+      "label": "Point 30",
+      "latitude": 47.740535,
+      "longitude": -3.983746,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 31,
+      "label": "Point 31",
+      "latitude": 47.736841,
+      "longitude": -3.9816,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 32,
+      "label": "Point 32",
+      "latitude": 47.73384,
+      "longitude": -3.978167,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 33,
+      "label": "Point 33",
+      "latitude": 47.730433,
+      "longitude": -3.975334,
+      "date": "2026-10-08"
+    },
+    {
+      "index": 34,
+      "label": "Point 34",
+      "latitude": 47.732108,
+      "longitude": -3.974047,
+      "date": "2026-10-08"
+    }
+  ]
+}

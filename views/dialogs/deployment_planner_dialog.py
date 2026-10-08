@@ -228,6 +228,16 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
         self._edit_name.textEdited.connect(self._on_name_edited)
         rl.addWidget(self._edit_name)
 
+        self._edit_point_date_lbl = _lbl(self.translate("Date du point", "Point date"))
+        rl.addWidget(self._edit_point_date_lbl)
+        self._edit_point_date = QtWidgets.QDateEdit()
+        self._edit_point_date.setCalendarPopup(True)
+        self._edit_point_date.setDisplayFormat("dd/MM/yyyy")
+        self._edit_point_date.setDate(QtCore.QDate.currentDate())
+        self._edit_point_date.setEnabled(False)
+        self._edit_point_date.dateChanged.connect(self._on_point_date_changed)
+        rl.addWidget(self._edit_point_date)
+
         rl.addWidget(_sep())
 
         btn_del = QtWidgets.QPushButton(self.translate("Supprimer la selection", "Delete selection"))
@@ -255,6 +265,7 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
         )
         btn_send.clicked.connect(self._send_to_kosmos)
         rl.addWidget(btn_send)
+
 
         body.addWidget(right)
         body.setStretchFactor(0, 3)
@@ -394,12 +405,12 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
             return
 
         self._map_view.page().runJavaScript(
-            f"loadInfostationPoints({json.dumps(points)});"
+            f"loadImportedPoints({json.dumps(points)});"
         )
 
         info = self.translate(
-            f"{len(points)} point(s) de campagne chargé(s)",
-            f"{len(points)} campaign point(s) loaded"
+            f"{len(points)} point(s) de campagne ajouté(s) aux waypoints",
+            f"{len(points)} campaign point(s) added to waypoints"
         )
         info += self.translate(f"\nDossier : {os.path.basename(folder)}",
                                f"\nFolder: {os.path.basename(folder)}")
@@ -407,15 +418,38 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
 
     # ── Gestion des points ────────────────────────────────────────────────────
 
+    @staticmethod
+    def _parse_point_date(raw: str, fallback: QtCore.QDate) -> str:
+        """Normalise une date vers yyyy-MM-dd.
+        Accepte : YYYYMMDD, YYMMDD, DD/MM/YYYY, yyyy-MM-dd."""
+        if raw:
+            s = raw.strip()
+            # DD/MM/YYYY
+            parts = s.split("/")
+            if len(parts) == 3 and len(parts[2]) == 4:
+                return f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+            # yyyy-MM-dd
+            if len(s) == 10 and s[4] == "-":
+                return s
+            # YYYYMMDD ou YYMMDD (chiffres seuls)
+            digits = "".join(c for c in s if c.isdigit())
+            if len(digits) == 8:
+                return f"{digits[:4]}-{digits[4:6]}-{digits[6:8]}"
+            if len(digits) == 6:
+                return f"20{digits[:2]}-{digits[2:4]}-{digits[4:6]}"
+        return fallback.toString("yyyy-MM-dd")
+
     def _on_point_added(self, payload: str):
         try:
             data = json.loads(payload)
         except Exception:
             return
+        date_iso = self._parse_point_date(data.get("date", ""), self._date_edit.date())
         self._points.append({
             "label": data.get("label", f"Point {len(self._points)+1}"),
             "lat":   float(data["lat"]),
             "lng":   float(data["lng"]),
+            "date":  date_iso,
         })
         self._refresh_list()
         # Selectionner le nouveau point
@@ -440,11 +474,27 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
         if row < 0 or row >= len(self._points):
             self._edit_name.setEnabled(False)
             self._edit_name.clear()
+            self._edit_point_date.setEnabled(False)
             return
         self._edit_name.setEnabled(True)
         self._updating_name = True
         self._edit_name.setText(self._points[row]["label"])
         self._updating_name = False
+        # Date du point
+        self._edit_point_date.setEnabled(True)
+        date_str = self._points[row].get("date", "")
+        qdate = QtCore.QDate.fromString(date_str, "yyyy-MM-dd")
+        if not qdate.isValid():
+            qdate = self._date_edit.date()
+        self._edit_point_date.blockSignals(True)
+        self._edit_point_date.setDate(qdate)
+        self._edit_point_date.blockSignals(False)
+
+    def _on_point_date_changed(self, qdate: QtCore.QDate):
+        row = self._list.currentRow()
+        if row < 0 or row >= len(self._points):
+            return
+        self._points[row]["date"] = qdate.toString("yyyy-MM-dd")
 
     def _on_name_edited(self, text: str):
         if self._updating_name:
@@ -504,6 +554,7 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
                     "label":     p["label"],
                     "latitude":  round(p["lat"], 6),
                     "longitude": round(p["lng"], 6),
+                    "date":      p.get("date", ""),
                 }
                 for i, p in enumerate(self._points)
             ],
@@ -547,13 +598,41 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
                 self.translate("Aucun waypoint à envoyer.", "No waypoint to send.")
             )
             return
-        dlg = _SftpSendDialog(self._build_json_bytes(),
-                              self._date_edit.date().toString("yyyyMMdd"),
-                              parent=self, language=self.current_language)
+        # Récupérer la bbox visible Leaflet avant d'ouvrir le dialog
+        json_bytes = self._build_json_bytes()
+        date_str   = self._date_edit.date().toString("yyyyMMdd")
+        self._map_view.page().runJavaScript(
+            "JSON.stringify(map.getBounds());",
+            lambda result: self._open_deploy_dialog(result, json_bytes, date_str)
+        )
+
+    def _open_deploy_dialog(self, bounds_json: str, json_bytes: bytes, date_str: str):
+        viewport_bounds = None
+        try:
+            b = json.loads(bounds_json or "{}")
+            sw = b.get("_southWest", {})
+            ne = b.get("_northEast", {})
+            if sw and ne:
+                viewport_bounds = {
+                    "lat_min": sw["lat"], "lat_max": ne["lat"],
+                    "lng_min": sw["lng"], "lng_max": ne["lng"],
+                }
+        except Exception:
+            pass
+        dlg = _SftpDeployDialog(
+            json_bytes=json_bytes,
+            date_str=date_str,
+            waypoints=self._points,
+            viewport_bounds=viewport_bounds,
+            parent=self,
+            language=self.current_language,
+        )
         dlg.exec()
 
 
-# ── Dialog d'envoi SFTP compact ──────────────────────────────────────────────
+
+
+# ── Style commun ─────────────────────────────────────────────────────────────
 
 _SFTP_STYLE = """
 QDialog { background-color: #111820; font-family: 'Segoe UI', sans-serif; }
@@ -564,6 +643,11 @@ QLineEdit {
     padding: 4px 7px; font-size: 11px;
 }
 QLineEdit:focus { border-color: #2778A2; }
+QSpinBox {
+    background-color: #162433; color: #F2BFB4;
+    border: 1px solid #2a4057; border-radius: 3px;
+    padding: 3px 6px; font-size: 11px;
+}
 QPushButton {
     background-color: #20415D; color: white; font-weight: bold;
     border: 1px solid #2778A2; border-radius: 4px;
@@ -576,36 +660,48 @@ QProgressBar {
     background-color: #0d1520; height: 10px; text-align: center;
 }
 QProgressBar::chunk { background-color: #4CAF50; border-radius: 2px; }
+QTextEdit {
+    background-color: #0a1218; color: #a0b8c8;
+    border: 1px solid #1e3448; border-radius: 3px;
+    font-family: Consolas, monospace; font-size: 10px;
+}
 """
 
 
-class _SftpSendDialog(QtWidgets.QDialog):
-    """Dialog compact pour envoyer un JSON de planification vers le KOSMOS en SFTP."""
+class _SftpDeployDialog(QtWidgets.QDialog):
+    """Envoie le JSON de waypoints + toutes les tuiles OSM visibles vers le KOSMOS."""
 
-    def __init__(self, data: bytes, date_str: str, parent=None, language: str = 'fr'):
+    def __init__(self, json_bytes, date_str, waypoints, viewport_bounds=None,
+                 parent=None, language='fr'):
         super().__init__(parent)
-        self.current_language = language
-        self._data     = data
-        self._date_str = date_str
-        self._worker   = None
+        self.current_language  = language
+        self._json_bytes       = json_bytes
+        self._date_str         = date_str
+        self._waypoints        = waypoints
+        self._viewport_bounds  = viewport_bounds
+        self._worker           = None
 
         self.setWindowTitle(self.translate("Envoyer vers KOSMOS", "Send to KOSMOS"))
         self.setModal(True)
-        self.setFixedWidth(480)
+        self.resize(520, 560)
         self.setStyleSheet(_SFTP_STYLE)
 
         root = QtWidgets.QVBoxLayout(self)
-        root.setContentsMargins(20, 18, 20, 18)
-        root.setSpacing(10)
+        root.setContentsMargins(20, 16, 20, 16)
+        root.setSpacing(8)
 
-        # ── Connexion ─────────────────────────────────────────────────────
         def _row(label, widget):
             r = QtWidgets.QHBoxLayout()
             lbl = QtWidgets.QLabel(label)
-            lbl.setFixedWidth(100)
+            lbl.setFixedWidth(130)
             r.addWidget(lbl)
             r.addWidget(widget)
             root.addLayout(r)
+
+        # ── Connexion SFTP ────────────────────────────────────────────────
+        lbl_sftp = QtWidgets.QLabel("SFTP")
+        lbl_sftp.setStyleSheet("color: #F2BFB4; font-weight: bold; font-size: 12px; border: none;")
+        root.addWidget(lbl_sftp)
 
         self._ip   = QtWidgets.QLineEdit("192.168.10.2")
         self._port = QtWidgets.QLineEdit("22")
@@ -613,83 +709,154 @@ class _SftpSendDialog(QtWidgets.QDialog):
         self._user = QtWidgets.QLineEdit("kosmos")
         self._pwd  = QtWidgets.QLineEdit("kosmos")
         self._pwd.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+        self._remote_deploy_dir = QtWidgets.QLineEdit("/home/kosmos/deployments")
 
         _row(self.translate("Adresse IP :", "IP Address:"), self._ip)
         _row(self.translate("Port :", "Port:"), self._port)
         _row(self.translate("Utilisateur :", "User:"), self._user)
         _row(self.translate("Mot de passe :", "Password:"), self._pwd)
+        _row(self.translate("Dossier :", "Folder:"), self._remote_deploy_dir)
 
-        # Dossier distant
-        self._remote_dir = QtWidgets.QLineEdit("/home/kosmos/deployments")
-        _row(self.translate("Dossier distant :", "Remote folder:"), self._remote_dir)
+        lbl_struct = QtWidgets.QLabel(
+            self.translate("  → JSON + tiles/sat/ + tiles/seamark/", "  → JSON + tiles/sat/ + tiles/seamark/"))
+        lbl_struct.setStyleSheet("color: #556677; font-size: 10px; border: none; font-style: italic;")
+        root.addWidget(lbl_struct)
 
-        # ── Statut ────────────────────────────────────────────────────────
+        # ── Niveaux de zoom ───────────────────────────────────────────────
+        sep = QtWidgets.QFrame()
+        sep.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        sep.setStyleSheet("border: none; border-top: 1px solid #1e3448; max-height: 1px;")
+        root.addWidget(sep)
+
+        lbl_zoom = QtWidgets.QLabel(self.translate("Niveaux de zoom des tuiles", "Tile zoom levels"))
+        lbl_zoom.setStyleSheet("color: #F2BFB4; font-weight: bold; font-size: 11px; border: none;")
+        root.addWidget(lbl_zoom)
+
+        zoom_row = QtWidgets.QHBoxLayout()
+        zoom_row.addWidget(QtWidgets.QLabel(self.translate("De z=", "From z=")))
+        self._z_min = QtWidgets.QSpinBox()
+        self._z_min.setRange(0, 19); self._z_min.setValue(8); self._z_min.setFixedWidth(55)
+        zoom_row.addWidget(self._z_min)
+        zoom_row.addWidget(QtWidgets.QLabel(self.translate("  a z=", "  to z=")))
+        self._z_max = QtWidgets.QSpinBox()
+        self._z_max.setRange(0, 19); self._z_max.setValue(16); self._z_max.setFixedWidth(55)
+        zoom_row.addWidget(self._z_max)
+        zoom_row.addStretch()
+        root.addLayout(zoom_row)
+
+        self._lbl_estimate = QtWidgets.QLabel("")
+        self._lbl_estimate.setStyleSheet("color: #7ec8e3; font-size: 10px; border: none;")
+        root.addWidget(self._lbl_estimate)
+        self._z_min.valueChanged.connect(self._update_estimate)
+        self._z_max.valueChanged.connect(self._update_estimate)
+        self._update_estimate()
+
+        # ── Log ───────────────────────────────────────────────────────────
+        sep2 = QtWidgets.QFrame()
+        sep2.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        sep2.setStyleSheet("border: none; border-top: 1px solid #1e3448; max-height: 1px;")
+        root.addWidget(sep2)
+
+        self._log_edit = QtWidgets.QTextEdit()
+        self._log_edit.setReadOnly(True)
+        self._log_edit.setFixedHeight(130)
+        root.addWidget(self._log_edit)
+
+        # ── Progression ───────────────────────────────────────────────────
         self._progress = QtWidgets.QProgressBar()
-        self._progress.setRange(0, 0)
         self._progress.setVisible(False)
         root.addWidget(self._progress)
-
-        self._lbl_status = QtWidgets.QLabel("")
-        self._lbl_status.setWordWrap(True)
-        self._lbl_status.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        root.addWidget(self._lbl_status)
 
         # ── Boutons ───────────────────────────────────────────────────────
         btn_row = QtWidgets.QHBoxLayout()
         btn_row.addStretch()
+        self._btn_cancel = QtWidgets.QPushButton(self.translate("Annuler", "Cancel"))
+        self._btn_cancel.clicked.connect(self._cancel)
         self._btn_send = QtWidgets.QPushButton(self.translate("Envoyer", "Send"))
         self._btn_send.setStyleSheet(
             "QPushButton { background-color: #1a3a1a; color: #4CAF50;"
-            " border: 1px solid #4CAF50; border-radius: 4px;"
-            " padding: 6px 20px; font-weight: bold; }"
+            " border: 1px solid #4CAF50; border-radius: 4px; padding: 6px 20px; font-weight: bold; }"
             " QPushButton:hover { background-color: #4CAF50; color: #fff; }"
-            " QPushButton:disabled { background-color: #1a2030; color: #555;"
-            " border-color: #333; }"
+            " QPushButton:disabled { background-color: #1a2030; color: #555; border-color: #333; }"
         )
         self._btn_send.clicked.connect(self._do_send)
-        btn_cancel = QtWidgets.QPushButton(self.translate("Annuler", "Cancel"))
-        btn_cancel.clicked.connect(self.reject)
-        btn_row.addWidget(btn_cancel)
+        btn_row.addWidget(self._btn_cancel)
         btn_row.addWidget(self._btn_send)
         root.addLayout(btn_row)
 
-    def translate(self, fr: str, en: str) -> str:
+    def translate(self, fr, en):
         return fr if self.current_language == 'fr' else en
 
-    def _do_send(self):
-        from services.sftp_service import SftpUploadWorker
+    def _get_tiles(self):
+        from services.sftp_service import compute_tiles
+        z_min = self._z_min.value()
+        z_max = max(z_min, self._z_max.value())
+        if self._viewport_bounds:
+            b = self._viewport_bounds
+            pts = [{"lat": b["lat_min"], "lng": b["lng_min"]},
+                   {"lat": b["lat_max"], "lng": b["lng_max"]}]
+            return compute_tiles(pts, z_min, z_max, margin_km=0)
+        return compute_tiles(self._waypoints or [], z_min, z_max, margin_km=5.0)
 
-        ip       = self._ip.text().strip()
-        port     = int(self._port.text().strip() or "22")
-        user     = self._user.text().strip()
-        password = self._pwd.text()
-        remote_dir = self._remote_dir.text().strip().rstrip('/')
-        filename = f"deploiement_{self._date_str}.json"
-        remote_path = f"{remote_dir}/{filename}"
+    def _update_estimate(self):
+        try:
+            n = len(self._get_tiles()) * 2  # sat + seamark
+            mb = n * 30 / 1024
+            self._lbl_estimate.setText(
+                self.translate(f"~{n} tuile(s) (sat+seamark), ~{mb:.0f} MB", f"~{n} tile(s) (sat+seamark), ~{mb:.0f} MB")
+            )
+        except Exception:
+            self._lbl_estimate.setText("")
+
+    def _append_log(self, msg: str):
+        self._log_edit.append(msg)
+        sb = self._log_edit.verticalScrollBar()
+        sb.setValue(sb.maximum())
+
+    def _do_send(self):
+        from services.sftp_service import DeployWorker
+        tiles = self._get_tiles()
+        ip         = self._ip.text().strip()
+        port       = int(self._port.text().strip() or "22")
+        user       = self._user.text().strip()
+        password   = self._pwd.text()
+        deploy_dir = self._remote_deploy_dir.text().strip().rstrip('/')
+        tiles_dir  = f"{deploy_dir}/tiles"
+        filename   = f"deploiement_{self._date_str}.json"
+        json_path  = f"{deploy_dir}/{filename}"
 
         self._btn_send.setEnabled(False)
+        self._progress.setRange(0, max(1, len(tiles)))
+        self._progress.setValue(0)
         self._progress.setVisible(True)
-        self._lbl_status.setText(self.translate("Connexion en cours…", "Connecting…"))
-        self._lbl_status.setStyleSheet("color: #7ec8e3; font-size: 11px; border: none;")
+        self._log_edit.clear()
 
-        self._worker = SftpUploadWorker(ip, port, user, password, remote_path, self._data)
+        self._worker = DeployWorker(
+            ip=ip, port=port, user=user, password=password,
+            json_bytes=self._json_bytes, json_remote_path=json_path,
+            tiles=tiles, remote_tiles_dir=tiles_dir,
+        )
+        self._worker.log.connect(self._append_log)
+        self._worker.progress.connect(lambda done, total: self._progress.setValue(done))
         self._worker.finished.connect(self._on_finished)
         self._worker.error.connect(self._on_error)
         self._worker.start()
 
-    def _on_finished(self, remote_path: str):
+    def _on_finished(self):
+        self._progress.setValue(self._progress.maximum())
         self._progress.setVisible(False)
-        self._lbl_status.setText(self.translate(
-            f"Fichier envoye avec succes :\n{remote_path}", f"File sent successfully:\n{remote_path}"
-        ))
-        self._lbl_status.setStyleSheet("color: #4CAF50; font-size: 11px; border: none;")
         self._btn_send.setText(self.translate("Fermer", "Close"))
         self._btn_send.setEnabled(True)
         self._btn_send.clicked.disconnect()
         self._btn_send.clicked.connect(self.accept)
 
     def _on_error(self, msg: str):
+        self._append_log(f"ERREUR : {msg}")
         self._progress.setVisible(False)
-        self._lbl_status.setText(self.translate(f"Erreur : {msg}", f"Error: {msg}"))
-        self._lbl_status.setStyleSheet("color: #e57373; font-size: 11px; border: none;")
         self._btn_send.setEnabled(True)
+
+    def _cancel(self):
+        if self._worker and self._worker.isRunning():
+            self._worker.requestInterruption()
+            self._worker.wait(2000)
+        self.reject()
