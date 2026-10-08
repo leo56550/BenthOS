@@ -876,12 +876,15 @@ class EvenementsController:
     def _show_landing_context_menu(self, btn: QtWidgets.QPushButton, pos):
         """Menu contextuel (clic droit) sur Atterrissage ou Décollage."""
         menu = QtWidgets.QMenu(btn)
-        action = menu.addAction(
-            self.translate("Détecter automatiquement (télémétrie)",
-                           "Auto-detect (telemetry)"))
+        act_this = menu.addAction(
+            self.translate("Détecter pour cette vidéo", "Detect for this video"))
+        act_all = menu.addAction(
+            self.translate("Détecter pour toutes les vidéos", "Detect for all videos"))
         chosen = menu.exec(btn.mapToGlobal(pos))
-        if chosen == action:
+        if chosen == act_this:
             self._detect_landing_takeoff_from_telemetry()
+        elif chosen == act_all:
+            self._batch_detect_landing_takeoff()
 
     def _show_motor_rotation_context_menu(self, pos):
         """Menu contextuel (clic droit) sur le bouton Rotation moteur.
@@ -1545,6 +1548,7 @@ class EvenementsController:
             "(does not overwrite already set values)."))
         self.btn_batch_landing.clicked.connect(self._batch_detect_landing_takeoff)
         layout.insertWidget(layout.count() - 1, self.btn_batch_landing)
+        self.btn_batch_landing.setVisible(False)
 
         gap0 = QtWidgets.QWidget()
         gap0.setFixedHeight(6)

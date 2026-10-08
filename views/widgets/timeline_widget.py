@@ -671,7 +671,7 @@ class VideoTimeline(QtWidgets.QWidget):
                 if abs(pos_x - x_line) <= TOLERANCE_PX:
                     self.set_selected_event(evt)
                     self.eventSelected.emit(evt)
-                    if evt.get("type") == "timecode_marker":
+                    if evt.get("type") == "timecode_marker" and ctrl:
                         self.active_marker_move = evt
                         self.drag_marker_mouse_x = pos_x
                         self.drag_marker_start_ms = evt["start"]
@@ -765,7 +765,7 @@ class VideoTimeline(QtWidgets.QWidget):
             hover_ctrl = bool(event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier)
             for evt in self.events:
                 etype = evt.get("type")
-                if etype == "timecode_marker" or (etype == "rotation_manual" and hover_ctrl):
+                if (etype in ("timecode_marker", "rotation_manual")) and hover_ctrl:
                     x_line = int((evt.get("start", 0) / total_duration) * width)
                     if abs(pos_x - x_line) <= 6:
                         self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.SizeHorCursor))
