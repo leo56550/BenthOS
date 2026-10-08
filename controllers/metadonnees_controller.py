@@ -209,28 +209,20 @@ def _compute_codeobs(jdata: dict) -> str | None:
 def _compute_video_path_number(actual_video_path: str) -> tuple[str, str]:
     """Calcule (video_path_value, video_number_value) depuis le chemin réel du fichier vidéo.
 
-    video_path_value  : chemin relatif camp\\sys\\num  (num = int du stem, sans zéros de tête)
-    video_number_value: nom de fichier avec extension (ex. 0103.mp4)
+    Détection de structure : si le parent du dossier vidéo contient un underscore
+    c'est un dossier système → nouvelle structure camp/sys/station/video.mp4.
     """
-    import re as _re_vpn
-    stem = os.path.splitext(os.path.basename(actual_video_path))[0]
-    vdir = os.path.dirname(os.path.normpath(actual_video_path))
+    vdir   = os.path.dirname(os.path.normpath(actual_video_path))
     direct = os.path.basename(vdir)
+    parent = os.path.basename(os.path.dirname(vdir))
 
-    if _re_vpn.match(r'^\d{4}$', direct):
-        # Structure campagne\système\station(4 chiffres)\video.mp4
-        sys_name  = os.path.basename(os.path.dirname(vdir))
+    if '_' in parent:
+        # Structure campagne\système\station\video.mp4 (station = n'importe quoi)
         camp_name = os.path.basename(os.path.dirname(os.path.dirname(vdir)))
-        vpath_val = f"{camp_name}\\{sys_name}\\{direct}"
+        vpath_val = f"{camp_name}\\{parent}\\{direct}"
     else:
         # Structure campagne\système\video.mp4
-        sys_name  = direct
-        camp_name = os.path.basename(os.path.dirname(vdir))
-        try:
-            stem_num = str(int(stem))
-        except ValueError:
-            stem_num = stem
-        vpath_val = f"{camp_name}\\{sys_name}\\{stem_num}"
+        vpath_val = f"{parent}\\{direct}"
 
     vnum_val = os.path.basename(actual_video_path)
     return vpath_val, vnum_val

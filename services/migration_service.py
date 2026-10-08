@@ -235,32 +235,20 @@ def initialise_temp_json_if_needed(video_path: str) -> bool:
         _nullify_values(data)
 
         # ── Auto-remplissage des champs dérivés du chemin ─────────────────
-        import re as _re
         vo = data.get("video_observation", {})
 
-        # video_path → "<campagne>\<système>\<num_station>"
-        # Nouvelle structure : camp/sys/station/fichier.mp4  (station = n'importe quoi)
-        # Ancienne structure : camp/sys/fichier.mp4
-        # Critère : si le PARENT direct du dossier vidéo contient un underscore,
-        # c'est un dossier système (ex: "260806_SVR_KOS51") → nouvelle structure.
+        # video_path : calculé depuis la structure fichier courante.
+        # Critère : si le parent du dossier vidéo contient un underscore → dossier système
+        # (ex: "250821_SVR_K2") → nouvelle structure camp/sys/station/video.mp4.
         _direct  = os.path.basename(folder)
         _parent  = os.path.basename(os.path.dirname(folder))
         if '_' in _parent:
-            # Nouvelle structure : camp/sys/station/video.mp4
-            system_folder   = _parent
-            campaign_folder = os.path.basename(os.path.dirname(os.path.dirname(folder)))
-            vpath_val = f"{campaign_folder}\\{system_folder}\\{_direct}"
+            _campaign = os.path.basename(os.path.dirname(os.path.dirname(folder)))
+            _vpath = f"{_campaign}\\{_parent}\\{_direct}"
         else:
-            # Ancienne structure : camp/sys/video.mp4
-            system_folder   = _direct
-            campaign_folder = _parent
-            try:
-                _stem_num = str(int(stem))
-            except ValueError:
-                _stem_num = stem
-            vpath_val = f"{campaign_folder}\\{system_folder}\\{_stem_num}"
+            _vpath = f"{_parent}\\{_direct}"
         if "video_path" in vo:
-            vo["video_path"]["value"] = vpath_val
+            vo["video_path"]["value"] = _vpath
 
         # video_number → nom du fichier vidéo avec extension (ex. "0210.mp4")
         if "video_number" in vo:
@@ -305,7 +293,7 @@ def initialise_temp_json_if_needed(video_path: str) -> bool:
                 # depuis le brut — uniquement saisis via l'ardoise en page Validation.
                 mapped += [f"video_observation.{c}" for c in _merge_raw_block(
                     data.setdefault("video_observation", {}), raw.get("video_observation", {}),
-                    exclude_keys={"exploitable", "qualifiable", "point_name", "station_number", "codeObs", "gps_waypoint"})]
+                    exclude_keys={"exploitable", "qualifiable", "point_name", "station_number", "codeObs", "gps_waypoint", "video_path", "video_number", "video_file_name"})]
                 # Coercer latitude/longitude en float après la merge (le JSON brut peut stocker des str)
                 _vo_merged = data.get("video_observation", {})
                 for _coord in ("latitude", "longitude"):
@@ -325,7 +313,7 @@ def initialise_temp_json_if_needed(video_path: str) -> bool:
         with open(temp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
         print(f"[INIT] {stem}_temp.json créé"
-              f" (video_path={vpath_val!r}, video_number={vo.get('video_number', {}).get('value')!r})")
+              f" (video_path={_vpath!r}, video_number={vo.get('video_number', {}).get('value')!r})")
         return True
     except Exception as e:
         print(f"[INIT] Impossible de créer {stem}_temp.json : {e}")
@@ -344,23 +332,15 @@ def update_temp_json_paths(video_path: str) -> None:
     if not os.path.isfile(temp_path):
         return
 
+    video_number_val = os.path.basename(video_path)  # inclut l'extension
+
     _direct = os.path.basename(folder)
     _parent = os.path.basename(os.path.dirname(folder))
     if '_' in _parent:
-        # Nouvelle structure : camp/sys/station/video.mp4
-        system_folder   = _parent
-        campaign_folder = os.path.basename(os.path.dirname(os.path.dirname(folder)))
-        vpath_val = f"{campaign_folder}\\{system_folder}\\{_direct}"
+        _campaign = os.path.basename(os.path.dirname(os.path.dirname(folder)))
+        vpath_val = f"{_campaign}\\{_parent}\\{_direct}"
     else:
-        # Ancienne structure : camp/sys/video.mp4
-        system_folder   = _direct
-        campaign_folder = _parent
-        try:
-            _stem_num = str(int(stem))
-        except ValueError:
-            _stem_num = stem
-        vpath_val = f"{campaign_folder}\\{system_folder}\\{_stem_num}"
-    video_number_val = os.path.basename(video_path)  # inclut l'extension
+        vpath_val = f"{_parent}\\{_direct}"
 
     try:
         with open(temp_path, "r", encoding="utf-8") as f:
@@ -369,9 +349,8 @@ def update_temp_json_paths(video_path: str) -> None:
         modified = False
         vo = data.get("video_observation", {})
 
-        # Champs dérivés du chemin : recalculés à chaque ouverture pour corriger
-        # d'éventuelles valeurs stales (ex: migration avec ancienne détection de structure).
-        # L'écriture n'a lieu que si la valeur calculée diffère de la valeur stockée.
+        # Champs dérivés du chemin : toujours recalculés depuis la structure fichier courante.
+        # video_path exclut les valeurs stales du raw JSON (voir exclude_keys dans merge).
         for field, value in (
             ("video_path",      vpath_val),
             ("video_number",    video_number_val),
@@ -417,7 +396,7 @@ def update_temp_json_paths(video_path: str) -> None:
                 vob_changed = _merge_raw_block(
                     data.setdefault("video_observation", {}), raw.get("video_observation", {}),
                     only_if_empty=True,
-                    exclude_keys={"exploitable", "qualifiable", "point_name", "station_number", "codeObs", "gps_waypoint"})
+                    exclude_keys={"exploitable", "qualifiable", "point_name", "station_number", "codeObs", "gps_waypoint", "video_path", "video_number", "video_file_name"})
                 if sys_changed or surv_changed or vob_changed:
                     modified = True
                 mapped += [f"system.{c}" for c in sys_changed]
