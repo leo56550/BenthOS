@@ -239,10 +239,11 @@ def initialise_temp_json_if_needed(video_path: str) -> bool:
         vo = data.get("video_observation", {})
 
         # video_path → "<campagne>\<système>\<num_station>"
-        # Structure camp/sys/station(4 chiffres)/fichier.mp4 ou camp/sys/fichier.mp4
+        # Structure camp/sys/station/fichier.mp4 ou camp/sys/fichier.mp4
+        # Le dossier station peut être "0042", "0063A", "0063B", etc. (pas forcément 4 chiffres seuls)
         _direct = os.path.basename(folder)
-        if _re.match(r'^\d{4}$', _direct):
-            # Nouvelle structure : camp/sys/0210/0210.mp4
+        if _re.match(r'^\d{4}[A-Za-z0-9]*$', _direct):
+            # Nouvelle structure : camp/sys/0210/0210.mp4 ou camp/sys/0063A/video.mp4
             system_folder   = os.path.basename(os.path.dirname(folder))
             campaign_folder = os.path.basename(os.path.dirname(os.path.dirname(folder)))
             vpath_val = f"{campaign_folder}\\{system_folder}\\{_direct}"
@@ -342,7 +343,7 @@ def update_temp_json_paths(video_path: str) -> None:
         return
 
     _direct = os.path.basename(folder)
-    if _re.match(r'^\d{4}$', _direct):
+    if _re.match(r'^\d{4}[A-Za-z0-9]*$', _direct):
         system_folder   = os.path.basename(os.path.dirname(folder))
         campaign_folder = os.path.basename(os.path.dirname(os.path.dirname(folder)))
         vpath_val = f"{campaign_folder}\\{system_folder}\\{_direct}"

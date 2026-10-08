@@ -2434,13 +2434,14 @@ class MetadonneesController:
                 val = heure_stem
 
             elif field_key == "codeObs":
-                # Toujours recalculer depuis point_name IHM — on ignore val stocké car il
-                # peut être un résidu auto-caméra (station_number copié depuis le brut).
-                # station_number n'est JAMAIS utilisé ici : c'est le compteur interne caméra,
-                # pas le numéro de point réel saisi à l'ardoise.
+                # Priorité : recalculer depuis point_name IHM (saisi à l'ardoise).
+                # Si point_name absent (données historiques importées sans n° de station),
+                # on garde le codeObs déjà stocké dans le _temp.json.
                 pname_v = self._v(obs, "point_name").strip()
                 if not pname_v:
-                    val = "A saisir"
+                    # val contient déjà le codeObs stocké — on l'utilise s'il est présent
+                    if not val:
+                        val = "A saisir"
                 else:
                     zone_v  = self._v(surv, "zone").strip()
                     date_v  = self._v(surv, "date").strip()
