@@ -239,18 +239,21 @@ def initialise_temp_json_if_needed(video_path: str) -> bool:
         vo = data.get("video_observation", {})
 
         # video_path → "<campagne>\<système>\<num_station>"
-        # Structure camp/sys/station/fichier.mp4 ou camp/sys/fichier.mp4
-        # Le dossier station peut être "0042", "0063A", "0063B", etc. (pas forcément 4 chiffres seuls)
-        _direct = os.path.basename(folder)
-        if _re.match(r'^\d{4}[A-Za-z0-9]*$', _direct):
-            # Nouvelle structure : camp/sys/0210/0210.mp4 ou camp/sys/0063A/video.mp4
-            system_folder   = os.path.basename(os.path.dirname(folder))
+        # Nouvelle structure : camp/sys/station/fichier.mp4  (station = n'importe quoi)
+        # Ancienne structure : camp/sys/fichier.mp4
+        # Critère : si le PARENT direct du dossier vidéo contient un underscore,
+        # c'est un dossier système (ex: "260806_SVR_KOS51") → nouvelle structure.
+        _direct  = os.path.basename(folder)
+        _parent  = os.path.basename(os.path.dirname(folder))
+        if '_' in _parent:
+            # Nouvelle structure : camp/sys/station/video.mp4
+            system_folder   = _parent
             campaign_folder = os.path.basename(os.path.dirname(os.path.dirname(folder)))
             vpath_val = f"{campaign_folder}\\{system_folder}\\{_direct}"
         else:
-            # Ancienne structure : camp/sys/0210.mp4
+            # Ancienne structure : camp/sys/video.mp4
             system_folder   = _direct
-            campaign_folder = os.path.basename(os.path.dirname(folder))
+            campaign_folder = _parent
             try:
                 _stem_num = str(int(stem))
             except ValueError:
@@ -335,7 +338,6 @@ def update_temp_json_paths(video_path: str) -> None:
     Appelée à chaque ouverture de campagne pour garantir que video_path,
     video_number, video_file_name, datawork_folder et video_subfolder sont remplis.
     """
-    import re as _re
     folder = os.path.dirname(os.path.normpath(video_path))
     stem = os.path.splitext(os.path.basename(video_path))[0]
     temp_path = os.path.join(folder, f"{stem}_temp.json")
@@ -343,13 +345,16 @@ def update_temp_json_paths(video_path: str) -> None:
         return
 
     _direct = os.path.basename(folder)
-    if _re.match(r'^\d{4}[A-Za-z0-9]*$', _direct):
-        system_folder   = os.path.basename(os.path.dirname(folder))
+    _parent = os.path.basename(os.path.dirname(folder))
+    if '_' in _parent:
+        # Nouvelle structure : camp/sys/station/video.mp4
+        system_folder   = _parent
         campaign_folder = os.path.basename(os.path.dirname(os.path.dirname(folder)))
         vpath_val = f"{campaign_folder}\\{system_folder}\\{_direct}"
     else:
+        # Ancienne structure : camp/sys/video.mp4
         system_folder   = _direct
-        campaign_folder = os.path.basename(os.path.dirname(folder))
+        campaign_folder = _parent
         try:
             _stem_num = str(int(stem))
         except ValueError:
@@ -364,7 +369,9 @@ def update_temp_json_paths(video_path: str) -> None:
         modified = False
         vo = data.get("video_observation", {})
 
-        # Champs purement dérivés du chemin : toujours recalculés (jamais saisis manuellement)
+        # Champs dérivés du chemin : recalculés à chaque ouverture pour corriger
+        # d'éventuelles valeurs stales (ex: migration avec ancienne détection de structure).
+        # L'écriture n'a lieu que si la valeur calculée diffère de la valeur stockée.
         for field, value in (
             ("video_path",      vpath_val),
             ("video_number",    video_number_val),
