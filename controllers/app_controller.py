@@ -643,6 +643,9 @@ class AppController(QtCore.QObject):
             self.metadonnees_ctrl._apply_ft_table_json_bold()
         else:
             self.metadonnees_ctrl._refresh_table_cells_from_jsons()
+        # Forcer le repaint de la liste vidéo (barres de complétion + codestation)
+        if hasattr(self.validation_ctrl, 'video_tree') and self.validation_ctrl.video_tree:
+            self.validation_ctrl.video_tree.viewport().update()
         # Forcer la reconstruction de la carte au prochain affichage
         # (les _temp.json viennent d'être générés/mis à jour avec les statuts d'exploitabilité)
         extra_points = {}

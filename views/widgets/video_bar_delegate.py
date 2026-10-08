@@ -4,7 +4,7 @@ import json
 
 from PyQt6 import QtWidgets, QtGui, QtCore
 
-from services.campaign_service import resolve_video_json_path, year_2d_from_date
+from services.campaign_service import resolve_video_json_path, year_2d_from_date, compute_codestation
 from services.thumbnail_service import THUMB_W, THUMB_H
 
 
@@ -70,38 +70,21 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
         obs  = data.get("video_observation", {})
         surv = data.get("survey", {})
 
-        _pn = obs.get("point_name")
-        has_point_name = bool((_pn.get("value") if isinstance(_pn, dict) else _pn) or "")
-
         expl = obs.get("exploitable", {})
         expl_val = expl.get("value", "") if isinstance(expl, dict) else str(expl or "")
         expl_val = "" if str(expl_val).strip() in ("", "None", "null") else str(expl_val).strip()
         has_status = bool(expl_val and expl_val != "?")
 
-        if has_point_name and has_status:
+        # codestation : lit codeObs d'abord, reconstruit depuis point_name si absent
+        codestation = compute_codestation(surv, obs)
+        has_station = bool(codestation)
+
+        if has_station and has_status:
             color = QtGui.QColor("#5DBB63")   # vert  : numéro de station + exploitabilité
-        elif has_point_name or has_status:
+        elif has_station or has_status:
             color = QtGui.QColor("#E8A838")   # orange : l'un des deux seulement
         else:
             color = QtGui.QColor("#D94F38")   # rouge  : ni numéro ni exploitabilité
-
-        # Code station calculé depuis point_name uniquement (jamais station_number/codeObs brut)
-        def _sv(block, key):
-            f = (block or {}).get(key, {})
-            return str(f.get("value") or "").strip() if isinstance(f, dict) else str(f or "").strip()
-
-        pname = _sv(obs, "point_name")
-        codestation = ""
-        if pname:
-            zone_v  = _sv(surv, "zone")
-            date_v  = _sv(surv, "date")
-            yr2d    = year_2d_from_date(date_v)
-            if zone_v and yr2d:
-                try:
-                    idx = f"{int(pname):04d}"
-                except ValueError:
-                    idx = pname.zfill(4)[:4]
-                codestation = f"{zone_v}{yr2d}{idx}"
 
         return color, expl_val, codestation
 
