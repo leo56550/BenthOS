@@ -643,6 +643,17 @@ class AppController(QtCore.QObject):
             self.metadonnees_ctrl._apply_ft_table_json_bold()
         else:
             self.metadonnees_ctrl._refresh_table_cells_from_jsons()
+        # Forcer la reconstruction de la carte au prochain affichage
+        # (les _temp.json viennent d'être générés/mis à jour avec les statuts d'exploitabilité)
+        extra_points = {}
+        if self.metadonnees_ctrl.video_model.rowCount() == 0:
+            extra_points = self.metadonnees_ctrl.collect_ft_table_coords()
+        self.qualif_ctrl.map_initialized = False
+        if self.qualif_ctrl.map_dialog.isVisible():
+            self.qualif_ctrl.update_minimap(
+                self.qualif_ctrl.selected_video_name,
+                extra_points=extra_points,
+            )
         self._show_generate_result(generated, total, failures)
 
     def _show_generate_result(self, generated: int, total: int, failures: list):

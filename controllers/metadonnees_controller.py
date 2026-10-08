@@ -3726,16 +3726,19 @@ class MetadonneesController:
                     paths.append(str(vp))
         return paths
 
-    def collect_ft_table_coords(self) -> dict[str, list]:
-        """Retourne {nom_vidéo: [lat, lon]} pour toutes les lignes du tableau infostation."""
-        coords: dict[str, list] = {}
+    def collect_ft_table_coords(self) -> dict[str, dict]:
+        """Retourne {nom_vidéo: {"coords": [lat, lon], "exploitable": str, "codestation": str}}
+        pour toutes les lignes du tableau infostation."""
+        result: dict[str, dict] = {}
         if not hasattr(self, '_ft_table') or not self._ft_table:
-            return coords
-        lat_col = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "latitude"), None)
-        lon_col = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "longitude"), None)
+            return result
+        lat_col  = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "latitude"),   None)
+        lon_col  = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "longitude"),  None)
         vnum_col = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "video_number"), None)
+        expl_col = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "exploitable"), None)
+        cobs_col = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "codeObs"),    None)
         if lat_col is None or lon_col is None:
-            return coords
+            return result
         for row in range(self._ft_table.rowCount()):
             lat_item = self._ft_table.item(row, lat_col)
             lon_item = self._ft_table.item(row, lon_col)
@@ -3746,15 +3749,22 @@ class MetadonneesController:
                 lon = float(lon_item.text().replace(",", "."))
             except (ValueError, TypeError):
                 continue
+            name = ""
             if vnum_col is not None:
                 name_item = self._ft_table.item(row, vnum_col)
                 name = name_item.text().strip() if name_item else ""
-            else:
-                name = ""
             if not name:
                 name = f"Ligne {row + 1}"
-            coords[name] = [lat, lon]
-        return coords
+            exploitable = ""
+            if expl_col is not None:
+                expl_item = self._ft_table.item(row, expl_col)
+                exploitable = (expl_item.text().strip().lower() if expl_item else "")
+            codestation = ""
+            if cobs_col is not None:
+                cobs_item = self._ft_table.item(row, cobs_col)
+                codestation = (cobs_item.text().strip() if cobs_item else "")
+            result[name] = {"coords": [lat, lon], "exploitable": exploitable, "codestation": codestation}
+        return result
 
     def _open_map_action(self):
         """Ouvre la carte de campagne (Leaflet, QDialog) centrée sur la vidéo en cours."""

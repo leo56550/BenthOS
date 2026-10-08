@@ -1497,11 +1497,21 @@ class QualifController:
 
         # Fusionner les points extra (données historiques) quand video_model est vide
         if extra_points:
-            for name, coords in extra_points.items():
+            for name, pt in extra_points.items():
                 if name not in valid_coords:
-                    valid_coords[name] = coords
-                    waypoints.setdefault(name, "")
-                    marker_meta.setdefault(name, {})
+                    if isinstance(pt, (list, tuple)):
+                        # Ancien format : [lat, lon]
+                        valid_coords[name] = list(pt)
+                        waypoints.setdefault(name, "")
+                        marker_meta.setdefault(name, {})
+                    else:
+                        # Nouveau format : {"coords": [...], "exploitable": ..., "codestation": ...}
+                        valid_coords[name] = pt.get("coords", [])
+                        waypoints.setdefault(name, "")
+                        marker_meta[name] = {
+                            "exploitable": str(pt.get("exploitable") or "").strip().lower(),
+                            "codestation": str(pt.get("codestation") or "").strip(),
+                        }
 
         center = list(valid_coords.values())[0] if valid_coords else [48.356, -4.571]
 
