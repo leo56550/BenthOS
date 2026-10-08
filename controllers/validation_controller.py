@@ -723,7 +723,41 @@ class ValidationController:
         if self._sector_view_active:
             self.player.pause()
 
-    def _load_sector_view(self, video_path: str, csv_path: str, json_path: str = None):
+    def _json_has_rotation_events(self) -> bool:
+        """Vrai si le JSON courant contient au moins un événement moteur de type rotation."""
+        if not self.current_json_path or not os.path.isfile(self.current_json_path):
+            return False
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            _non_rot = {"atterrissage", "atterissage", "décollage", "decollage",
+                        "landing", "takeoff", "debut_analyse", "fin_analyse",
+                        "analysis_start", "analysis_end"}
+            entries = data.get("video_observation", {}).get("events_motor") or []
+            return any(
+                e.get("description_fr", "").strip().lower() not in _non_rot
+                and bool(e.get("description_fr", "").strip())
+                for e in entries if isinstance(e, dict)
+            )
+        except Exception:
+            return False
+
+    def _refresh_sector_view_if_active(self) -> None:
+        """Recharge la sector view (si visible) et met à jour l'état du bouton."""
+        if not hasattr(self, '_sector_view_active'):
+            return
+        csv_system = ""
+        if self.current_video_path:
+            csv_system = os.path.join(os.path.dirname(self.current_video_path), "systemEvent.csv")
+        has_events = os.path.exists(csv_system) or self._json_has_rotation_events()
+        if hasattr(self, 'btn_toggle_sector_view'):
+            self.btn_toggle_sector_view.setEnabled(has_events)
+        if self._sector_view_active:
+            self._load_sector_view(self.current_video_path, csv_system, self.current_json_path,
+                                   skip_csv_fallback=True)
+
+    def _load_sector_view(self, video_path: str, csv_path: str, json_path: str = None,
+                          skip_csv_fallback: bool = False):
         """Construit la grille de photos de rotation moteur — même logique que la page
         Qualification (update_camera_views), adaptée à la page Validation."""
         while self._sector_layout.count():
@@ -757,7 +791,7 @@ class ValidationController:
                         "type": _etype,
                         "start": _ms,
                     })
-            if not motor_events:
+            if not motor_events and not skip_csv_fallback:
                 motor_events = get_motor_stable_timestamps(csv_path, delay=6.0)
             if not motor_events:
                 lbl = QtWidgets.QLabel(self.translate(
