@@ -2035,6 +2035,13 @@ class QualifController:
                 for _entry in (_jdata.get("video_observation", {}).get("events_motor") or []):
                     if not isinstance(_entry, dict):
                         continue
+                    _desc = _entry.get("description_fr", "")
+                    # Exclure atterrissage, décollage et balises non-rotation
+                    _NON_ROT_KW = {"atterrissage", "atterissage", "décollage", "decollage",
+                                   "landing", "takeoff", "debut_analyse", "fin_analyse",
+                                   "analysis_start", "analysis_end"}
+                    if not _desc.strip() or _desc.strip().lower() in _NON_ROT_KW:
+                        continue
                     if "start_ms" in _entry:
                         _ms = int(_entry["start_ms"])
                     else:
@@ -2045,7 +2052,6 @@ class QualifController:
                         except Exception:
                             _fn = _entry.get("frame_number", 0)
                             _ms = int((_fn / 25.0) * 1000) if _fn else 0
-                    _desc = _entry.get("description_fr", "")
                     _m = _re.search(r'\((\d+)°\)', _desc)
                     _angle = int(_m.group(1)) if _m else 0
                     motor_events.append({

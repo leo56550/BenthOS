@@ -1187,6 +1187,7 @@ class EvenementsController:
             obs["events_motor"].append({
                 "event_id": event_uid,
                 "time_code": timecode,
+                "start_ms": int(pos_ms),
                 "frame_number": frame_number,
                 "description_fr": "Rotation moteur",
                 "description_en": "Motor rotation",
@@ -2494,6 +2495,10 @@ class EvenementsController:
                 for _entry in (_jdata.get("video_observation", {}).get("events_motor") or []):
                     if not isinstance(_entry, dict):
                         continue
+                    _desc = _entry.get("description_fr", "")
+                    # Exclure atterrissage, décollage et balises non-rotation
+                    if not self._is_rotation_motor_label(_desc):
+                        continue
                     if "start_ms" in _entry:
                         _ms = int(_entry["start_ms"])
                     else:
@@ -2504,7 +2509,6 @@ class EvenementsController:
                         except Exception:
                             _fn = _entry.get("frame_number", 0)
                             _ms = int((_fn / _fps_sv) * 1000) if _fn else 0
-                    _desc = _entry.get("description_fr", "")
                     _m = _re.search(r'\((\d+)°\)', _desc)
                     _angle = int(_m.group(1)) if _m else 0
                     _etype = "rotation_360°" if _angle == 360 else f"rotation_{_angle}°"
