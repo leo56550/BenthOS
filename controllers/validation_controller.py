@@ -805,6 +805,7 @@ class ValidationController:
                         "start": _ms,
                     })
                 if motor_events:
+                    motor_events.sort(key=lambda e: e["timestamp"])
                     source = "JSON"
             if not motor_events and not skip_csv_fallback:
                 motor_events = get_motor_stable_timestamps(csv_path, delay=6.0)

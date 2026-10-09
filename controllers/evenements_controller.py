@@ -968,6 +968,7 @@ class EvenementsController:
 
         if self._on_events_changed:
             self._on_events_changed()
+        self._refresh_sector_view_if_active()
 
     def _restore_motor_rotations(self):
         """Recalcule les rotations moteur depuis le CSV et les réinjecte dans JSON + timeline + arbre."""
@@ -2406,6 +2407,14 @@ class EvenementsController:
         )
         if self._sector_view_active:
             self.event_player.pause()
+            # Recharger si des événements ont changé pendant que la vue était cachée
+            if getattr(self, '_sector_dirty', True):
+                csv_system = ""
+                if self.current_video_path:
+                    csv_system = os.path.join(os.path.dirname(self.current_video_path), "systemEvent.csv")
+                self._load_sector_view(self.current_video_path, csv_system, self.current_json_path,
+                                       skip_csv_fallback=False)
+                self._sector_dirty = False
 
     def _json_has_rotation_events(self) -> bool:
         """Vrai si le JSON courant contient au moins un événement moteur de type rotation."""
@@ -2438,6 +2447,8 @@ class EvenementsController:
         if self._sector_view_active:
             self._load_sector_view(self.current_video_path, csv_system, self.current_json_path,
                                    skip_csv_fallback=True)
+        else:
+            self._sector_dirty = True
 
     def _load_sector_view(self, video_path: str, csv_path: str, json_path: str = None,
                           skip_csv_fallback: bool = False):
@@ -2485,6 +2496,7 @@ class EvenementsController:
                         "start": _ms,
                     })
                 if motor_events:
+                    motor_events.sort(key=lambda e: e["timestamp"])
                     source = "JSON"
             if not motor_events and not skip_csv_fallback:
                 motor_events = get_motor_stable_timestamps(csv_path, delay=6.0)
@@ -2938,6 +2950,7 @@ class EvenementsController:
                         )
                     ]
                     flat_list.append(saved_value)
+                    flat_list.sort(key=lambda v: v.get("frame_number", 0))
                     data["video_observation"][json_key] = flat_list
                 else:
                     existing_index = next((i for i, v in enumerate(flat_list) if v.get("event_id") == event_uid), -1)
@@ -3004,6 +3017,8 @@ class EvenementsController:
                 json.dump(data, f, indent=4, ensure_ascii=False)
             if self._on_events_changed:
                 self._on_events_changed()
+            if json_key == "events_motor" and self._is_rotation_motor_label(label):
+                self._refresh_sector_view_if_active()
         except Exception as e:
             print(f"[BACKEND] Exception writing JSON: {e}")
 
@@ -3063,6 +3078,8 @@ class EvenementsController:
                 json.dump(data, f, indent=4, ensure_ascii=False)
             if self._on_events_changed:
                 self._on_events_changed()
+            if "events_motor" in video_obs:
+                self._refresh_sector_view_if_active()
         except Exception as e:
             print(f"[BACKEND] Error purging event: {e}")
 
