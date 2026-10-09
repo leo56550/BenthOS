@@ -710,6 +710,11 @@ class ValidationController:
                 item = self._sector_layout.takeAt(0)
                 if item.widget():
                     item.widget().deleteLater()
+        # Mettre à jour l'état du bouton secteur selon la vidéo chargée
+        if hasattr(self, 'btn_toggle_sector_view'):
+            has_events = os.path.exists(csv_system) or self._json_has_rotation_events()
+            self.btn_toggle_sector_view.setEnabled(has_events)
+        self._sector_dirty = False
 
     def _toggle_sector_view(self):
         """Alterne entre le lecteur vidéo et la vue des secteurs (photos de rotation moteur)."""
@@ -722,6 +727,13 @@ class ValidationController:
         )
         if self._sector_view_active:
             self.player.pause()
+            if getattr(self, '_sector_dirty', True):
+                csv_system = ""
+                if self.current_video_path:
+                    csv_system = os.path.join(os.path.dirname(self.current_video_path), "systemEvent.csv")
+                self._load_sector_view(self.current_video_path, csv_system, self.current_json_path,
+                                       skip_csv_fallback=False)
+                self._sector_dirty = False
 
     def _json_has_rotation_events(self) -> bool:
         """Vrai si le JSON courant contient au moins un événement moteur de type rotation."""
@@ -746,19 +758,23 @@ class ValidationController:
         """Recharge la sector view (si visible) et met à jour l'état du bouton."""
         if not hasattr(self, '_sector_view_active'):
             return
-        csv_system = ""
-        if self.current_video_path:
-            csv_system = os.path.join(os.path.dirname(self.current_video_path), "systemEvent.csv")
+        # Si aucune vidéo chargée sur cette page, ne pas toucher l'état du bouton
+        if not self.current_video_path:
+            self._sector_dirty = True
+            return
+        csv_system = os.path.join(os.path.dirname(self.current_video_path), "systemEvent.csv")
         has_json   = self._json_has_rotation_events()
         has_csv    = os.path.exists(csv_system)
         has_events = has_csv or has_json
-        print(f"[SECTOR-VALID] refresh — vidéo={os.path.basename(self.current_video_path or '')} "
+        print(f"[SECTOR-VALID] refresh — vidéo={os.path.basename(self.current_video_path)} "
               f"json_events={has_json} csv={has_csv} active={self._sector_view_active}")
         if hasattr(self, 'btn_toggle_sector_view'):
             self.btn_toggle_sector_view.setEnabled(has_events)
         if self._sector_view_active:
             self._load_sector_view(self.current_video_path, csv_system, self.current_json_path,
                                    skip_csv_fallback=True)
+        else:
+            self._sector_dirty = True
 
     def _load_sector_view(self, video_path: str, csv_path: str, json_path: str = None,
                           skip_csv_fallback: bool = False):

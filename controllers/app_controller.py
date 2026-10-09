@@ -408,6 +408,8 @@ class AppController(QtCore.QObject):
         for ctrl in (self.evenements_ctrl, self.validation_ctrl):
             if hasattr(ctrl, '_refresh_sector_view_if_active'):
                 ctrl._refresh_sector_view_if_active()
+        if hasattr(self.qualif_ctrl, '_refresh_camera_views'):
+            self.qualif_ctrl._refresh_camera_views()
 
     def _open_sftp_dialog(self):
         """Ouvre le hub KOSMOS Connexion (SFTP + planification déploiement)."""

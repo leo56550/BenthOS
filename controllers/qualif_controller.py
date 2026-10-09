@@ -730,10 +730,10 @@ class QualifController:
 
         video_dir = os.path.dirname(video_path)
         csv_system = os.path.join(video_dir, "systemEvent.csv")
-        if os.path.exists(csv_system):
-            self.update_camera_views(video_path, csv_system)
-
         self.current_json_path = resolve_video_json_path(self._working_dir, video_path)
+        if os.path.exists(csv_system) or self.current_json_path:
+            self.update_camera_views(video_path, csv_system, self.current_json_path)
+
         self.update_minimap(selected_name=video_name, show_dialog=False)
 
     def _move_to_trash_by_path(self, video_path: str):
@@ -1391,10 +1391,10 @@ class QualifController:
 
         video_dir = os.path.dirname(video_path)
         csv_system = os.path.join(video_dir, "systemEvent.csv")
-        if os.path.exists(csv_system):
-            self.update_camera_views(video_path, csv_system)
-
         self.current_json_path = resolve_video_json_path(self._working_dir, video_path)
+        if os.path.exists(csv_system) or self.current_json_path:
+            self.update_camera_views(video_path, csv_system, self.current_json_path)
+
         self.update_minimap(selected_name=video_name, show_dialog=False)
 
     # --- Minimap ---
@@ -1883,8 +1883,17 @@ class QualifController:
 
     # --- Camera views / thumbnails ---
 
-    def update_camera_views(self, video_path: str, csv_path: str):
-        """Affiche immédiatement des placeholders puis charge les frames en parallèle en arrière-plan."""
+    def update_camera_views(self, video_path: str, csv_path: str, json_path: str = None):
+        """Affiche immédiatement des placeholders puis charge les frames (midpoint) en arrière-plan.
+
+        Lit les événements moteur depuis le JSON en priorité (avec calcul de midpoint),
+        puis depuis le CSV en fallback.
+        """
+        # Mémoriser pour le refresh via _refresh_camera_views
+        self._cam_video_path = video_path
+        self._cam_csv_path = csv_path
+        self._cam_json_path = json_path
+
         while self.scroll_layout.count():
             item = self.scroll_layout.takeAt(0)
             if item.widget():
@@ -1893,22 +1902,69 @@ class QualifController:
         self._miniature_pixmaps.clear()
         self._camera_slot_labels.clear()
 
-        # Arrêter le worker précédent si actif
         if hasattr(self, '_cam_worker') and self._cam_worker and self._cam_worker.isRunning():
             self._cam_worker.requestInterruption()
             self._cam_worker.wait(400)
 
         try:
-            motor_events = get_motor_stable_timestamps(csv_path, delay=6.0)
+            import re as _re
+            motor_events = []
+
+            # ── 1. Lecture JSON (priorité) ────────────────────────────────────
+            if json_path and os.path.isfile(json_path):
+                with open(json_path, 'r', encoding='utf-8') as _f:
+                    _jdata = json.load(_f)
+                for _entry in (_jdata.get("video_observation", {}).get("events_motor") or []):
+                    if not isinstance(_entry, dict):
+                        continue
+                    if "start_ms" in _entry:
+                        _ms = int(_entry["start_ms"])
+                    else:
+                        _tc = _entry.get("time_code", "")
+                        try:
+                            _p = _tc.split(".")[0].split(":")
+                            _ms = (int(_p[0]) * 3600 + int(_p[1]) * 60 + int(_p[2])) * 1000
+                        except Exception:
+                            _fn = _entry.get("frame_number", 0)
+                            _ms = int((_fn / 25.0) * 1000) if _fn else 0
+                    _desc = _entry.get("description_fr", "")
+                    _m = _re.search(r'\((\d+)°\)', _desc)
+                    _angle = int(_m.group(1)) if _m else 0
+                    motor_events.append({
+                        "timestamp": _ms / 1000.0,
+                        "angle": _angle,
+                        "type": "rotation_360°" if _angle == 360 else f"rotation_{_angle}°",
+                        "start": _ms,
+                    })
+                if motor_events:
+                    motor_events.sort(key=lambda e: e["timestamp"])
+
+            # ── 2. Fallback CSV ───────────────────────────────────────────────
+            if not motor_events and csv_path and os.path.isfile(csv_path):
+                motor_events = get_motor_stable_timestamps(csv_path, delay=6.0)
+
             if not motor_events:
                 lbl = QtWidgets.QLabel(self.translate(
-                    "Aucune rotation moteur trouvée dans le fichier CSV.",
-                    "No motor rotation found in the CSV file."))
+                    "Aucune rotation moteur trouvée.",
+                    "No motor rotation found."))
                 lbl.setStyleSheet("color: white; font-size: 14px;")
                 self.scroll_layout.addWidget(lbl)
                 self.scroll_layout.addStretch()
                 return
 
+            # ── 3. Calcul midpoint entre événements consécutifs ───────────────
+            n = len(motor_events)
+            avg_interval = (
+                (motor_events[-1]["timestamp"] - motor_events[0]["timestamp"]) / (n - 1)
+                if n >= 2 else 33.0
+            )
+            for i, evt in enumerate(motor_events):
+                if i + 1 < n:
+                    evt["mid_ts"] = (evt["timestamp"] + motor_events[i + 1]["timestamp"]) / 2.0
+                else:
+                    evt["mid_ts"] = evt["timestamp"] + avg_interval / 2.0
+
+            # ── 4. Construction de la grille ──────────────────────────────────
             tasks = []
             slot_id = 0
             rotation_groups = [motor_events[i:i + 6] for i in range(0, len(motor_events), 6)]
@@ -1924,8 +1980,9 @@ class QualifController:
                 hbox.setSpacing(15)
 
                 for evt in rotation_events:
-                    ts, angle, evt_type = evt["timestamp"], evt["angle"], evt["type"]
-                    is_360 = evt_type == "rotation_360"
+                    angle = evt["angle"]
+                    mid_ts = evt["mid_ts"]
+                    is_360 = (angle == 360)
                     fw, fh = (248, 188) if is_360 else (240, 180)
                     border = "3px solid #ff3333" if is_360 else "1px solid #555555"
 
@@ -1935,7 +1992,6 @@ class QualifController:
                         f"background-color: #111a24; border-radius: 6px; border: {border};"
                     )
 
-                    # Placeholder spinner
                     ph_layout = QtWidgets.QVBoxLayout(w_photo)
                     ph_layout.setContentsMargins(0, 0, 0, 0)
                     ph_lbl = QtWidgets.QLabel("⏳")
@@ -1946,8 +2002,8 @@ class QualifController:
                     ph_layout.addWidget(ph_lbl)
 
                     self._miniature_pixmaps.append(None)
-                    self._camera_slot_labels[slot_id] = (w_photo, angle, ts)
-                    tasks.append((slot_id, video_path, ts))
+                    self._camera_slot_labels[slot_id] = (w_photo, angle, mid_ts)
+                    tasks.append((slot_id, video_path, mid_ts))
                     slot_id += 1
                     hbox.addWidget(w_photo)
 
@@ -1965,7 +2021,15 @@ class QualifController:
                 self._cam_worker.start()
 
         except Exception as e:
-            print(f"Error updating camera views: {e}")
+            print(f"[QUALIF] Erreur update_camera_views: {e}")
+
+    def _refresh_camera_views(self):
+        """Recharge les miniatures de qualification si une vidéo est sélectionnée."""
+        vp  = getattr(self, '_cam_video_path', None)
+        cp  = getattr(self, '_cam_csv_path', None)
+        jp  = getattr(self, 'current_json_path', None)
+        if vp:
+            self.update_camera_views(vp, cp or "", jp)
 
     def _on_camera_frame_ready(self, slot_id: int, frame_data):
         """Appelé dans le thread principal quand une frame est prête : remplace le placeholder."""
