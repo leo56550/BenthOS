@@ -2355,7 +2355,8 @@ class QualifController:
             self.delete_video_by_index(index.siblingAtColumn(0))
 
     def _restore_qualifiable_state(self):
-        """Remet en corbeille les vidéos dont qualifiable='no' dans leur _temp.json (après chargement)."""
+        """Remet en corbeille les vidéos dont qualifiable='no' dans leur _temp.json (après chargement).
+        Aligne aussi qualifiable='yes' pour les vidéos restantes dont la valeur est absente ou nulle."""
         rows_to_trash = []
         for row in range(self.video_model.rowCount()):
             name_item = self.video_model.item(row, 0)
@@ -2396,6 +2397,48 @@ class QualifController:
             )
             self.video_model.removeRow(row)
             print(f"[QUALIF] Restauré en corbeille : {video_name}")
+
+        # Aligner qualifiable='yes' pour toutes les vidéos restantes dans video_model
+        # dont la valeur est absente ou nulle (jamais qualifiées explicitement)
+        print(f"[QUALIF] Alignement qualifiable — {self.video_model.rowCount()} vidéo(s) à vérifier")
+        n_aligned = 0
+        n_already = 0
+        n_skip = 0
+        for row in range(self.video_model.rowCount()):
+            name_item = self.video_model.item(row, 0)
+            if not name_item:
+                continue
+            video_path = name_item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if not video_path:
+                continue
+            video_name = os.path.basename(str(video_path))
+            json_path = resolve_video_json_path(self._working_dir, str(video_path))
+            if not os.path.isfile(json_path):
+                print(f"[QUALIF]   ⚠ JSON introuvable : {video_name}")
+                n_skip += 1
+                continue
+            try:
+                with open(json_path, "r", encoding="utf-8") as _f:
+                    data = json.load(_f)
+                obs = data.setdefault("video_observation", {})
+                q_block = obs.get("qualifiable")
+                val = q_block.get("value") if isinstance(q_block, dict) else q_block
+                if str(val).lower() not in ("yes", "no"):
+                    if isinstance(q_block, dict):
+                        obs["qualifiable"]["value"] = "yes"
+                    else:
+                        obs["qualifiable"] = {"value": "yes"}
+                    with open(json_path, "w", encoding="utf-8") as _f:
+                        json.dump(data, _f, indent=4, ensure_ascii=False)
+                    print(f"[QUALIF]   ✓ {video_name}  null → yes")
+                    n_aligned += 1
+                else:
+                    print(f"[QUALIF]   · {video_name}  déjà = {str(val).lower()!r}")
+                    n_already += 1
+            except Exception as e:
+                print(f"[QUALIF]   ✗ {video_name} : {e}")
+                n_skip += 1
+        print(f"[QUALIF] Alignement terminé — {n_aligned} mis à jour, {n_already} déjà OK, {n_skip} ignoré(s)")
 
     def _set_qualifiable(self, video_path: str, value: str):
         """Écrit video_observation.qualifiable dans le JSON de travail ('yes' ou 'no')."""
