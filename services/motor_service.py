@@ -62,6 +62,7 @@ def get_motor_stable_timestamps(csv_path: str, delay: float = 6.0, start_track_i
         Liste de dicts avec 'track_id', 'timestamp', 'duration', 'start' (ms),
         'type', 'angle', 'rotation_index'.
     """
+    print(f"[MOTOR] lecture CSV : {os.path.basename(csv_path)}")
     try:
         df = pd.read_csv(csv_path, sep=None, engine='python', encoding='utf-8')
     except Exception:
@@ -149,6 +150,8 @@ def get_motor_stable_timestamps(csv_path: str, delay: float = 6.0, start_track_i
         except Exception as e:
             print(f"Erreur de format temporel : {e}")
 
+    ts_list = [f"{e['timestamp']:.2f}s" for e in structural_events]
+    print(f"[MOTOR] {len(structural_events)} rotation(s) extraites du CSV — timestamps : {ts_list}")
     return structural_events
 
 

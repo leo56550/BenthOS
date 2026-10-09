@@ -13,20 +13,28 @@ def extract_frame_at_time(video_path: str, timestamp_seconds: float) -> np.ndarr
     Returns:
         Tableau numpy RGB, ou None si l'extraction échoue.
     """
+    import os
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
-        print(f"Impossible d'ouvrir le flux vidéo : {video_path}")
+        print(f"[IMAGE] Impossible d'ouvrir : {os.path.basename(video_path)}")
         return None
 
     time_in_ms = int(timestamp_seconds * 1000)
     cap.set(cv2.CAP_PROP_POS_MSEC, time_in_ms)
+
+    # Vérifier la position réellement atteinte par OpenCV
+    actual_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
     success, frame = cap.read()
     cap.release()
 
     if success and frame is not None:
+        delta_ms = abs(actual_ms - time_in_ms)
+        print(f"[IMAGE] extrait ts={timestamp_seconds:.3f}s → pos_réelle={actual_ms/1000:.3f}s "
+              f"(delta={delta_ms:.0f}ms) vidéo={os.path.basename(video_path)}")
         return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     else:
-        print(f"Échec extraction à {timestamp_seconds}s ({time_in_ms}ms)")
+        print(f"[IMAGE] ÉCHEC extraction ts={timestamp_seconds:.3f}s ({time_in_ms}ms) "
+              f"vidéo={os.path.basename(video_path)}")
         return None
 
 

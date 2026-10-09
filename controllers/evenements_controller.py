@@ -2429,7 +2429,11 @@ class EvenementsController:
         csv_system = ""
         if self.current_video_path:
             csv_system = os.path.join(os.path.dirname(self.current_video_path), "systemEvent.csv")
-        has_events = os.path.exists(csv_system) or self._json_has_rotation_events()
+        has_json   = self._json_has_rotation_events()
+        has_csv    = os.path.exists(csv_system)
+        has_events = has_csv or has_json
+        print(f"[SECTOR] refresh — vidéo={os.path.basename(self.current_video_path or '')} "
+              f"json_events={has_json} csv={has_csv} active={self._sector_view_active}")
         self.btn_toggle_sector_view.setEnabled(has_events)
         if self._sector_view_active:
             self._load_sector_view(self.current_video_path, csv_system, self.current_json_path,
@@ -2451,15 +2455,26 @@ class EvenementsController:
 
         try:
             motor_events = []
+            source = "aucune"
             if json_path and os.path.isfile(json_path):
                 with open(json_path, 'r', encoding='utf-8') as _f:
                     _jdata = json.load(_f)
+                import re as _re
+                _fps_sv = self._get_video_fps() or 25.0
                 for _entry in (_jdata.get("video_observation", {}).get("events_motor") or []):
                     if not isinstance(_entry, dict):
                         continue
-                    _ms = int(_entry.get("start_ms", 0))
+                    if "start_ms" in _entry:
+                        _ms = int(_entry["start_ms"])
+                    else:
+                        _tc = _entry.get("time_code", "")
+                        try:
+                            _p = _tc.split(".")[0].split(":")
+                            _ms = (int(_p[0]) * 3600 + int(_p[1]) * 60 + int(_p[2])) * 1000
+                        except Exception:
+                            _fn = _entry.get("frame_number", 0)
+                            _ms = int((_fn / _fps_sv) * 1000) if _fn else 0
                     _desc = _entry.get("description_fr", "")
-                    import re as _re
                     _m = _re.search(r'\((\d+)°\)', _desc)
                     _angle = int(_m.group(1)) if _m else 0
                     _etype = "rotation_360°" if _angle == 360 else f"rotation_{_angle}°"
@@ -2469,9 +2484,17 @@ class EvenementsController:
                         "type": _etype,
                         "start": _ms,
                     })
+                if motor_events:
+                    source = "JSON"
             if not motor_events and not skip_csv_fallback:
                 motor_events = get_motor_stable_timestamps(csv_path, delay=6.0)
+                if motor_events:
+                    source = "CSV"
+            print(f"[SECTOR] _load_sector_view — source={source} "
+                  f"n_events={len(motor_events)} skip_csv={skip_csv_fallback} "
+                  f"vidéo={os.path.basename(video_path or '')}")
             if not motor_events:
+                print("[SECTOR] aucun événement moteur → affichage message vide")
                 lbl = QtWidgets.QLabel(self.translate(
                     "Aucune rotation moteur trouvée dans le fichier CSV.",
                     "No motor rotation found in the CSV file."))
@@ -2484,7 +2507,7 @@ class EvenementsController:
             slot_id = 0
             rotation_groups = [motor_events[i:i + 6] for i in range(0, len(motor_events), 6)]
 
-            for rotation_events in rotation_groups:
+            for g_idx, rotation_events in enumerate(rotation_groups):
                 frame_rotation = QtWidgets.QFrame()
                 frame_rotation.setFixedHeight(230)
                 frame_rotation.setStyleSheet(
@@ -2507,7 +2530,9 @@ class EvenementsController:
                         mid_ts = (ts + rotation_events[idx + 1]["timestamp"]) / 2.0
                     else:
                         mid_ts = ts + _avg_interval / 2.0
-                    is_360 = evt_type == "rotation_360"
+                    print(f"[SECTOR]   rotation {g_idx+1}-{idx+1} angle={angle}° "
+                          f"evt_ts={ts:.2f}s mid_ts={mid_ts:.2f}s")
+                    is_360 = (angle == 360)
                     fw, fh = (248, 188) if is_360 else (240, 180)
                     border = "3px solid #ff3333" if is_360 else "1px solid #555555"
 
@@ -2539,8 +2564,11 @@ class EvenementsController:
                 self._sector_worker = _CameraFrameWorker(tasks)
                 self._sector_worker.frame_ready.connect(self._on_sector_frame_ready)
                 self._sector_worker.start()
+            print(f"[SECTOR] {len(tasks)} miniatures à extraire lancées")
         except Exception as e:
-            print(f"[EVENEMENTS] Erreur vue des secteurs : {e}")
+            import traceback
+            print(f"[SECTOR] Erreur _load_sector_view : {e}")
+            traceback.print_exc()
 
     def _on_sector_frame_ready(self, slot_id: int, frame_data):
         """Remplace le placeholder par la frame extraite."""
@@ -2572,25 +2600,156 @@ class EvenementsController:
         ))
         new_layout.addWidget(lbl)
 
-        minutes = int(ts // 60)
+        minutes  = int(ts // 60)
         seconds_i = int(ts % 60)
-        ms_val = int((ts - int(ts)) * 1000)
+        ms_val   = int((ts - int(ts)) * 1000)
+        fw, fh   = w_photo.width(), w_photo.height()
 
-        angle_lbl = QtWidgets.QLabel(f" {angle}° ", lbl)
+        # Labels parentés sur w_photo (taille fixe) pour éviter la superposition
+        angle_lbl = QtWidgets.QLabel(f" {angle}° ", w_photo)
         angle_lbl.setStyleSheet(
             "background-color: rgba(0,0,0,160); color: #55ff55;"
             " font-weight: bold; border-radius: 3px; font-size: 10px;")
         angle_lbl.adjustSize()
         angle_lbl.move(5, 5)
+        angle_lbl.raise_()
         angle_lbl.show()
 
-        time_lbl = QtWidgets.QLabel(f" {minutes:02d}:{seconds_i:02d}.{ms_val:03d} ", lbl)
+        time_lbl = QtWidgets.QLabel(f" {minutes:02d}:{seconds_i:02d}.{ms_val:03d} ", w_photo)
         time_lbl.setStyleSheet(
             "background-color: rgba(0,0,0,160); color: #aaddff;"
             " border-radius: 3px; font-size: 9px;")
         time_lbl.adjustSize()
-        time_lbl.move(5, lbl.height() - time_lbl.height() - 5)
+        time_lbl.move(5, fh - time_lbl.height() - 5)
+        time_lbl.raise_()
         time_lbl.show()
+
+        # Clic → plein écran avec navigation ← →
+        for target in (w_photo, lbl):
+            target.mousePressEvent = lambda _e, i=slot_id: self._show_fullscreen_sector(i)
+            target.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+
+    def _show_fullscreen_sector(self, idx: int = 0):
+        """Affiche une miniature de la sector view en plein écran avec navigation ← → et Échap."""
+        valid = [(i, p) for i, p in enumerate(self._sector_pixmaps) if p is not None]
+        if not valid:
+            return
+
+        cur = 0
+        for j, (orig_i, _) in enumerate(valid):
+            if orig_i >= idx:
+                cur = j
+                break
+
+        parent_widget = getattr(self, 'page', None) or getattr(self, 'widget', None)
+        dlg = QtWidgets.QDialog(parent_widget)
+        dlg.setWindowFlags(
+            QtCore.Qt.WindowType.Window |
+            QtCore.Qt.WindowType.FramelessWindowHint
+        )
+        dlg.setStyleSheet("background-color: black;")
+        dlg.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
+
+        outer = QtWidgets.QVBoxLayout(dlg)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        lbl_img = QtWidgets.QLabel()
+        lbl_img.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        lbl_img.setStyleSheet("background-color: black;")
+        lbl_img._src_pix = None
+        outer.addWidget(lbl_img, 1)
+
+        bar = QtWidgets.QWidget()
+        bar.setFixedHeight(44)
+        bar.setStyleSheet("background-color: rgba(0,0,0,180);")
+        bar_layout = QtWidgets.QHBoxLayout(bar)
+        bar_layout.setContentsMargins(16, 0, 16, 0)
+        bar_layout.setSpacing(12)
+
+        _btn_style = (
+            "QPushButton{background:rgba(255,255,255,15);color:white;"
+            "border:1px solid rgba(255,255,255,40);border-radius:5px;"
+            "font-size:16px;font-weight:bold;padding:4px 14px;}"
+            "QPushButton:hover{background:rgba(255,255,255,35);}"
+            "QPushButton:disabled{color:rgba(255,255,255,30);border-color:rgba(255,255,255,15);}"
+        )
+
+        btn_prev = QtWidgets.QPushButton("←")
+        btn_prev.setFixedSize(48, 32)
+        btn_prev.setStyleSheet(_btn_style)
+
+        lbl_counter = QtWidgets.QLabel()
+        lbl_counter.setStyleSheet(
+            "color:rgba(255,255,255,160);font-size:12px;background:transparent;")
+        lbl_counter.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+
+        btn_next = QtWidgets.QPushButton("→")
+        btn_next.setFixedSize(48, 32)
+        btn_next.setStyleSheet(_btn_style)
+
+        hint = QtWidgets.QLabel(self.translate(
+            "Échap pour fermer  |  ← →  pour naviguer",
+            "Escape to close  |  ← →  to navigate"))
+        hint.setStyleSheet(
+            "color:rgba(255,255,255,60);font-size:10px;background:transparent;")
+
+        btn_close = QtWidgets.QPushButton("✕")
+        btn_close.setFixedSize(32, 32)
+        btn_close.setStyleSheet(_btn_style)
+        btn_close.clicked.connect(dlg.close)
+
+        bar_layout.addWidget(btn_prev)
+        bar_layout.addWidget(lbl_counter)
+        bar_layout.addWidget(btn_next)
+        bar_layout.addStretch()
+        bar_layout.addWidget(hint)
+        bar_layout.addWidget(btn_close)
+        outer.addWidget(bar)
+
+        state = {"cur": cur}
+
+        def _show(j):
+            j = max(0, min(j, len(valid) - 1))
+            state["cur"] = j
+            _, pix = valid[j]
+            lbl_img._src_pix = pix
+            sz = lbl_img.size()
+            screen = QtWidgets.QApplication.primaryScreen().availableSize()
+            if not sz.isValid() or sz.isEmpty():
+                sz = QtCore.QSize(screen.width(), screen.height() - 44)
+            scaled = pix.scaled(
+                sz,
+                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
+            )
+            lbl_img.setPixmap(scaled)
+            lbl_counter.setText(f"{j + 1} / {len(valid)}")
+            btn_prev.setEnabled(j > 0)
+            btn_next.setEnabled(j < len(valid) - 1)
+
+        def _on_resize(event):
+            if lbl_img._src_pix:
+                _show(state["cur"])
+            QtWidgets.QLabel.resizeEvent(lbl_img, event)
+
+        lbl_img.resizeEvent = _on_resize
+        btn_prev.clicked.connect(lambda: _show(state["cur"] - 1))
+        btn_next.clicked.connect(lambda: _show(state["cur"] + 1))
+
+        def _key(event):
+            k = event.key()
+            if k == QtCore.Qt.Key.Key_Escape:
+                dlg.close()
+            elif k == QtCore.Qt.Key.Key_Left:
+                _show(state["cur"] - 1)
+            elif k == QtCore.Qt.Key.Key_Right:
+                _show(state["cur"] + 1)
+
+        dlg.keyPressEvent = _key
+        _show(state["cur"])
+        dlg.showFullScreen()
+        dlg.setFocus()
 
     def charger_evenements_du_json(self):
         """Lit le JSON vidéo courant, construit event_dictionary et reconstruit les boutons."""
@@ -2760,6 +2919,7 @@ class EvenementsController:
                 saved_value = {
                     "event_id": event_uid,
                     "time_code": self.event_player.timeline._format_ms(event_dict["start"]),
+                    "start_ms": int(event_dict["start"]),
                     "frame_number": frame_start,
                     "description_fr": label,
                     "description_en": label,

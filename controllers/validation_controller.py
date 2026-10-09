@@ -749,7 +749,11 @@ class ValidationController:
         csv_system = ""
         if self.current_video_path:
             csv_system = os.path.join(os.path.dirname(self.current_video_path), "systemEvent.csv")
-        has_events = os.path.exists(csv_system) or self._json_has_rotation_events()
+        has_json   = self._json_has_rotation_events()
+        has_csv    = os.path.exists(csv_system)
+        has_events = has_csv or has_json
+        print(f"[SECTOR-VALID] refresh — vidéo={os.path.basename(self.current_video_path or '')} "
+              f"json_events={has_json} csv={has_csv} active={self._sector_view_active}")
         if hasattr(self, 'btn_toggle_sector_view'):
             self.btn_toggle_sector_view.setEnabled(has_events)
         if self._sector_view_active:
@@ -758,8 +762,7 @@ class ValidationController:
 
     def _load_sector_view(self, video_path: str, csv_path: str, json_path: str = None,
                           skip_csv_fallback: bool = False):
-        """Construit la grille de photos de rotation moteur — même logique que la page
-        Qualification (update_camera_views), adaptée à la page Validation."""
+        """Construit la grille de photos de rotation moteur — même logique que la page Événements."""
         while self._sector_layout.count():
             item = self._sector_layout.takeAt(0)
             if item.widget():
@@ -772,15 +775,25 @@ class ValidationController:
             self._sector_worker.wait(400)
 
         try:
+            import re as _re
             motor_events = []
+            source = "aucune"
             if json_path and os.path.isfile(json_path):
-                import re as _re
                 with open(json_path, 'r', encoding='utf-8') as _f:
                     _jdata = json.load(_f)
                 for _entry in (_jdata.get("video_observation", {}).get("events_motor") or []):
                     if not isinstance(_entry, dict):
                         continue
-                    _ms = int(_entry.get("start_ms", 0))
+                    if "start_ms" in _entry:
+                        _ms = int(_entry["start_ms"])
+                    else:
+                        _tc = _entry.get("time_code", "")
+                        try:
+                            _p = _tc.split(".")[0].split(":")
+                            _ms = (int(_p[0]) * 3600 + int(_p[1]) * 60 + int(_p[2])) * 1000
+                        except Exception:
+                            _fn = _entry.get("frame_number", 0)
+                            _ms = int((_fn / 25.0) * 1000) if _fn else 0
                     _desc = _entry.get("description_fr", "")
                     _m = _re.search(r'\((\d+)°\)', _desc)
                     _angle = int(_m.group(1)) if _m else 0
@@ -791,9 +804,17 @@ class ValidationController:
                         "type": _etype,
                         "start": _ms,
                     })
+                if motor_events:
+                    source = "JSON"
             if not motor_events and not skip_csv_fallback:
                 motor_events = get_motor_stable_timestamps(csv_path, delay=6.0)
+                if motor_events:
+                    source = "CSV"
+            print(f"[SECTOR-VALID] _load_sector_view — source={source} "
+                  f"n_events={len(motor_events)} skip_csv={skip_csv_fallback} "
+                  f"vidéo={os.path.basename(video_path or '')}")
             if not motor_events:
+                print("[SECTOR-VALID] aucun événement moteur → affichage message vide")
                 lbl = QtWidgets.QLabel(self.translate(
                     "Aucune rotation moteur trouvée dans le fichier CSV.",
                     "No motor rotation found in the CSV file."))
@@ -806,7 +827,7 @@ class ValidationController:
             slot_id = 0
             rotation_groups = [motor_events[i:i + 6] for i in range(0, len(motor_events), 6)]
 
-            for rotation_events in rotation_groups:
+            for g_idx, rotation_events in enumerate(rotation_groups):
                 frame_rotation = QtWidgets.QFrame()
                 frame_rotation.setFixedHeight(230)
                 frame_rotation.setStyleSheet(
@@ -816,9 +837,23 @@ class ValidationController:
                 hbox.setContentsMargins(15, 10, 15, 10)
                 hbox.setSpacing(15)
 
-                for evt in rotation_events:
+                # Intervalle moyen entre évènements (pour extrapoler le dernier)
+                _ts_list = [e["timestamp"] for e in rotation_events]
+                if len(_ts_list) >= 2:
+                    _avg_interval = (_ts_list[-1] - _ts_list[0]) / (len(_ts_list) - 1)
+                else:
+                    _avg_interval = 6.0
+
+                for idx, evt in enumerate(rotation_events):
                     ts, angle, evt_type = evt["timestamp"], evt["angle"], evt["type"]
-                    is_360 = evt_type == "rotation_360"
+                    # Image au milieu entre cet évènement et le suivant
+                    if idx + 1 < len(rotation_events):
+                        mid_ts = (ts + rotation_events[idx + 1]["timestamp"]) / 2.0
+                    else:
+                        mid_ts = ts + _avg_interval / 2.0
+                    print(f"[SECTOR-VALID]   rotation {g_idx+1}-{idx+1} angle={angle}° "
+                          f"evt_ts={ts:.2f}s mid_ts={mid_ts:.2f}s")
+                    is_360 = (angle == 360)
                     fw, fh = (248, 188) if is_360 else (240, 180)
                     border = "3px solid #ff3333" if is_360 else "1px solid #555555"
 
@@ -835,8 +870,8 @@ class ValidationController:
                     ph_layout.addWidget(ph_lbl)
 
                     self._sector_pixmaps.append(None)
-                    self._sector_slot_labels[slot_id] = (w_photo, angle, ts)
-                    tasks.append((slot_id, video_path, ts))
+                    self._sector_slot_labels[slot_id] = (w_photo, angle, mid_ts)
+                    tasks.append((slot_id, video_path, mid_ts))
                     slot_id += 1
                     hbox.addWidget(w_photo)
 
@@ -847,13 +882,15 @@ class ValidationController:
                 self._sector_layout.addWidget(frame_rotation)
 
             self._sector_layout.addStretch()
-
             if tasks:
                 self._sector_worker = _CameraFrameWorker(tasks)
                 self._sector_worker.frame_ready.connect(self._on_sector_frame_ready)
                 self._sector_worker.start()
+            print(f"[SECTOR-VALID] {len(tasks)} miniatures à extraire lancées")
         except Exception as e:
-            print(f"[VALIDATION] Erreur vue des secteurs : {e}")
+            import traceback
+            print(f"[SECTOR-VALID] Erreur _load_sector_view : {e}")
+            traceback.print_exc()
 
     def _on_sector_frame_ready(self, slot_id: int, frame_data):
         """Remplace le placeholder par la frame extraite (identique à la page Qualification)."""

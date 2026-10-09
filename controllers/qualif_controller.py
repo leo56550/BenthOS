@@ -119,22 +119,32 @@ class _CameraFrameWorker(QtCore.QThread):
         self._tasks = tasks   # list of (slot_id, video_path, timestamp_s)
 
     def run(self):
+        print(f"[SECTOR-WORKER] démarrage — {len(self._tasks)} frame(s) à extraire")
+
         def _extract(task):
             slot_id, video_path, ts = task
-            return slot_id, extract_frame_at_time(video_path, ts)
+            print(f"[SECTOR-WORKER]   slot={slot_id} ts={ts:.3f}s  vidéo={__import__('os').path.basename(video_path)}")
+            frame = extract_frame_at_time(video_path, ts)
+            ok = frame is not None
+            print(f"[SECTOR-WORKER]   slot={slot_id} → {'OK' if ok else 'ÉCHEC'}")
+            return slot_id, frame
 
         n_workers = min(4, len(self._tasks) or 1)
+        done = 0
         with ThreadPoolExecutor(max_workers=n_workers) as pool:
             futures = {pool.submit(_extract, t): t for t in self._tasks}
             for fut in as_completed(futures):
                 if self.isInterruptionRequested():
+                    print("[SECTOR-WORKER] interruption demandée")
                     pool.shutdown(wait=False, cancel_futures=True)
                     break
                 try:
                     slot_id, frame = fut.result()
                     self.frame_ready.emit(slot_id, frame)
-                except Exception:
-                    pass
+                    done += 1
+                except Exception as e:
+                    print(f"[SECTOR-WORKER] exception : {e}")
+        print(f"[SECTOR-WORKER] terminé — {done}/{len(self._tasks)} frame(s) émises")
 
 
 class QualifController:
