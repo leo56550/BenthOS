@@ -590,7 +590,8 @@ class ValidationController:
                     QtCore.QItemSelectionModel.SelectionFlag.Rows
                 )
                 self.video_tree.scrollTo(proxy_index)
-                self.on_video_selected(proxy_index)
+                if self.page.isVisible():
+                    self.on_video_selected(proxy_index)
                 break
 
     def _seek_to_timeline_event(self, event_dict):

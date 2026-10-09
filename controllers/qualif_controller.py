@@ -1992,7 +1992,11 @@ class QualifController:
             if item and item.text() == video_name:
                 video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
                 if video_path:
-                    self._on_video_row_clicked(str(video_path))
+                    if self.widget.isVisible():
+                        self._on_video_row_clicked(str(video_path))
+                    else:
+                        self.selected_video_name = video_name
+                        self.update_minimap(selected_name=video_name, show_dialog=False)
                 break
 
     # --- Camera views / thumbnails ---

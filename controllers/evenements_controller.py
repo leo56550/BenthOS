@@ -490,7 +490,8 @@ class EvenementsController:
                     QtCore.QItemSelectionModel.SelectionFlag.Rows
                 )
                 self.tree_view_events.scrollTo(proxy_index)
-                self.on_video_selected(proxy_index)
+                if self.page.isVisible():
+                    self.on_video_selected(proxy_index)
                 break
 
     # --- Tree layout ---
