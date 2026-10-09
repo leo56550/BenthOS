@@ -1192,24 +1192,42 @@ class EvenementsController:
                 "description_en": "Motor rotation",
                 "comment": "",
             })
-            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← events_motor += "
-                  f"{{frame_number={frame_number}, time_code={timecode!r}}}")
-            with open(self.current_json_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=4, ensure_ascii=False)
-            # Marqueur sur la timeline (ajout, pas de remplacement : plusieurs rotations possibles)
-            if hasattr(self, 'event_player') and getattr(self.event_player, 'timeline', None):
-                tl = self.event_player.timeline
+
+            # Ajouter le marqueur timeline avant le recalcul des angles pour que
+            # _recalculate_motor_rotation_angles puisse mettre à jour son type (rotation_360° etc.)
+            tl = getattr(getattr(self, 'event_player', None), 'timeline', None)
+            if tl is not None:
                 tl.events.append({
                     "start": pos_ms, "end": pos_ms,
                     "title": label,
-                    "type": "rotation_manual",   # barre jaune pointillée
+                    "type": "rotation_manual",
                     "zone": 0,
                     "_json_key": "events_motor",
                     "_event_uid": event_uid,
                 })
+
+            # Recalculer les angles de toutes les rotations (met à jour description_fr/en
+            # dans obs["events_motor"] et type/title dans les événements timeline)
+            self._recalculate_motor_rotation_angles(obs["events_motor"], fps)
+
+            # Récupérer la description recalculée pour l'arbre des captures
+            updated_label = next(
+                (ev["description_fr"] for ev in obs["events_motor"] if ev.get("event_id") == event_uid),
+                label,
+            )
+            n_rotations = sum(1 for ev in obs["events_motor"] if self._is_rotation_motor_label(ev.get("description_fr", "")))
+            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← events_motor += "
+                  f"{{frame_number={frame_number}, time_code={timecode!r}, desc={updated_label!r}}} "
+                  f"(total rotations : {n_rotations})")
+
+            with open(self.current_json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+
+            if tl is not None:
                 tl.update()
+
             if hasattr(self, 'tree_captures') and self.tree_captures:
-                tree_item = QtWidgets.QTreeWidgetItem([timecode, "-", "Déploiement", label, "", ""])
+                tree_item = QtWidgets.QTreeWidgetItem([timecode, "-", "Déploiement", updated_label, "", ""])
                 tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                 tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778A2")))
                 self.tree_captures.addTopLevelItem(tree_item)
