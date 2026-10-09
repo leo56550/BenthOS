@@ -1498,9 +1498,18 @@ class QualifController:
 
                 wp = (obs.get("gps_waypoint") or {}).get("value")
                 waypoints[item.text()] = str(wp) if wp is not None else ""
+                _depth_raw = obs.get("depth", {})
+                _depth_val = (_depth_raw.get("value") if isinstance(_depth_raw, dict) else _depth_raw) or ""
+                import re as _re_yr
+                # Priorité : champ date survey → chemin vidéo
+                _date_raw = str((sv.get("date") or {}).get("value") or "").strip()
+                _yr_m = _re_yr.search(r'(20\d{2})', _date_raw) or _re_yr.search(r'(?<!\d)(20\d{2})(?!\d)', str(vpath))
                 marker_meta[item.text()] = {
                     "exploitable": str((obs.get("exploitable") or {}).get("value") or "").strip().lower(),
                     "codestation": compute_codestation(sv, obs),
+                    "depth": str(_depth_val).strip(),
+                    "video_path": str(vpath),
+                    "year": _yr_m.group(1) if _yr_m else "",
                 }
             except Exception:
                 pass
@@ -1515,13 +1524,22 @@ class QualifController:
                         waypoints.setdefault(name, "")
                         marker_meta.setdefault(name, {})
                     else:
-                        # Nouveau format : {"coords": [...], "exploitable": ..., "codestation": ...}
+                        # Nouveau format : {"coords": [...], "exploitable": ..., "codestation": ..., "depth": ...}
                         valid_coords[name] = pt.get("coords", [])
                         waypoints.setdefault(name, "")
                         marker_meta[name] = {
                             "exploitable": str(pt.get("exploitable") or "").strip().lower(),
                             "codestation": str(pt.get("codestation") or "").strip(),
+                            "depth": str(pt.get("depth") or "").strip(),
+                            "video_path": str(pt.get("video_path") or "").strip(),
+                            "year": str(pt.get("year") or "").strip(),
                         }
+
+        # Années distinctes présentes dans les données (pour le filtre)
+        import re as _re_yr
+        all_years: list[str] = sorted({
+            m.get("year", "") for m in marker_meta.values() if m.get("year", "")
+        })
 
         center = list(valid_coords.values())[0] if valid_coords else [48.356, -4.571]
 
@@ -1592,6 +1610,26 @@ class QualifController:
             )
             m.get_root().html.add_child(folium.Element(filter_panel_html))
 
+            # --- Panneau de filtres par année (si au moins une année détectée) ---
+            if len(all_years) >= 1:
+                _year_filter_rows = "".join(
+                    f'<label style="{_filter_row_style}">'
+                    f'<input type="checkbox" checked onchange="toggleYearFilterJS(\'{yr}\', this.checked)">'
+                    f'<span style="font-weight:600;color:#c8d8e8;">{yr}</span></label>'
+                    for yr in all_years
+                )
+                year_panel_html = (
+                    '<div style="position:fixed;top:260px;left:10px;z-index:9999;'
+                    'background:rgba(13,27,42,0.92);color:#d4e8f5;'
+                    'font-family:\'Segoe UI\',sans-serif;font-size:11px;'
+                    'border:1px solid #2778A2;border-radius:6px;padding:8px 10px;">'
+                    f'<div style="font-weight:bold;color:#F2BFB4;margin-bottom:4px;">'
+                    f'{self.translate("Filtrer par année", "Filter by year")}</div>'
+                    + _year_filter_rows +
+                    '</div>'
+                )
+                m.get_root().html.add_child(folium.Element(year_panel_html))
+
             m.get_root().header.add_child(
                 folium.Element('<script type="text/javascript" src="qrc:///qtwebchannel/qwebchannel.js"></script>')
             )
@@ -1605,66 +1643,87 @@ class QualifController:
                     border-color: #F2BFB4 !important;
                     box-shadow: 0 0 0 5px rgba(242,191,180,0.35), 0 2px 6px rgba(0,0,0,0.7) !important;
                 }
-                .kosmos-marker-icon.kosmos-selected .kosmos-label {
-                    border-color: #F2BFB4 !important; color: #F2BFB4 !important;
+                /* Dark-theme popup */
+                .leaflet-popup-content-wrapper {
+                    background: #0d1b2a !important;
+                    border: 1px solid #2778A2 !important;
+                    border-radius: 8px !important;
+                    box-shadow: 0 4px 16px rgba(0,0,0,0.6) !important;
+                    padding: 0 !important;
+                    overflow: hidden;
                 }
+                .leaflet-popup-content {
+                    margin: 0 !important;
+                    color: #c8d8e8;
+                }
+                .leaflet-popup-tip {
+                    background: #2778A2 !important;
+                }
+                .leaflet-popup-close-button {
+                    color: #5a7a9a !important;
+                    font-size: 16px !important;
+                    top: 4px !important; right: 6px !important;
+                }
+                .leaflet-popup-close-button:hover { color: #c8d8e8 !important; }
             </style>"""
             m.get_root().header.add_child(folium.Element(marker_style))
-            main_script = """
+            _year_filters_init = "{" + ", ".join(f'"{y}": true' for y in all_years) + "}"
+            main_script = f"""
             <script>
-                var qtBackend = null; var allMarkers = {}; var lastRedMarker = null;
-                var statusFilters = {oui: true, non: true, habitat_comm: true, other: true};
-                function applyStatusFiltersJS() {
-                    for (var key in allMarkers) {
+                var qtBackend = null; var allMarkers = {{}}; var lastRedMarker = null;
+                var statusFilters = {{oui: true, non: true, habitat_comm: true, other: true}};
+                var yearFilters = {_year_filters_init};
+                function applyStatusFiltersJS() {{
+                    for (var key in allMarkers) {{
                         var mk = allMarkers[key];
-                        var visible = statusFilters[mk._kosmosStatus || 'other'];
+                        var statusOk = statusFilters[mk._kosmosStatus || 'other'];
+                        var yr = mk._kosmosYear || '';
+                        var yearOk = !yr || typeof yearFilters[yr] === 'undefined' || yearFilters[yr];
                         var el = mk.getElement();
-                        if (el) { el.style.display = visible ? '' : 'none'; }
-                    }
-                }
-                function toggleStatusFilterJS(status, checked) {
+                        if (el) {{ el.style.display = (statusOk && yearOk) ? '' : 'none'; }}
+                    }}
+                }}
+                function toggleStatusFilterJS(status, checked) {{
                     statusFilters[status] = checked;
                     applyStatusFiltersJS();
-                }
-                document.addEventListener("DOMContentLoaded", function() {
-                    if (typeof qt !== 'undefined' && qt.webChannelTransport) {
-                        new QWebChannel(qt.webChannelTransport, function (channel) {
+                }}
+                function toggleYearFilterJS(year, checked) {{
+                    yearFilters[year] = checked;
+                    applyStatusFiltersJS();
+                }}
+                document.addEventListener("DOMContentLoaded", function() {{
+                    if (typeof qt !== 'undefined' && qt.webChannelTransport) {{
+                        new QWebChannel(qt.webChannelTransport, function (channel) {{
                             qtBackend = channel.objects.backend;
-                        });
-                    }
-                });
-                function notifyPython(videoName) { if (qtBackend) { qtBackend.select_video(videoName); } }
-                function changeMarkerColorJS(videoName) {
-                    if (lastRedMarker && allMarkers[lastRedMarker]) {
+                        }});
+                    }}
+                }});
+                function notifyPython(videoName) {{ if (qtBackend) {{ qtBackend.select_video(videoName); }} }}
+                function changeMarkerColorJS(videoName) {{
+                    if (lastRedMarker && allMarkers[lastRedMarker]) {{
                         var prevEl = allMarkers[lastRedMarker].getElement();
                         if (prevEl) prevEl.classList.remove('kosmos-selected');
                         allMarkers[lastRedMarker].closePopup();
-                    }
-                    if (allMarkers[videoName]) {
+                    }}
+                    if (allMarkers[videoName]) {{
                         var mNew = allMarkers[videoName];
                         var el = mNew.getElement();
                         if (el) el.classList.add('kosmos-selected');
                         mNew.setZIndexOffset(1000); lastRedMarker = videoName;
-                        setTimeout(function() { mNew.openPopup(); }, 50);
-                        if (window.leafletMap) { window.leafletMap.panTo(mNew.getLatLng()); }
-                    }
-                }
-                function updateMarkerStatusJS(videoName, color, codestation, filterGroup) {
-                    if (!allMarkers[videoName]) { return; }
+                        setTimeout(function() {{ mNew.openPopup(); }}, 50);
+                        if (window.leafletMap) {{ window.leafletMap.panTo(mNew.getLatLng()); }}
+                    }}
+                }}
+                function updateMarkerStatusJS(videoName, color, codestation, filterGroup) {{
+                    if (!allMarkers[videoName]) {{ return; }}
                     var mk = allMarkers[videoName];
                     var el = mk.getElement();
-                    if (!el) { return; }
+                    if (!el) {{ return; }}
                     var dot = el.querySelector('.kosmos-dot');
-                    var label = el.querySelector('.kosmos-label');
-                    if (dot) { dot.style.background = color; }
-                    if (label) {
-                        label.style.color = color;
-                        label.style.borderColor = color;
-                        if (codestation !== null) { label.textContent = codestation; }
-                    }
-                    if (filterGroup) { mk._kosmosStatus = filterGroup; }
+                    if (dot) {{ dot.style.background = color; }}
+                    if (filterGroup) {{ mk._kosmosStatus = filterGroup; }}
                     applyStatusFiltersJS();
-                }
+                }}
             </script>"""
             m.get_root().html.add_child(folium.Element(main_script))
             js_map_linkage = f"""
@@ -1679,39 +1738,73 @@ class QualifController:
                 wp = waypoints.get(name, "")
                 meta = marker_meta.get(name, {})
                 color = self._MARKER_COLORS.get(meta.get("exploitable", ""), self._MARKER_DEFAULT_COLOR)
-                codestation = meta.get("codestation") or ""
+                codestation  = meta.get("codestation") or ""
                 filter_group = self._marker_filter_group(meta.get("exploitable", ""))
-                popup_html = (
-                    f'<div style="font-family:\'Segoe UI\',sans-serif;font-size:12px;'
-                    f'min-width:120px;">'
-                    f'<b style="font-size:13px;">{name}</b>'
-                    + (f'<br><span style="color:#607080;">{self.translate("GPS Waypoint :", "GPS Waypoint:")}</span> '
-                       f'<b>{wp}</b>' if wp else '')
-                    + f'<br><span style="color:#607080;">{self.translate("Exploitabilité :", "Exploitability:")}</span> '
-                      f'<b style="color:{color};">{meta.get("exploitable") or "?"}</b>'
-                    + '</div>'
-                )
-                popup = folium.Popup(popup_html, max_width=220,
+                _depth_raw   = meta.get("depth", "")
+                depth_val    = str(_depth_raw).strip() if _depth_raw not in (None, "", "None", "null") else ""
+                video_path_m = meta.get("video_path", "")
+                # Chemin relatif depuis le dossier parent du working_dir
+                try:
+                    _base = os.path.dirname(self._working_dir) if self._working_dir else ""
+                    if video_path_m and _base:
+                        path_display = os.path.relpath(video_path_m, _base).replace("\\", "/")
+                    elif video_path_m:
+                        _parts = video_path_m.replace("\\", "/").rstrip("/").split("/")
+                        path_display = "/".join(_parts[-2:]) if len(_parts) >= 2 else name
+                    else:
+                        path_display = name
+                except (ValueError, TypeError):
+                    path_display = name
+                lbl_exploit  = self.translate("Exploitabilité", "Exploitability")
+                lbl_depth    = self.translate("Profondeur", "Depth")
+                lbl_code     = self.translate("Code station", "Station code")
+                exploit_text = meta.get("exploitable") or "—"
+                popup_html = f"""
+<div style="
+    font-family:'Segoe UI',Roboto,sans-serif;
+    background:#0d1b2a;
+    color:#c8d8e8;
+    border-radius:8px;
+    min-width:200px;
+    max-width:280px;
+    padding:0;
+    overflow:hidden;
+">
+  <div style="
+      background:#142333;
+      border-bottom:1px solid #2778A2;
+      padding:10px 12px 8px;
+  ">
+    <div style="font-size:14px;font-weight:700;color:{color};letter-spacing:.4px;">
+        {codestation if codestation else name}
+    </div>
+    <div style="font-size:10px;color:#5a7a9a;margin-top:2px;word-break:break-all;">
+        {path_display}
+    </div>
+  </div>
+  <div style="padding:10px 12px;line-height:1.9;">
+    {'<div><span style="color:#5a7a9a;font-size:11px;">' + lbl_code + ' :</span> <span style="font-weight:600;">' + codestation + '</span></div>' if codestation else ''}
+    <div><span style="color:#5a7a9a;font-size:11px;">{lbl_exploit} :</span>
+         <span style="font-weight:600;color:{color};">{exploit_text}</span></div>
+    {'<div><span style="color:#5a7a9a;font-size:11px;">' + lbl_depth + ' :</span> <span style="font-weight:600;">' + depth_val + ' m</span></div>' if depth_val else ''}
+  </div>
+</div>"""
+                popup = folium.Popup(popup_html, max_width=300,
                                      auto_close=False, close_on_click=False)
                 marker_html = f"""
-                <div style="display:flex;flex-direction:column;align-items:center;width:76px;">
-                    <div class="kosmos-label" style="background:#0d1b2a;color:{color};
-                        font-family:'Segoe UI',sans-serif;font-size:10px;font-weight:bold;
-                        padding:2px 6px;border-radius:4px;border:1px solid {color};
-                        white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.5);margin-bottom:3px;">
-                        {codestation}
-                    </div>
+                <div style="display:flex;flex-direction:column;align-items:center;">
                     <div class="kosmos-dot" style="width:16px;height:16px;border-radius:50%;
                         background:{color};border:2px solid #ffffff;
-                        box-shadow:0 1px 3px rgba(0,0,0,0.6);flex-shrink:0;"></div>
+                        box-shadow:0 1px 3px rgba(0,0,0,0.6);"></div>
                 </div>"""
                 icon = folium.DivIcon(
-                    html=marker_html, icon_size=(76, 40), icon_anchor=(38, 26),
+                    html=marker_html, icon_size=(20, 20), icon_anchor=(10, 10),
                     class_name="kosmos-marker-icon",
                 )
                 marker = folium.Marker(location=coords, popup=popup, icon=icon, draggable=False)
                 marker.add_to(m)
                 js_name = name.replace("\\", "\\\\").replace('"', '\\"')
+                year_val = meta.get("year", "")
                 js_reg = f"""
                 <script>
                     document.addEventListener("DOMContentLoaded", function() {{
@@ -1720,6 +1813,7 @@ class QualifController:
                             if (mInstance) {{
                                 allMarkers["{js_name}"] = mInstance;
                                 mInstance._kosmosStatus = "{filter_group}";
+                                mInstance._kosmosYear = "{year_val}";
                                 mInstance.on('click', function(e) {{ notifyPython("{js_name}"); }});
                                 mInstance.on('dragend', function(e) {{
                                     var pos = e.target.getLatLng();
@@ -1764,11 +1858,27 @@ class QualifController:
             if selected_name and selected_name in valid_coords:
                 QtCore.QTimer.singleShot(600, lambda: self.apply_red_marker_js(selected_name))
         else:
+            # Détecte si _refresh_map_on_first_show va recharger le HTML
+            _will_reload = (show_dialog
+                            and not self.map_dialog.isVisible()
+                            and not getattr(self, '_map_shown_once', False))
             if show_dialog and not self.map_dialog.isVisible():
                 self.map_dialog.show()
                 self._refresh_map_on_first_show()
             if self.map_dialog.isVisible() and selected_name and selected_name in valid_coords:
-                QtCore.QTimer.singleShot(80, lambda: self.apply_red_marker_js(selected_name))
+                if _will_reload:
+                    # Le contexte JS vient d'être réinitialisé par setHtml —
+                    # attendre loadFinished pour que allMarkers soit repeuplé avant d'appeler JS.
+                    _sn = selected_name
+                    def _on_loaded(_ok, __sn=_sn):
+                        try:
+                            self.map_dialog.map_view.loadFinished.disconnect(_on_loaded)
+                        except Exception:
+                            pass
+                        QtCore.QTimer.singleShot(250, lambda: self.apply_red_marker_js(__sn))
+                    self.map_dialog.map_view.loadFinished.connect(_on_loaded)
+                else:
+                    QtCore.QTimer.singleShot(80, lambda: self.apply_red_marker_js(selected_name))
 
     def _refresh_map_on_first_show(self):
         """Repousse le HTML de la carte juste après le tout premier .show() du dialogue.
@@ -1859,14 +1969,18 @@ class QualifController:
         """Exécute le JS changeMarkerColorJS pour passer le marqueur selected_name en rouge."""
         if not selected_name:
             return
+        js_name = selected_name.replace("\\", "\\\\").replace("'", "\\'")
         script = f"""
-        if (typeof changeMarkerColorJS === 'function' && typeof allMarkers !== 'undefined' && allMarkers['{selected_name}']) {{
-            changeMarkerColorJS('{selected_name}');
-        }} else {{
-            setTimeout(function() {{
-                if (typeof changeMarkerColorJS === 'function') {{ changeMarkerColorJS('{selected_name}'); }}
-            }}, 100);
-        }}"""
+        (function tryCenter(name, tries) {{
+            if (typeof changeMarkerColorJS === 'function'
+                    && typeof allMarkers !== 'undefined'
+                    && allMarkers[name]) {{
+                changeMarkerColorJS(name);
+            }} else if (tries > 0) {{
+                setTimeout(function() {{ tryCenter(name, tries - 1); }}, 200);
+            }}
+        }})('{js_name}', 10);
+        """
         self.map_dialog.map_view.page().runJavaScript(script)
 
     def select_video_by_name(self, video_name: str):

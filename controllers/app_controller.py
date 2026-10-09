@@ -242,8 +242,15 @@ class AppController(QtCore.QObject):
 
     def _on_meta_video_selected(self, video_name: str, _video_path: str):  # noqa: ARG002
         """Ouvre le player détaché et focus la carte depuis la page Métadonnées."""
-        # Focus carte — update_minimap gère le raise_() du dialog et le pan JS
-        self.qualif_ctrl.update_minimap(video_name)
+        # Synchronise le répertoire de travail vers qualif_ctrl pour que les popups
+        # affichent le chemin relatif correct même si la carte a été construite avant.
+        if self.working_dir and self.qualif_ctrl._working_dir != self.working_dir:
+            self.qualif_ctrl._working_dir = self.working_dir
+            self.qualif_ctrl.map_initialized = False
+        extra_points = {}
+        if self.qualif_ctrl.video_model.rowCount() == 0:
+            extra_points = self.metadonnees_ctrl.collect_ft_table_coords(self.working_dir)
+        self.qualif_ctrl.update_minimap(video_name, show_dialog=True, extra_points=extra_points)
         # Ouvre le player (bypass la garde selected_video_name)
         prev = self.qualif_ctrl.selected_video_name
         self.qualif_ctrl.selected_video_name = None
@@ -1085,10 +1092,13 @@ class AppController(QtCore.QObject):
 
     def _open_map_from_metadonnees(self, video_name: str = None):
         """Ouvre la carte de campagne (QDialog Leaflet) depuis la page Métadonnées."""
+        if self.working_dir and self.qualif_ctrl._working_dir != self.working_dir:
+            self.qualif_ctrl._working_dir = self.working_dir
+            self.qualif_ctrl.map_initialized = False
         extra_points = {}
         # En mode données historiques (video_model vide), alimenter la carte depuis le tableau CSV
         if self.qualif_ctrl.video_model.rowCount() == 0:
-            extra_points = self.metadonnees_ctrl.collect_ft_table_coords()
+            extra_points = self.metadonnees_ctrl.collect_ft_table_coords(self.working_dir)
         self.qualif_ctrl.update_minimap(video_name, show_dialog=True, extra_points=extra_points)
 
     def _refresh_dashboard(self, *_):

@@ -1527,30 +1527,45 @@ class MetadonneesController:
             return
         # Active les boutons dès qu'une ligne est cliquée (même sans chemin vidéo résolu)
         self._set_video_buttons_enabled(True)
+
+        # Récupère le nom de la vidéo depuis la colonne video_number (pour notifier la carte)
+        _vnum_col = next(
+            (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "video_number"), None
+        )
+        video_name = ""
+        if _vnum_col is not None:
+            vn_item = self._ft_table.item(row, _vnum_col)
+            video_name = vn_item.text().strip() if vn_item else ""
+        if not video_name:
+            video_name = first_item.text().strip() or f"Ligne {row + 1}"
+
         video_path = self._resolve_ft_row_video_path(row)
-        if not video_path:
-            return
-        json_path = resolve_video_json_path(self._working_dir, str(video_path))
-        if os.path.isfile(json_path):
-            self.current_video_path = str(video_path)
-            self.load_all_data(json_path)
-            self._load_infostation_fields(str(video_path))
-        # Mise à jour automatique du dialogue ardoise si ouvert
-        dlg = getattr(self, '_slate_dialog', None)
-        if dlg is not None and dlg.isVisible():
-            slate_frame = self._find_slate_frame()
-            if slate_frame is not None:
-                self._display_slate_window(slate_frame)
-            else:
-                vname = os.path.basename(str(video_path))
-                dlg.setWindowTitle(self.translate(
-                    f"Ardoise — {vname} — introuvable",
-                    f"Slate — {vname} — not found"
-                ))
-                self._slate_lbl.setText(self.translate(
-                    "Aucune ardoise pour cette vidéo", "No slate for this video"
-                ))
-                self._slate_lbl.setPixmap(QtGui.QPixmap())
+        if video_path:
+            json_path = resolve_video_json_path(self._working_dir, str(video_path))
+            if os.path.isfile(json_path):
+                self.current_video_path = str(video_path)
+                self.load_all_data(json_path)
+                self._load_infostation_fields(str(video_path))
+            # Mise à jour automatique du dialogue ardoise si ouvert
+            dlg = getattr(self, '_slate_dialog', None)
+            if dlg is not None and dlg.isVisible():
+                slate_frame = self._find_slate_frame()
+                if slate_frame is not None:
+                    self._display_slate_window(slate_frame)
+                else:
+                    vname = os.path.basename(str(video_path))
+                    dlg.setWindowTitle(self.translate(
+                        f"Ardoise — {vname} — introuvable",
+                        f"Slate — {vname} — not found"
+                    ))
+                    self._slate_lbl.setText(self.translate(
+                        "Aucune ardoise pour cette vidéo", "No slate for this video"
+                    ))
+                    self._slate_lbl.setPixmap(QtGui.QPixmap())
+
+        # Notifie la carte pour re-centrer sur ce point (même en mode historique sans video_path)
+        if video_name and self._on_video_selected:
+            self._on_video_selected(video_name, video_path or "")
 
     def _on_ft_current_cell_changed(self, current_row, _current_col, previous_row, _previous_col):
         """Surligne toute la ligne courante du tableau infostation au clic (la sélection
@@ -1685,21 +1700,34 @@ class MetadonneesController:
 
     def select_video_by_name(self, video_name: str):
         """Sélectionne une vidéo dans l'arbre depuis son nom (appel depuis la carte)."""
-        if not self.tree_videos or not self.video_model:
-            return
-        for row in range(self.video_model.rowCount()):
-            item = self.video_model.item(row, 0)
-            if item and item.text() == video_name:
-                source_index = self.video_model.indexFromItem(item)
-                proxy_index = self.proxy_model.mapFromSource(source_index)
-                self.tree_videos.selectionModel().setCurrentIndex(
-                    proxy_index,
-                    QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect |
-                    QtCore.QItemSelectionModel.SelectionFlag.Rows
-                )
-                self.tree_videos.scrollTo(proxy_index)
-                # selectionChanged se déclenche automatiquement → on_selection_changed chargera les données
-                break
+        found_in_model = False
+        if self.tree_videos and self.video_model:
+            for row in range(self.video_model.rowCount()):
+                item = self.video_model.item(row, 0)
+                if item and item.text() == video_name:
+                    source_index = self.video_model.indexFromItem(item)
+                    proxy_index = self.proxy_model.mapFromSource(source_index)
+                    self.tree_videos.selectionModel().setCurrentIndex(
+                        proxy_index,
+                        QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect |
+                        QtCore.QItemSelectionModel.SelectionFlag.Rows
+                    )
+                    self.tree_videos.scrollTo(proxy_index)
+                    found_in_model = True
+                    break
+        # Si non trouvé dans video_model, chercher dans _ft_table (données historiques CSV)
+        if not found_in_model and hasattr(self, '_ft_table') and self._ft_table:
+            _vnum_col = next(
+                (i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "video_number"), None
+            )
+            if _vnum_col is not None:
+                for row in range(self._ft_table.rowCount()):
+                    ft_item = self._ft_table.item(row, _vnum_col)
+                    if ft_item and ft_item.text().strip() == video_name:
+                        self._ft_table.setCurrentCell(row, _vnum_col)
+                        self._ft_table.scrollToItem(ft_item)
+                        self._on_ft_table_row_clicked(row, 0)
+                        break
 
     def on_selection_changed(self, selected, deselected):
         """Charge le JSON de la vidéo sélectionnée et rafraîchit tous les panneaux de données."""
@@ -3726,17 +3754,19 @@ class MetadonneesController:
                     paths.append(str(vp))
         return paths
 
-    def collect_ft_table_coords(self) -> dict[str, dict]:
-        """Retourne {nom_vidéo: {"coords": [lat, lon], "exploitable": str, "codestation": str}}
+    def collect_ft_table_coords(self, working_dir: str = None) -> dict[str, dict]:
+        """Retourne {nom_vidéo: {"coords": [lat, lon], "exploitable": str, "codestation": str, ...}}
         pour toutes les lignes du tableau infostation."""
         result: dict[str, dict] = {}
         if not hasattr(self, '_ft_table') or not self._ft_table:
             return result
-        lat_col  = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "latitude"),   None)
-        lon_col  = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "longitude"),  None)
-        vnum_col = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "video_number"), None)
-        expl_col = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "exploitable"), None)
-        cobs_col = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "codeObs"),    None)
+        lat_col   = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "latitude"),     None)
+        lon_col   = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "longitude"),    None)
+        vnum_col  = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "video_number"), None)
+        expl_col  = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "exploitable"),  None)
+        cobs_col  = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "codeObs"),      None)
+        depth_col = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "depth"),        None)
+        date_col  = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "date"),         None)
         if lat_col is None or lon_col is None:
             return result
         for row in range(self._ft_table.rowCount()):
@@ -3763,7 +3793,35 @@ class MetadonneesController:
             if cobs_col is not None:
                 cobs_item = self._ft_table.item(row, cobs_col)
                 codestation = (cobs_item.text().strip() if cobs_item else "")
-            result[name] = {"coords": [lat, lon], "exploitable": exploitable, "codestation": codestation}
+            depth = ""
+            if depth_col is not None:
+                depth_item = self._ft_table.item(row, depth_col)
+                depth = (depth_item.text().strip() if depth_item else "")
+            # Recherche du fichier vidéo dans le répertoire de travail
+            video_path = ""
+            wd = working_dir or getattr(self, '_working_dir', '') or ''
+            if wd and name.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
+                for dirpath, _dirs, files in os.walk(wd):
+                    if name in files:
+                        video_path = os.path.join(dirpath, name)
+                        break
+            # Année : priorité champ date survey → chemin vidéo → répertoire de travail
+            import re as _re_yr
+            date_str = ""
+            if date_col is not None:
+                date_item = self._ft_table.item(row, date_col)
+                date_str = (date_item.text().strip() if date_item else "")
+            _yr_m = (_re_yr.search(r'(20\d{2})', date_str)
+                     or _re_yr.search(r'(?<!\d)(20\d{2})(?!\d)', video_path or wd or ""))
+            year = _yr_m.group(1) if _yr_m else ""
+            result[name] = {
+                "coords": [lat, lon],
+                "exploitable": exploitable,
+                "codestation": codestation,
+                "depth": depth,
+                "video_path": video_path,
+                "year": year,
+            }
         return result
 
     def _open_map_action(self):

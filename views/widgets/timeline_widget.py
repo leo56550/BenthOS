@@ -671,9 +671,10 @@ class VideoTimeline(QtWidgets.QWidget):
                 if abs(pos_x - x_line) <= TOLERANCE_PX:
                     self.set_selected_event(evt)
                     is_motor_drag = self._is_motor_event(evt.get("type", "")) and ctrl
-                    if not is_motor_drag:
+                    is_timecode_drag = evt.get("type") == "timecode_marker" and ctrl
+                    if not is_motor_drag and not is_timecode_drag:
                         self.eventSelected.emit(evt)
-                    if evt.get("type") == "timecode_marker" and ctrl:
+                    if is_timecode_drag:
                         self.active_marker_move = evt
                         self.drag_marker_mouse_x = pos_x
                         self.drag_marker_start_ms = evt["start"]

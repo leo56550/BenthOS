@@ -310,8 +310,8 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
         trailing = []
         if point_number:
             trailing.append((f"Pt {point_number}", QtGui.QColor("#f0a030")))
-            if codestation:
-                trailing.append((codestation, QtGui.QColor("#5ba8d4")))
+        if codestation:
+            trailing.append((codestation, QtGui.QColor("#5ba8d4")))
         if exploitable_label:
             excl_color = self._EXPLOITABLE_TEXT_COLORS.get(exploitable_value.lower(), "#f0a030")
             trailing.append((exploitable_label, QtGui.QColor(excl_color)))
