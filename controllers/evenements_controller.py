@@ -1152,14 +1152,16 @@ class EvenementsController:
 
     @staticmethod
     def _strip_events_motor_placeholder(events_motor) -> list:
-        """Retire l'entrée-modèle vide de events_motor (copiée telle quelle depuis template.json,
-        event_id/frame_number toujours null) avant d'y ajouter un vrai événement — sinon elle
-        reste indéfiniment dans le tableau à côté des événements réellement capturés."""
+        """Retire le placeholder template (event_id ET frame_number tous les deux null)
+        et les entrées corrompues à t=0 (start_ms=0 ET frame_number=0 — ajoutées par erreur
+        avant que la vidéo ne soit positionnée)."""
         if not isinstance(events_motor, list):
             return []
         return [
             e for e in events_motor
-            if isinstance(e, dict) and (e.get("event_id") is not None or e.get("frame_number") is not None)
+            if isinstance(e, dict)
+            and (e.get("event_id") is not None or e.get("frame_number") is not None)
+            and not (int(e.get("start_ms") or 0) == 0 and int(e.get("frame_number") or 0) == 0)
         ]
 
     def _capture_motor_rotation_event(self, btn: QtWidgets.QPushButton):
@@ -2178,7 +2180,14 @@ class EvenementsController:
                                 for v in old_vals if isinstance(v, dict)
                             ]
                         else:
-                            values_list = [v for v in raw if isinstance(v, dict) and "frame_number" in v]
+                            # Exclure : placeholder template (event_id ET frame_number tous les deux null)
+                            # ET entrées corrompues à t=0 (start_ms=0 ET frame_number=0)
+                            values_list = [
+                                v for v in raw
+                                if isinstance(v, dict)
+                                and (v.get("event_id") is not None or v.get("frame_number") is not None)
+                                and not (int(v.get("start_ms") or 0) == 0 and int(v.get("frame_number") or 0) == 0)
+                            ]
                     else:
                         values_list = raw[0].get("values", []) if isinstance(raw[0], dict) else []
                     category_name = self._get_label_from_json_key(json_key)
@@ -2487,17 +2496,23 @@ class EvenementsController:
         try:
             motor_events = []
             source = "aucune"
+            _json_has_motor_key = False  # True si le JSON possède la clé events_motor → pas de fallback CSV
             if json_path and os.path.isfile(json_path):
                 with open(json_path, 'r', encoding='utf-8') as _f:
                     _jdata = json.load(_f)
                 import re as _re
                 _fps_sv = self._get_video_fps() or 25.0
-                for _entry in (_jdata.get("video_observation", {}).get("events_motor") or []):
+                _raw_motor = _jdata.get("video_observation", {}).get("events_motor")
+                _json_has_motor_key = _raw_motor is not None
+                for _entry in (_raw_motor or []):
                     if not isinstance(_entry, dict):
                         continue
                     _desc = _entry.get("description_fr", "")
                     # Exclure atterrissage, décollage et balises non-rotation
                     if not self._is_rotation_motor_label(_desc):
+                        continue
+                    # Exclure entrées corrompues à t=0 (start_ms=0 ET frame_number=0)
+                    if int(_entry.get("start_ms") or 0) == 0 and int(_entry.get("frame_number") or 0) == 0:
                         continue
                     if "start_ms" in _entry:
                         _ms = int(_entry["start_ms"])
@@ -2521,7 +2536,8 @@ class EvenementsController:
                 if motor_events:
                     motor_events.sort(key=lambda e: e["timestamp"])
                     source = "JSON"
-            if not motor_events and not skip_csv_fallback:
+            # Fallback CSV uniquement si le JSON n'a pas de clé events_motor du tout
+            if not motor_events and not skip_csv_fallback and not _json_has_motor_key:
                 motor_events = get_motor_stable_timestamps(csv_path, delay=6.0)
                 if motor_events:
                     source = "CSV"
@@ -2529,13 +2545,44 @@ class EvenementsController:
                   f"n_events={len(motor_events)} skip_csv={skip_csv_fallback} "
                   f"vidéo={os.path.basename(video_path or '')}")
             if not motor_events:
-                print("[SECTOR] aucun événement moteur → affichage message vide")
-                lbl = QtWidgets.QLabel(self.translate(
-                    "Aucune rotation moteur trouvée dans le fichier CSV.",
-                    "No motor rotation found in the CSV file."))
-                lbl.setStyleSheet("color: white; font-size: 14px;")
-                self._sector_layout.addWidget(lbl)
+                print("[SECTOR] aucun événement moteur → miniature au milieu de la vidéo")
+                import cv2 as _cv2
+                _cap = _cv2.VideoCapture(str(video_path))
+                _total_f = _cap.get(_cv2.CAP_PROP_FRAME_COUNT)
+                _fps_cap = _cap.get(_cv2.CAP_PROP_FPS) or 25.0
+                _cap.release()
+                _mid_sec = (_total_f / _fps_cap) / 2.0 if _total_f > 0 else 0.0
+                print(f"[SECTOR] durée={_total_f/_fps_cap:.1f}s → miniature à {_mid_sec:.1f}s")
+
+                _frame_no_rot = QtWidgets.QFrame()
+                _frame_no_rot.setFixedHeight(230)
+                _frame_no_rot.setStyleSheet(
+                    "background-color: #20415d; border-radius: 8px; border: 1px solid #3d3d3d;")
+                _hbox_nr = QtWidgets.QHBoxLayout(_frame_no_rot)
+                _hbox_nr.setContentsMargins(15, 10, 15, 10)
+                _hbox_nr.setSpacing(15)
+
+                _w_photo_nr = QtWidgets.QFrame()
+                _w_photo_nr.setFixedSize(240, 180)
+                _w_photo_nr.setStyleSheet(
+                    "background-color: #111a24; border-radius: 6px; border: 1px solid #555555;")
+                _ph_layout_nr = QtWidgets.QVBoxLayout(_w_photo_nr)
+                _ph_layout_nr.setContentsMargins(0, 0, 0, 0)
+                _ph_lbl_nr = QtWidgets.QLabel("⏳")
+                _ph_lbl_nr.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+                _ph_lbl_nr.setStyleSheet("color: #405060; font-size: 22px; background: transparent;")
+                _ph_layout_nr.addWidget(_ph_lbl_nr)
+
+                self._sector_pixmaps.append(None)
+                self._sector_slot_labels[0] = (_w_photo_nr, 0, _mid_sec)
+                _hbox_nr.addWidget(_w_photo_nr)
+                _hbox_nr.addStretch()
+                self._sector_layout.addWidget(_frame_no_rot)
                 self._sector_layout.addStretch()
+
+                self._sector_worker = _CameraFrameWorker([(0, video_path, _mid_sec)])
+                self._sector_worker.frame_ready.connect(self._on_sector_frame_ready)
+                self._sector_worker.start()
                 return
 
             tasks = []
@@ -2560,11 +2607,8 @@ class EvenementsController:
 
                 for idx, evt in enumerate(rotation_events):
                     ts, angle, evt_type = evt["timestamp"], evt["angle"], evt["type"]
-                    # Image au milieu entre cet évènement et le suivant
-                    if idx + 1 < len(rotation_events):
-                        mid_ts = (ts + rotation_events[idx + 1]["timestamp"]) / 2.0
-                    else:
-                        mid_ts = ts + _avg_interval / 2.0
+                    # Image à rotation_début + 3 secondes
+                    mid_ts = ts + 3.0
                     print(f"[SECTOR]   rotation {g_idx+1}-{idx+1} angle={angle}° "
                           f"evt_ts={ts:.2f}s mid_ts={mid_ts:.2f}s")
                     is_360 = (angle == 360)

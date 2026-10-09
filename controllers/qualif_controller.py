@@ -2029,10 +2029,13 @@ class QualifController:
             motor_events = []
 
             # ── 1. Lecture JSON (priorité) ────────────────────────────────────
+            _json_has_motor_key = False  # True si le JSON possède la clé events_motor → pas de fallback CSV
             if json_path and os.path.isfile(json_path):
                 with open(json_path, 'r', encoding='utf-8') as _f:
                     _jdata = json.load(_f)
-                for _entry in (_jdata.get("video_observation", {}).get("events_motor") or []):
+                _raw_motor = _jdata.get("video_observation", {}).get("events_motor")
+                _json_has_motor_key = _raw_motor is not None
+                for _entry in (_raw_motor or []):
                     if not isinstance(_entry, dict):
                         continue
                     _desc = _entry.get("description_fr", "")
@@ -2041,6 +2044,9 @@ class QualifController:
                                    "landing", "takeoff", "debut_analyse", "fin_analyse",
                                    "analysis_start", "analysis_end"}
                     if not _desc.strip() or _desc.strip().lower() in _NON_ROT_KW:
+                        continue
+                    # Exclure entrées corrompues à t=0 (start_ms=0 ET frame_number=0)
+                    if int(_entry.get("start_ms") or 0) == 0 and int(_entry.get("frame_number") or 0) == 0:
                         continue
                     if "start_ms" in _entry:
                         _ms = int(_entry["start_ms"])
@@ -2063,30 +2069,54 @@ class QualifController:
                 if motor_events:
                     motor_events.sort(key=lambda e: e["timestamp"])
 
-            # ── 2. Fallback CSV ───────────────────────────────────────────────
-            if not motor_events and csv_path and os.path.isfile(csv_path):
+            # ── 2. Fallback CSV uniquement si le JSON n'a pas de clé events_motor ──
+            if not motor_events and not _json_has_motor_key and csv_path and os.path.isfile(csv_path):
                 motor_events = get_motor_stable_timestamps(csv_path, delay=6.0)
 
             if not motor_events:
-                lbl = QtWidgets.QLabel(self.translate(
-                    "Aucune rotation moteur trouvée.",
-                    "No motor rotation found."))
-                lbl.setStyleSheet("color: white; font-size: 14px;")
-                self.scroll_layout.addWidget(lbl)
+                print("[QUALIF] aucun événement moteur → miniature au milieu de la vidéo")
+                import cv2 as _cv2
+                _cap = _cv2.VideoCapture(str(video_path))
+                _total_f = _cap.get(_cv2.CAP_PROP_FRAME_COUNT)
+                _fps_cap = _cap.get(_cv2.CAP_PROP_FPS) or 25.0
+                _cap.release()
+                _mid_sec = (_total_f / _fps_cap) / 2.0 if _total_f > 0 else 0.0
+                print(f"[QUALIF] durée={_total_f/_fps_cap:.1f}s → miniature à {_mid_sec:.1f}s")
+
+                _frame_no_rot = QtWidgets.QFrame()
+                _frame_no_rot.setFixedHeight(230)
+                _frame_no_rot.setStyleSheet(
+                    "background-color: #20415d; border-radius: 8px; border: 1px solid #3d3d3d;")
+                _hbox_nr = QtWidgets.QHBoxLayout(_frame_no_rot)
+                _hbox_nr.setContentsMargins(15, 10, 15, 10)
+                _hbox_nr.setSpacing(15)
+
+                _w_photo_nr = QtWidgets.QFrame()
+                _w_photo_nr.setFixedSize(240, 180)
+                _w_photo_nr.setStyleSheet(
+                    "background-color: #111a24; border-radius: 6px; border: 1px solid #555555;")
+                _ph_layout_nr = QtWidgets.QVBoxLayout(_w_photo_nr)
+                _ph_layout_nr.setContentsMargins(0, 0, 0, 0)
+                _ph_lbl_nr = QtWidgets.QLabel("⏳")
+                _ph_lbl_nr.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+                _ph_lbl_nr.setStyleSheet("color: #405060; font-size: 22px; background: transparent;")
+                _ph_layout_nr.addWidget(_ph_lbl_nr)
+
+                self._miniature_pixmaps.append(None)
+                self._camera_slot_labels[0] = (_w_photo_nr, 0, _mid_sec)
+                _hbox_nr.addWidget(_w_photo_nr)
+                _hbox_nr.addStretch()
+                self.scroll_layout.addWidget(_frame_no_rot)
                 self.scroll_layout.addStretch()
+
+                self._cam_worker = _CameraFrameWorker([(0, video_path, _mid_sec)])
+                self._cam_worker.frame_ready.connect(self._on_camera_frame_ready)
+                self._cam_worker.start()
                 return
 
-            # ── 3. Calcul midpoint entre événements consécutifs ───────────────
-            n = len(motor_events)
-            avg_interval = (
-                (motor_events[-1]["timestamp"] - motor_events[0]["timestamp"]) / (n - 1)
-                if n >= 2 else 33.0
-            )
-            for i, evt in enumerate(motor_events):
-                if i + 1 < n:
-                    evt["mid_ts"] = (evt["timestamp"] + motor_events[i + 1]["timestamp"]) / 2.0
-                else:
-                    evt["mid_ts"] = evt["timestamp"] + avg_interval / 2.0
+            # ── 3. Timestamp miniature = début rotation + 3 secondes ─────────
+            for evt in motor_events:
+                evt["mid_ts"] = evt["timestamp"] + 3.0
 
             # ── 4. Construction de la grille ──────────────────────────────────
             tasks = []
