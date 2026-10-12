@@ -207,6 +207,131 @@ class _BatchLandingWorker(QtCore.QThread):
         self.result.emit(processed, skipped, failed, errors)
 
 
+class BatchFullExportCoordinator(QtCore.QObject):
+    """Exporte toutes les vidéos éligibles de la campagne, l'une après l'autre.
+
+    Chaque vidéo passe par le même pipeline que le bouton "Exporter les événements" :
+    bornes ATT/DEC → dossier de sortie → JSON+raccourci → lot d'images → CSV VIAME.
+    """
+
+    video_started  = QtCore.pyqtSignal(int, int, str)       # (idx_1based, total, video_name)
+    video_progress = QtCore.pyqtSignal(int)                  # % images vidéo en cours
+    video_done     = QtCore.pyqtSignal(int, int, int, str)  # (done, skipped, failed, msg)
+    all_done       = QtCore.pyqtSignal(int, int, int)       # (done, skipped, failed)
+
+    def __init__(self, video_paths, options, working_dir,
+                 get_out_dir_fn, copy_companion_fn,
+                 get_bounds_fn, generate_csv_fn, generate_csv_no_img_fn,
+                 parent=None):
+        super().__init__(parent)
+        self._queue          = list(video_paths)
+        self._options        = options
+        self._working_dir    = working_dir
+        self._get_out_dir    = get_out_dir_fn
+        self._copy_companion = copy_companion_fn
+        self._get_bounds     = get_bounds_fn
+        self._gen_csv        = generate_csv_fn
+        self._gen_csv_no_img = generate_csv_no_img_fn
+        self._total          = len(video_paths)
+        self._done = self._skipped = self._failed = 0
+        self._current_worker = None
+        self._cancelled      = False
+        self._cur_video      = None
+        self._cur_start_ms   = 0
+        self._cur_end_ms     = 0
+
+    def start(self):
+        self._process_next()
+
+    def cancel(self):
+        self._cancelled = True
+        if self._current_worker and self._current_worker.isRunning():
+            self._current_worker.stop()
+
+    def _process_next(self):
+        if self._cancelled or not self._queue:
+            self.all_done.emit(self._done, self._skipped, self._failed)
+            return
+
+        video_path = self._queue.pop(0)
+        idx = self._total - len(self._queue)
+        self.video_started.emit(idx, self._total, os.path.basename(video_path))
+
+        bounds = self._get_bounds(video_path)
+        if bounds is None:
+            self._skipped += 1
+            self.video_done.emit(self._done, self._skipped, self._failed,
+                                 "Ignorée (pas de bornes ATT/DEC)")
+            QtCore.QTimer.singleShot(0, self._process_next)
+            return
+
+        start_ms, end_ms = bounds
+        self._cur_video    = video_path
+        self._cur_start_ms = start_ms
+        self._cur_end_ms   = end_ms
+        self._copy_companion(video_path)
+
+        options      = self._options
+        event_cats   = options.get("event_categories",
+                                   ["events_motor", "events_animal", "events_interesting_images"])
+        include_imgs = options.get("include_images", True)
+
+        if not include_imgs:
+            ok = self._gen_csv_no_img(video_path, start_ms, end_ms, event_cats)
+            if ok:
+                self._done += 1
+                self.video_done.emit(self._done, self._skipped, self._failed, "CSV généré")
+            else:
+                self._failed += 1
+                self.video_done.emit(self._done, self._skipped, self._failed, "Erreur CSV")
+            QtCore.QTimer.singleShot(0, self._process_next)
+            return
+
+        video_out_dir  = self._get_out_dir(video_path)
+        is_stereo, _   = check_stereo_status(video_path)
+        session_root   = os.path.dirname(os.path.dirname(video_path))
+        matrices_path  = os.path.join(session_root, "matrices.json")
+
+        worker = ExportWorker(
+            video_path      = video_path,
+            base_output_dir = video_out_dir,
+            start_ms        = start_ms,
+            end_ms          = end_ms,
+            target_fps      = options.get("target_fps", 5),
+            events          = [],
+            apply_he        = options.get("apply_he", False),
+            apply_dh        = options.get("apply_dh", False),
+            is_water        = options.get("is_water", False),
+            is_stereo       = is_stereo,
+            apply_rectify   = options.get("apply_rectify", False),
+            json_path       = matrices_path,
+        )
+        worker.progress_updated.connect(self.video_progress)
+        worker.export_finished.connect(self._on_worker_finished)
+        worker.export_error.connect(self._on_worker_error)
+        worker.export_cancelled.connect(self._on_worker_cancelled)
+        self._current_worker = worker
+        worker.start()
+
+    def _on_worker_finished(self, saved_count: int):
+        event_cats = self._options.get("event_categories",
+                                       ["events_motor", "events_animal", "events_interesting_images"])
+        self._gen_csv(self._cur_video, self._cur_start_ms, self._cur_end_ms, event_cats)
+        self._done += 1
+        self.video_done.emit(self._done, self._skipped, self._failed,
+                             f"{saved_count} image(s)")
+        QtCore.QTimer.singleShot(0, self._process_next)
+
+    def _on_worker_error(self, msg: str):
+        self._failed += 1
+        self.video_done.emit(self._done, self._skipped, self._failed, f"Erreur : {msg}")
+        QtCore.QTimer.singleShot(0, self._process_next)
+
+    def _on_worker_cancelled(self):
+        self._cancelled = True
+        self.all_done.emit(self._done, self._skipped, self._failed)
+
+
 class EvenementsController:
     """Contrôleur de la page Événements : capture, édition et export des événements vidéo."""
 
@@ -470,6 +595,20 @@ class EvenementsController:
                 widget = self._analysis_widgets.get(key)
                 if widget:
                     widget.setPlaceholderText(self.translate(fr, en))
+        if hasattr(self, '_lbl_batch_export'):
+            self._lbl_batch_export.setText(
+                self.translate("Export campagne", "Campaign export"))
+        if hasattr(self, 'btn_batch_events_export'):
+            self.btn_batch_events_export.setText(
+                self.translate("Exporter toutes les vidéos", "Export all videos"))
+            self.btn_batch_events_export.setToolTip(self.translate(
+                "Exporte toutes les vidéos de la campagne (dossier, raccourci, images, CSV VIAME) "
+                "selon les bornes atterrissage / décollage de chaque vidéo.",
+                "Exports all campaign videos (folder, shortcut, images, VIAME CSV) "
+                "using each video's landing / takeoff timestamps.",
+            ))
+        if hasattr(self, '_btn_batch_cancel'):
+            self._btn_batch_cancel.setText(self.translate("Annuler", "Cancel"))
 
     def load_campaign_videos(self, model: QtGui.QStandardItemModel):
         """Remplace le modèle vidéo partagé après ouverture d'une nouvelle campagne."""
@@ -1856,10 +1995,88 @@ class EvenementsController:
         ag.addWidget(dist_w, 4, 1)
 
         layout.addWidget(analyse_grid)
+
+        # ── Export campagne (batch) ───────────────────────────────────────────
+        sep_batch = QtWidgets.QFrame()
+        sep_batch.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        sep_batch.setStyleSheet("border: none; border-top: 1px solid #1e3448; max-height: 1px;")
+        layout.addWidget(sep_batch)
+
+        self._lbl_batch_export = QtWidgets.QLabel(
+            self.translate("Export campagne", "Campaign export"))
+        self._lbl_batch_export.setStyleSheet(
+            "color: #7ec8e3; font-size: 15px; font-weight: bold; border: none;")
+        layout.addWidget(self._lbl_batch_export)
+
+        self.btn_batch_events_export = QtWidgets.QPushButton(
+            self.translate("Exporter toutes les vidéos", "Export all videos"))
+        self.btn_batch_events_export.setStyleSheet(
+            "QPushButton { background-color: #1e6e8c; color: white; font-weight: bold; "
+            "font-size: 13px; border: 1px solid #2778a2; border-radius: 6px; padding: 8px 10px; }"
+            "QPushButton:hover { background-color: #2778a2; }"
+            "QPushButton:disabled { background-color: #1a3040; color: #607080; border-color: #2a4057; }"
+        )
+        self.btn_batch_events_export.setToolTip(self.translate(
+            "Exporte toutes les vidéos de la campagne (dossier, raccourci, images, CSV VIAME) "
+            "selon les bornes atterrissage / décollage de chaque vidéo.",
+            "Exports all campaign videos (folder, shortcut, images, VIAME CSV) "
+            "using each video's landing / takeoff timestamps.",
+        ))
+        self.btn_batch_events_export.setEnabled(False)
+        self.btn_batch_events_export.clicked.connect(self._on_batch_full_export_clicked)
+        layout.addWidget(self.btn_batch_events_export)
+
+        self._btn_batch_cancel = QtWidgets.QPushButton(
+            self.translate("Annuler", "Cancel"))
+        self._btn_batch_cancel.setStyleSheet(
+            "QPushButton { background-color: #5a2020; color: #ffaaaa; font-weight: bold; "
+            "font-size: 12px; border: 1px solid #8a3030; border-radius: 6px; padding: 6px 10px; }"
+            "QPushButton:hover { background-color: #8a3030; }"
+        )
+        self._btn_batch_cancel.setVisible(False)
+        self._btn_batch_cancel.clicked.connect(self._on_batch_cancel_clicked)
+        layout.addWidget(self._btn_batch_cancel)
+
+        # Barre globale (vidéos)
+        self._batch_overall_progress = QtWidgets.QProgressBar()
+        self._batch_overall_progress.setMinimum(0)
+        self._batch_overall_progress.setMaximum(100)
+        self._batch_overall_progress.setValue(0)
+        self._batch_overall_progress.setFormat("%v / %m vidéos")
+        self._batch_overall_progress.setStyleSheet(
+            "QProgressBar { border: 1px solid #2778a2; border-radius: 4px; background-color: #2a2a2a; "
+            "text-align: center; color: white; font-size: 11px; }"
+            "QProgressBar::chunk { background-color: #2778a2; }"
+        )
+        self._batch_overall_progress.setVisible(False)
+        layout.addWidget(self._batch_overall_progress)
+
+        # Barre images de la vidéo en cours
+        self._batch_video_progress = QtWidgets.QProgressBar()
+        self._batch_video_progress.setMinimum(0)
+        self._batch_video_progress.setMaximum(100)
+        self._batch_video_progress.setValue(0)
+        self._batch_video_progress.setFormat("%p% images")
+        self._batch_video_progress.setStyleSheet(
+            "QProgressBar { border: 1px solid #1e5070; border-radius: 4px; background-color: #2a2a2a; "
+            "text-align: center; color: #aaccdd; font-size: 10px; }"
+            "QProgressBar::chunk { background-color: #1e5070; }"
+        )
+        self._batch_video_progress.setVisible(False)
+        layout.addWidget(self._batch_video_progress)
+
+        self._batch_export_status = QtWidgets.QLabel("", self.export_container)
+        self._batch_export_status.setWordWrap(True)
+        self._batch_export_status.setStyleSheet("color: #7ec8e3; font-size: 12px; border: none;")
+        self._batch_export_status.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Maximum)
+        layout.addWidget(self._batch_export_status)
+
         layout.addStretch(1)
 
         self.export_button.clicked.connect(self.on_export_segment_clicked)
         self.export_worker = None
+        self._batch_coordinator = None
 
     def _update_export_button_state(self):
         """Active le bouton Export seulement si une vidéo est chargée."""
@@ -3847,6 +4064,43 @@ class EvenementsController:
             print(f"[EXPORT] Annotation bounds exception: {e}")
             return None
 
+    def _get_segment_bounds_for_video(self, video_path: str):
+        """Version standalone de _get_export_segment_bounds pour une vidéo quelconque (batch)."""
+        json_path = resolve_video_json_path(self._working_dir, video_path)
+        if not json_path or not os.path.exists(json_path):
+            return None
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            obs = data.get('video_observation', {})
+            cap = cv2.VideoCapture(video_path)
+            fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+            cap.release()
+
+            landing_ms = self._timecode_str_to_ms((obs.get("timecode_landing") or {}).get("value"))
+            takeoff_ms = self._timecode_str_to_ms((obs.get("timecode_takeoff") or {}).get("value"))
+            landing_f  = self._ms_to_frame(landing_ms, fps) if landing_ms is not None else None
+            takeoff_f  = self._ms_to_frame(takeoff_ms, fps) if takeoff_ms is not None else None
+
+            if landing_f is None or takeoff_f is None:
+                for item in self._read_events_motor(obs):
+                    val = str(item.get('description_fr') or item.get('value', '')).strip()
+                    fn  = item.get('frame_number')
+                    if fn is None:
+                        continue
+                    if landing_f is None and self._is_landing_event(val):
+                        landing_f = fn
+                    elif takeoff_f is None and self._is_takeoff_event(val):
+                        takeoff_f = fn
+
+            if landing_f is None or takeoff_f is None:
+                return None
+            start_ms = ((float(int(landing_f)) - 1.0) / fps) * 1000.0
+            end_ms   = ((float(int(takeoff_f)) - 1.0) / fps) * 1000.0
+            return start_ms, end_ms
+        except Exception:
+            return None
+
     def on_export_segment_clicked(self):
         """Lance le dialogue d'options puis démarre ExportWorker sur le segment atterrissage→décollage."""
         if not self.current_video_path or not os.path.exists(self.current_video_path):
@@ -4043,6 +4297,111 @@ class EvenementsController:
         self._working_dir = path
         if hasattr(self, '_bar_delegate'):
             self._bar_delegate.set_working_dir(path)
+        if hasattr(self, 'btn_batch_events_export'):
+            self.btn_batch_events_export.setEnabled(bool(path))
+
+    # ── Export campagne (batch complet) ──────────────────────────────────────
+
+    def _on_batch_full_export_clicked(self):
+        """Ouvre ExportOptionsDialog puis lance BatchFullExportCoordinator sur toutes les vidéos."""
+        if not self._working_dir or not self.video_model:
+            return
+
+        # Collecte toutes les vidéos du modèle
+        video_paths = []
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if item:
+                vp = item.data(QtCore.Qt.ItemDataRole.UserRole)
+                if vp and os.path.isfile(str(vp)):
+                    video_paths.append(str(vp))
+
+        if not video_paths:
+            QtWidgets.QMessageBox.information(
+                self.page,
+                self.translate("Aucune vidéo", "No videos"),
+                self.translate("Aucune vidéo dans la campagne.", "No videos in the campaign."),
+            )
+            return
+
+        dialog = ExportOptionsDialog(self.page, is_stereo=False)
+        dialog.set_language(self.current_language)
+        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            return
+
+        options = dialog.get_processing_options()
+
+        self.btn_batch_events_export.setEnabled(False)
+        self._btn_batch_cancel.setVisible(True)
+        self._batch_overall_progress.setMaximum(len(video_paths))
+        self._batch_overall_progress.setValue(0)
+        self._batch_overall_progress.setFormat(
+            self.translate(f"0 / {len(video_paths)} vidéos",
+                           f"0 / {len(video_paths)} videos"))
+        self._batch_overall_progress.setVisible(True)
+        self._batch_video_progress.setValue(0)
+        self._batch_video_progress.setVisible(True)
+        self._batch_export_status.setText(
+            self.translate("Démarrage…", "Starting…"))
+
+        self._batch_coordinator = BatchFullExportCoordinator(
+            video_paths        = video_paths,
+            options            = options,
+            working_dir        = self._working_dir,
+            get_out_dir_fn     = self._get_video_out_dir,
+            copy_companion_fn  = self._copy_companion_files,
+            get_bounds_fn      = self._get_segment_bounds_for_video,
+            generate_csv_fn    = self._generate_events_csv,
+            generate_csv_no_img_fn = self._generate_events_csv_no_images,
+            parent             = self.page,
+        )
+        self._batch_coordinator.video_started.connect(self._on_batch_video_started)
+        self._batch_coordinator.video_progress.connect(self._on_batch_video_progress)
+        self._batch_coordinator.video_done.connect(self._on_batch_video_done)
+        self._batch_coordinator.all_done.connect(self._on_batch_all_done)
+        self._batch_coordinator.start()
+
+    def _on_batch_cancel_clicked(self):
+        if self._batch_coordinator:
+            self._batch_coordinator.cancel()
+
+    def _on_batch_video_started(self, idx: int, total: int, video_name: str):
+        self._batch_overall_progress.setFormat(
+            self.translate(f"{idx} / {total} vidéos", f"{idx} / {total} videos"))
+        self._batch_video_progress.setValue(0)
+        self._batch_export_status.setText(
+            self.translate(f"[{idx}/{total}] {video_name}",
+                           f"[{idx}/{total}] {video_name}"))
+
+    def _on_batch_video_progress(self, pct: int):
+        if hasattr(self, '_batch_video_progress'):
+            self._batch_video_progress.setValue(pct)
+
+    def _on_batch_video_done(self, done: int, skipped: int, failed: int, msg: str):
+        total = (done + skipped + failed
+                 + (self._batch_coordinator._total
+                    - done - skipped - failed
+                    - len(getattr(self._batch_coordinator, '_queue', [])))
+                 if self._batch_coordinator else done + skipped + failed)
+        n = getattr(self._batch_coordinator, '_total', done + skipped + failed)
+        self._batch_overall_progress.setValue(done + skipped + failed)
+        self._batch_overall_progress.setFormat(
+            self.translate(f"{done + skipped + failed} / {n} vidéos",
+                           f"{done + skipped + failed} / {n} videos"))
+
+    def _on_batch_all_done(self, done: int, skipped: int, failed: int):
+        get_sound_service().play("export_complete")
+        self._batch_overall_progress.setVisible(False)
+        self._batch_video_progress.setVisible(False)
+        self._btn_batch_cancel.setVisible(False)
+        if hasattr(self, 'btn_batch_events_export'):
+            self.btn_batch_events_export.setEnabled(bool(self._working_dir))
+        parts = [self.translate(f"✓ {done} exportée(s)", f"✓ {done} exported")]
+        if skipped:
+            parts.append(self.translate(f"{skipped} ignorée(s)", f"{skipped} skipped"))
+        if failed:
+            parts.append(self.translate(f"{failed} en erreur", f"{failed} failed"))
+        self._batch_export_status.setText("  ·  ".join(parts))
 
     def _get_video_out_dir(self, video_path: str) -> str:
         """Retourne le dossier de sortie formaté (YYYYMMDDhhmm_ZONE_CODESTATION), directement
@@ -4133,7 +4492,7 @@ class EvenementsController:
         try:
             with open(template_json_path, 'r', encoding='utf-8') as f:
                 json_data = json.load(f)
-            cap = cv2.VideoCapture(self.current_video_path)
+            cap = cv2.VideoCapture(video_path)
             video_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
             cap.release()
 

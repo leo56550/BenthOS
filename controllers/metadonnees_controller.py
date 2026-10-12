@@ -449,6 +449,29 @@ class _FillSelectionDelegate(QtWidgets.QStyledItemDelegate):
         return super().eventFilter(editor, event)
 
 
+class _CtrlClickEditFilter(QtCore.QObject):
+    """Permet d'entrer en édition d'une cellule par Ctrl+clic (au lieu du double-clic,
+    réservé à l'ouverture de la carte de campagne)."""
+
+    def __init__(self, table: QtWidgets.QTableWidget):
+        super().__init__(table)
+        self._table = table
+
+    def eventFilter(self, obj, event):
+        if (obj is self._table.viewport()
+                and event.type() == QtCore.QEvent.Type.MouseButtonPress
+                and event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier
+                and event.button() == QtCore.Qt.MouseButton.LeftButton):
+            index = self._table.indexAt(event.pos())
+            if index.isValid():
+                flags = self._table.model().flags(index)
+                if flags & QtCore.Qt.ItemFlag.ItemIsEditable:
+                    self._table.setCurrentIndex(index)
+                    self._table.edit(index)
+                    return True
+        return False
+
+
 class MetadonneesController:
     """Contrôleur de la page Métadonnées : affichage et édition des JSON vidéo, météo et statistiques."""
 
@@ -706,6 +729,20 @@ class MetadonneesController:
         self._btn_map.clicked.connect(self._open_map_action)
         tb_row.addWidget(self._btn_map)
 
+        self._btn_sort_codestation = QtWidgets.QPushButton(
+            self.translate("TRIER CODESTATION ↓", "SORT CODESTATION ↓"))
+        self._btn_sort_codestation.setToolTip(self.translate(
+            "Réordonner le tableau par codestation croissant",
+            "Sort the table by codestation (ascending)"))
+        self._btn_sort_codestation.setStyleSheet(
+            "QPushButton{background:#1a2a1a;color:#8ae8c0;border:1px solid #2a7a5a;"
+            "border-radius:4px;padding:2px 10px;font-size:10px;font-weight:bold;"
+            "font-family:'Segoe UI',sans-serif;}"
+            "QPushButton:hover{background:#2a7a5a;color:white;}"
+        )
+        self._btn_sort_codestation.clicked.connect(self._sort_by_codestation)
+        tb_row.addWidget(self._btn_sort_codestation)
+
         self._btn_generer = QtWidgets.QPushButton(
             self.translate("GENERER INFOSTATION", "GENERATE INFOSTATION"))
         self._btn_generer.setStyleSheet(
@@ -797,13 +834,11 @@ class MetadonneesController:
             QtWidgets.QAbstractItemView.SelectionBehavior.SelectItems)
         self._ft_table.setSelectionMode(
             QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
-        # AnyKeyPressed : taper directement sur une cellule sélectionnée (sans double-clic)
-        # entre en édition sans perdre la sélection multiple — double-cliquer, lui, la
-        # réduit à la seule cellule cliquée (comportement Qt normal), ce qui empêche
-        # ensuite tout remplissage groupé par Ctrl+Entrée.
+        # EditKeyPressed (F2) et AnyKeyPressed permettent d'éditer sans double-clic.
+        # DoubleClicked est retiré : le double-clic est réservé à l'ouverture de la carte.
+        # Pour éditer à la souris : Ctrl+clic (voir _CtrlClickEditFilter installé ci-dessous).
         self._ft_table.setEditTriggers(
-            QtWidgets.QAbstractItemView.EditTrigger.DoubleClicked
-            | QtWidgets.QAbstractItemView.EditTrigger.EditKeyPressed
+            QtWidgets.QAbstractItemView.EditTrigger.EditKeyPressed
             | QtWidgets.QAbstractItemView.EditTrigger.AnyKeyPressed
         )
         self._ft_table.setSortingEnabled(True)
@@ -876,7 +911,12 @@ class MetadonneesController:
 
         self._ft_table.cellChanged.connect(self._on_ft_table_cell_changed)
         self._ft_table.cellClicked.connect(self._on_ft_table_row_clicked)
+        self._ft_table.cellDoubleClicked.connect(self._on_ft_table_double_clicked)
         self._ft_table.currentCellChanged.connect(self._on_ft_current_cell_changed)
+
+        # Ctrl+clic → édition ; Ctrl+ExtendedSelection est géré en interne par Qt
+        self._ctrl_edit_filter = _CtrlClickEditFilter(self._ft_table)
+        self._ft_table.viewport().installEventFilter(self._ctrl_edit_filter)
 
         # Double-clic sur un en-tête de colonne : la cache. Clic droit sur un en-tête :
         # menu pour réafficher les colonnes cachées (sinon aucun moyen de revenir en arrière).
@@ -1563,9 +1603,19 @@ class MetadonneesController:
                     ))
                     self._slate_lbl.setPixmap(QtGui.QPixmap())
 
-        # Notifie la carte pour re-centrer sur ce point (même en mode historique sans video_path)
+        # Mémorise le nom pour le double-clic (ouverture carte) sans relire le tableau
+        self._ft_last_selected_video_name = video_name
+        self._ft_last_selected_video_path = video_path or ""
+
+    def _on_ft_table_double_clicked(self, row: int, _col: int):
+        """Double-clic sur une ligne → ouvre la carte de campagne centrée sur ce point."""
+        video_name = getattr(self, '_ft_last_selected_video_name', "")
+        video_path = getattr(self, '_ft_last_selected_video_path', "")
+        if not video_name:
+            first_item = self._ft_table.item(row, 0)
+            video_name = first_item.text().strip() if first_item else ""
         if video_name and self._on_video_selected:
-            self._on_video_selected(video_name, video_path or "")
+            self._on_video_selected(video_name, video_path)
 
     def _on_ft_current_cell_changed(self, current_row, _current_col, previous_row, _previous_col):
         """Surligne toute la ligne courante du tableau infostation au clic (la sélection
@@ -1671,6 +1721,8 @@ class MetadonneesController:
             self._btn_copier.setText(self.translate("Copier ↓", "Copy ↓"))
         if hasattr(self, '_btn_map'):
             self._btn_map.setText(self.translate("OUVRIR CARTE", "OPEN MAP"))
+        if hasattr(self, '_btn_sort_codestation'):
+            self._btn_sort_codestation.setText(self.translate("TRIER CODESTATION ↓", "SORT CODESTATION ↓"))
         if hasattr(self, '_btn_json_filter'):
             self._btn_json_filter.setText(self.translate("Données appariées", "Matched data"))
         if hasattr(self, '_ft_table'):
@@ -3823,6 +3875,16 @@ class MetadonneesController:
                 "year": year,
             }
         return result
+
+    def _sort_by_codestation(self):
+        """Trie le tableau infostation par codestation (ou numéro de point) croissant."""
+        if not hasattr(self, '_ft_table') or self._ft_table is None:
+            return
+        code_col = next(
+            (i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "codeObs"), None)
+        if code_col is None:
+            return
+        self._ft_table.sortItems(code_col, QtCore.Qt.SortOrder.AscendingOrder)
 
     def _open_map_action(self):
         """Ouvre la carte de campagne (Leaflet, QDialog) centrée sur la vidéo en cours."""

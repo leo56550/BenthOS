@@ -5,7 +5,7 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 
 from services.motor_service import get_motor_stable_timestamps
 from services.video_service import check_stereo_status
-from services.campaign_service import get_video_json_path, resolve_video_json_path
+from services.campaign_service import get_video_json_path, resolve_video_json_path, compute_codestation
 from services.sound_service import get_sound_service
 from controllers.qualif_controller import _CameraFrameWorker
 from views.widgets.embedded_player import EmbeddedVideoPlayer
@@ -654,17 +654,20 @@ class ValidationController:
         # Reset ardoise buttons, puis applique l'état réel depuis le JSON
         self.player.btn_ardoise.setText(self.translate("SAISIR ARDOISE", "RECORD SLATE"))
         self.player.btn_ardoise.setEnabled(True)
-        _has_ardoise = False   # True si timecode_ardoise ou point_name déjà saisi → bascule auto vers secteurs
+        _has_ardoise = False   # True si timecode_ardoise ou point_name déjà saisi
+        _has_codestation = False  # True si codestation calculable → bascule auto vers secteurs
         try:
             with open(self.current_json_path, 'r', encoding='utf-8') as _f:
                 _jdata = json.load(_f)
             _vob = _jdata.get("video_observation", {})
+            _sv = _jdata.get("survey", {})
             _tc = (_vob.get("timecode_ardoise") or {}).get("value")
             _pn = (_vob.get("point_name") or {}).get("value") if isinstance(_vob.get("point_name"), dict) else None
             if _tc or _pn:
                 _has_ardoise = True
-                if _tc:
-                    self.player.btn_ardoise.setText(self.translate("MODIFIER ARDOISE", "MODIFY SLATE"))
+            _has_codestation = bool(compute_codestation(_sv, _vob))
+            if _tc:
+                self.player.btn_ardoise.setText(self.translate("MODIFIER ARDOISE", "MODIFY SLATE"))
                 try:
                     _parts = str(_tc).split(":")
                     if len(_parts) == 3:
@@ -703,8 +706,8 @@ class ValidationController:
             self.player.btn_x1.setChecked(True)
         if os.path.exists(csv_system):
             self._load_sector_view(selected_video_path, csv_system, self.current_json_path)
-            # Ardoise déjà saisie → afficher directement la mosaïque des secteurs
-            if _has_ardoise:
+            # Codestation calculable → afficher directement la mosaïque des secteurs
+            if _has_codestation:
                 self._toggle_sector_view()
         else:
             while self._sector_layout.count():

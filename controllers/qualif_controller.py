@@ -1150,6 +1150,19 @@ class QualifController:
         self._start_watching_campaign(self.current_campaign_folder)
         self._rebuild_video_rows()
 
+        # Si les métadonnées de campagne n'ont pas encore été chargées (course FS/watcher),
+        # les recharger maintenant depuis le JSON de référence mémorisé.
+        if not getattr(self, '_campaign_properties_json_path', None):
+            for row in range(self.video_model.rowCount()):
+                item = self.video_model.item(row, 0)
+                vp = item.data(QtCore.Qt.ItemDataRole.UserRole) if item else None
+                if not vp:
+                    continue
+                jp = get_temp_json_path(str(vp))
+                if os.path.exists(jp):
+                    self.load_and_display_campaign_json(jp)
+                    break
+
     def load_and_display_campaign_json(self, json_path: str):
         if not hasattr(self, 'scroll_campaign') or not self.scroll_campaign:
             return
@@ -1519,13 +1532,25 @@ class QualifController:
             for name, pt in extra_points.items():
                 if name not in valid_coords:
                     if isinstance(pt, (list, tuple)):
-                        # Ancien format : [lat, lon]
-                        valid_coords[name] = list(pt)
+                        # Ancien format : [lat, lon] — filtrer NaN
+                        try:
+                            _la, _lo = float(pt[0]), float(pt[1])
+                            if not math.isnan(_la) and not math.isnan(_lo):
+                                valid_coords[name] = [_la, _lo]
+                        except (ValueError, TypeError, IndexError):
+                            pass
                         waypoints.setdefault(name, "")
                         marker_meta.setdefault(name, {})
                     else:
                         # Nouveau format : {"coords": [...], "exploitable": ..., "codestation": ..., "depth": ...}
-                        valid_coords[name] = pt.get("coords", [])
+                        _coords = pt.get("coords", [])
+                        try:
+                            if (len(_coords) >= 2
+                                    and not math.isnan(float(_coords[0]))
+                                    and not math.isnan(float(_coords[1]))):
+                                valid_coords[name] = _coords
+                        except (ValueError, TypeError):
+                            pass
                         waypoints.setdefault(name, "")
                         marker_meta[name] = {
                             "exploitable": str(pt.get("exploitable") or "").strip().lower(),
