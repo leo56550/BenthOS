@@ -1478,6 +1478,7 @@ class QualifController:
         valid_coords: dict[str, list] = {}
         waypoints: dict[str, str] = {}
         marker_meta: dict[str, dict] = {}
+        _n_total = 0
         for row in range(self.video_model.rowCount()):
             item = self.video_model.item(row, 0)
             if not item:
@@ -1485,6 +1486,7 @@ class QualifController:
             vpath = item.data(QtCore.Qt.ItemDataRole.UserRole)
             if not vpath:
                 continue
+            _n_total += 1
             jpath = get_temp_json_path(vpath)
             if not os.path.exists(jpath):
                 continue
@@ -1566,6 +1568,11 @@ class QualifController:
             m.get("year", "") for m in marker_meta.values() if m.get("year", "")
         })
 
+        # Nombre de vidéos sans GPS (pour l'indicateur sur la carte)
+        if _n_total == 0 and extra_points:
+            _n_total = len(extra_points)
+        missing_gps_count = max(0, _n_total - len(valid_coords))
+
         center = list(valid_coords.values())[0] if valid_coords else [48.356, -4.571]
 
         # Plusieurs vidéos tournées au même point (même station) ont souvent des coordonnées
@@ -1575,7 +1582,10 @@ class QualifController:
         # le tracé GPS chronologique).
         marker_display_coords = self._spread_overlapping_coords(valid_coords)
 
-        if not getattr(self, 'map_initialized', False):
+        # GPS est maintenant disponible alors que la carte précédente a été construite sans
+        # aucun marqueur → forcer la reconstruction pour retirer l'overlay "pas de GPS".
+        _force_rebuild = bool(valid_coords) and not getattr(self, '_map_has_gps', False)
+        if not getattr(self, 'map_initialized', False) or _force_rebuild:
             m = folium.Map(location=center, zoom_start=17, tiles=None)
             folium.TileLayer(tiles="openstreetmap", name="OpenStreetMap", max_zoom=19).add_to(m)
             folium.TileLayer(
@@ -1872,11 +1882,28 @@ class QualifController:
                 </div>"""
                 m.get_root().html.add_child(folium.Element(no_gps_html))
 
+            if missing_gps_count > 0 and valid_coords:
+                _lbl_missing = self.translate(
+                    f"{missing_gps_count} vidéo(s) sans coordonnées GPS",
+                    f"{missing_gps_count} video(s) without GPS coordinates",
+                )
+                missing_html = (
+                    '<div style="position:fixed;bottom:10px;right:10px;z-index:9999;'
+                    'background:rgba(13,27,42,0.82);color:#a0bcd0;'
+                    'font-family:\'Segoe UI\',sans-serif;font-size:11px;'
+                    'border:1px solid #2778A2;border-radius:5px;'
+                    'padding:5px 10px;pointer-events:none;">'
+                    f'⚠ {_lbl_missing}'
+                    '</div>'
+                )
+                m.get_root().html.add_child(folium.Element(missing_html))
+
             data = io.BytesIO()
             m.save(data, close_file=False)
             self._map_html_cache = data.getvalue().decode()
             self.map_dialog.map_view.setHtml(self._map_html_cache)
             self.map_initialized = True
+            self._map_has_gps = bool(valid_coords)
             if show_dialog and not self.map_dialog.isVisible():
                 self.map_dialog.show()
                 self._refresh_map_on_first_show()

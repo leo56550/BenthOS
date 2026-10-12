@@ -675,6 +675,20 @@ class MetadonneesController:
         self._btn_copier.clicked.connect(self._copy_fill_selection)
         tb_row.addWidget(self._btn_copier)
 
+        self._btn_sort_codestation = QtWidgets.QPushButton(
+            self.translate("TRIER CODESTATION ↓", "SORT CODESTATION ↓"))
+        self._btn_sort_codestation.setToolTip(self.translate(
+            "Réordonner le tableau par codestation croissant",
+            "Sort the table by codestation (ascending)"))
+        self._btn_sort_codestation.setStyleSheet(
+            "QPushButton{background:#1a2a1a;color:#8ae8c0;border:1px solid #2a7a5a;"
+            "border-radius:4px;padding:2px 10px;font-size:10px;font-weight:bold;"
+            "font-family:'Segoe UI',sans-serif;}"
+            "QPushButton:hover{background:#2a7a5a;color:white;}"
+        )
+        self._btn_sort_codestation.clicked.connect(self._sort_by_codestation)
+        tb_row.addWidget(self._btn_sort_codestation)
+
         tb_row.addStretch()
 
         _btn_style_action = (
@@ -728,20 +742,6 @@ class MetadonneesController:
         )
         self._btn_map.clicked.connect(self._open_map_action)
         tb_row.addWidget(self._btn_map)
-
-        self._btn_sort_codestation = QtWidgets.QPushButton(
-            self.translate("TRIER CODESTATION ↓", "SORT CODESTATION ↓"))
-        self._btn_sort_codestation.setToolTip(self.translate(
-            "Réordonner le tableau par codestation croissant",
-            "Sort the table by codestation (ascending)"))
-        self._btn_sort_codestation.setStyleSheet(
-            "QPushButton{background:#1a2a1a;color:#8ae8c0;border:1px solid #2a7a5a;"
-            "border-radius:4px;padding:2px 10px;font-size:10px;font-weight:bold;"
-            "font-family:'Segoe UI',sans-serif;}"
-            "QPushButton:hover{background:#2a7a5a;color:white;}"
-        )
-        self._btn_sort_codestation.clicked.connect(self._sort_by_codestation)
-        tb_row.addWidget(self._btn_sort_codestation)
 
         self._btn_generer = QtWidgets.QPushButton(
             self.translate("GENERER INFOSTATION", "GENERATE INFOSTATION"))
