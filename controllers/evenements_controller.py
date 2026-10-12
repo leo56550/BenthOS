@@ -328,6 +328,10 @@ class EvenementsController:
             elif hasattr(self.event_player.timeline, 'eventChanged'):
                 self.event_player.timeline.eventChanged.connect(self.refresh_event_list)
 
+            # Désactive les boutons d'événement tant que la vidéo est à t=0
+            self.event_player.player.positionChanged.connect(self._on_player_position_changed)
+            self._update_event_buttons_enabled(False)
+
             self.event_player.timeline.eventSelected.connect(self.on_timeline_event_selected)
             self.event_player.timeline.eventDoubleClicked.connect(self._seek_to_event)
             self.event_player.timeline.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
@@ -1440,6 +1444,30 @@ class EvenementsController:
         sep2.setStyleSheet("border: none; border-top: 1px solid #1e3448; max-height: 1px;")
         menu_layout.addWidget(sep2)
 
+    def _event_capture_buttons(self):
+        """Retourne la liste des boutons de capture d'événement à protéger (pos=0)."""
+        return [b for b in [
+            getattr(self, '_btn_atterrissage',      None),
+            getattr(self, '_btn_decollage',          None),
+            getattr(self, '_btn_rotation_moteur',    None),
+            getattr(self, '_btn_debut_annotation',   None),
+            getattr(self, '_btn_fin_annotation',     None),
+        ] if b is not None]
+
+    def _update_event_buttons_enabled(self, enabled: bool):
+        for btn in self._event_capture_buttons():
+            btn.setEnabled(enabled)
+            btn.setToolTip(
+                "" if enabled
+                else self.translate(
+                    "Lance la vidéo avant d'enregistrer un événement",
+                    "Play the video before recording an event",
+                )
+            )
+
+    def _on_player_position_changed(self, pos_ms: int):
+        self._update_event_buttons_enabled(pos_ms > 0)
+
     def _apply_evt_btn_style(self, btn: QtWidgets.QPushButton, s: dict, state: str):
         """Applique le style visuel d'un bouton d'événement (normal / selected / active)."""
         if state == "active":
@@ -2109,6 +2137,7 @@ class EvenementsController:
         video_dir = os.path.dirname(self.current_video_path)
         self.current_json_path = resolve_video_json_path(self._working_dir, self.current_video_path)
         self._undo_stack.clear()  # nouvelle vidéo → pile undo réinitialisée
+        self._update_event_buttons_enabled(False)  # désactivés jusqu'à pos > 0
         if self._on_video_focused:
             self._on_video_focused(item.text())
 
@@ -2639,7 +2668,23 @@ class EvenementsController:
                 self._sector_layout.addWidget(frame_rotation)
 
             self._sector_layout.addStretch()
+
+            # Barre de progression miniatures
+            self._sector_loaded_count = 0
+            self._sector_total_tasks  = len(tasks)
             if tasks:
+                self._sector_progress_lbl = QtWidgets.QLabel(
+                    self.translate(
+                        f"Chargement des miniatures : 0 / {len(tasks)}",
+                        f"Loading thumbnails: 0 / {len(tasks)}",
+                    )
+                )
+                self._sector_progress_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+                self._sector_progress_lbl.setStyleSheet(
+                    "color: #5a7a8a; font-size: 11px; padding: 6px 0;"
+                )
+                self._sector_layout.insertWidget(0, self._sector_progress_lbl)
+
                 self._sector_worker = _CameraFrameWorker(tasks)
                 self._sector_worker.frame_ready.connect(self._on_sector_frame_ready)
                 self._sector_worker.start()
@@ -2653,6 +2698,20 @@ class EvenementsController:
         """Remplace le placeholder par la frame extraite."""
         if frame_data is None or slot_id not in self._sector_slot_labels:
             return
+
+        # Mise à jour de la barre de progression
+        self._sector_loaded_count = getattr(self, '_sector_loaded_count', 0) + 1
+        total = getattr(self, '_sector_total_tasks', 0)
+        lbl_prog = getattr(self, '_sector_progress_lbl', None)
+        if lbl_prog is not None:
+            if self._sector_loaded_count >= total:
+                lbl_prog.hide()
+            else:
+                lbl_prog.setText(self.translate(
+                    f"Chargement des miniatures : {self._sector_loaded_count} / {total}",
+                    f"Loading thumbnails: {self._sector_loaded_count} / {total}",
+                ))
+
         w_photo, angle, ts = self._sector_slot_labels[slot_id]
 
         h_f, w_f, ch = frame_data.shape
