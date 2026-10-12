@@ -4,35 +4,59 @@ from PyQt6 import QtWidgets, QtCore, QtGui
 
 APP_VERSION = "1.0.0"
 
+_FEATURES = [
+    ("🗂", "Validation",      "Dérusher les vidéos, saisir l'ardoise, gérer l'exploitabilité",
+                              "Review videos, enter board data, manage exploitability"),
+    ("🎬", "Événements",      "Annoter les rotations moteur, animaux et images sur la timeline",
+                              "Annotate motor rotations, animals and images on the timeline"),
+    ("✅", "Qualification",   "Trier les vidéos à garder ou à jeter, vue secteur en miniatures",
+                              "Sort videos to keep or discard, sector view with thumbnails"),
+    ("🗺", "Carte",           "Visualiser les points GPS, cliquer pour sélectionner une vidéo",
+                              "Visualize GPS points, click to select a video"),
+    ("📊", "Avancement",      "Suivre la progression de la campagne et exporter des rapports",
+                              "Track campaign progress and export reports"),
+]
+
 _TECH_STACK = [
-    ("PyQt6",        "Interface graphique — widgets, signaux/slots, MVC",
-                      "Graphical interface — widgets, signals/slots, MVC"),
-    ("OpenCV",       "Lecture vidéo, extraction de frames, traitement d'image",
-                      "Video reading, frame extraction, image processing"),
-    ("Matplotlib",   "Histogrammes, graphiques, export PDF",
-                      "Histograms, charts, PDF export"),
-    ("Folium",       "Carte interactive Leaflet (GPS tracks)",
-                      "Interactive Leaflet map (GPS tracks)"),
-    ("pandas",       "Lecture des fichiers CSV de télémétrie",
-                      "Reading telemetry CSV files"),
-    ("paramiko",     "Transfert SFTP depuis la carte SD KOSMOS",
-                      "SFTP transfer from the KOSMOS SD card"),
-    ("NumPy",        "Calculs vectorisés (histogramme, luminosité)",
-                      "Vectorized computations (histogram, brightness)"),
+    ("PyQt6",      "Interface graphique — widgets, signaux/slots, MVC",
+                   "Graphical interface — widgets, signals/slots, MVC"),
+    ("OpenCV",     "Lecture vidéo, extraction de frames, traitement d'image",
+                   "Video reading, frame extraction, image processing"),
+    ("Matplotlib", "Histogrammes, graphiques, export PDF",
+                   "Histograms, charts, PDF export"),
+    ("Folium",     "Carte interactive Leaflet (GPS tracks)",
+                   "Interactive Leaflet map (GPS tracks)"),
+    ("pandas",     "Lecture des fichiers CSV de télémétrie",
+                   "Reading telemetry CSV files"),
+    ("paramiko",   "Transfert SFTP depuis la carte SD KOSMOS",
+                   "SFTP transfer from the KOSMOS SD card"),
+    ("NumPy",      "Calculs vectorisés (histogramme, luminosité)",
+                   "Vectorized computations (histogram, brightness)"),
 ]
 
 _TEAM = [
-    ("Léo Bultel",          "Développement logiciel, IMT Atlantique",
-                             "Software development, IMT Atlantique"),
-    ("Équipe KOSMOS",       "Conception système, IMT Atlantique",
-                             "System design, IMT Atlantique"),
-    ("Institut Mines-Télécom Atlantique", "Partenaire scientifique",
-                                          "Scientific partner"),
+    ("Léo Bultel",                          "Développement logiciel",         "Software development",
+                                             "IMT Atlantique"),
+    ("Équipe KOSMOS",                       "Conception système",             "System design",
+                                             "IMT Atlantique"),
+    ("Institut Mines-Télécom Atlantique",   "Partenaire scientifique",        "Scientific partner",
+                                             "Brest, France"),
 ]
+
+_BG       = "#0d1b2a"
+_BG2      = "#0f2030"
+_BG3      = "#152535"
+_ACCENT   = "#2778A2"
+_ACCENT2  = "#1a5070"
+_SALMON   = "#F2BFB4"
+_CYAN     = "#7ec8e3"
+_TEXT     = "#d4e8f5"
+_MUTED    = "#5a7a8a"
+_SUBTLE   = "#a0c4d8"
 
 
 class AProposController:
-    """Contrôleur de la page À propos : contenu statique construit programmatiquement."""
+    """Contrôleur de la page À propos."""
 
     def __init__(self, widget: QtWidgets.QWidget, *args, **kwargs):
         self.widget = widget
@@ -46,10 +70,9 @@ class AProposController:
         self.current_language = language
         self._build_ui()
 
-    # ── Construction de l'UI ──────────────────────────────────────────────────
+    # ── Construction ────────────────────────────────────────────────────────────
 
     def _build_ui(self):
-        # Nettoie un éventuel layout résiduel du .ui
         old = self.widget.layout()
         if old:
             while old.count():
@@ -58,249 +81,358 @@ class AProposController:
                     item.widget().deleteLater()
             QtWidgets.QWidget().setLayout(old)
 
-        root_layout = QtWidgets.QVBoxLayout(self.widget)
-        root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(0)
+        root = QtWidgets.QVBoxLayout(self.widget)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
 
         container = QtWidgets.QWidget()
-        container.setStyleSheet("background-color: #0d1b2a;")
+        container.setStyleSheet(f"background-color: {_BG};")
         layout = QtWidgets.QVBoxLayout(container)
-        layout.setContentsMargins(60, 40, 60, 40)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
         scroll.setWidget(container)
-        root_layout.addWidget(scroll)
+        root.addWidget(scroll)
 
-        # ── Hero ─────────────────────────────────────────────────────────────
-        layout.addLayout(self._make_hero())
-        layout.addSpacing(36)
-
-        # ── Description ──────────────────────────────────────────────────────
-        layout.addWidget(self._section_title(self.translate("Présentation", "Overview")))
-        layout.addSpacing(10)
-        layout.addWidget(self._paragraph(self.translate(
-            "KOSMOS IHM est l'interface de qualification et d'analyse des vidéos collectées "
-            "par les robots sous-marins KOSMOS. Elle permet d'ouvrir une campagne, de visionner "
-            "chaque vidéo, de saisir des métadonnées de terrain, d'annoter des événements biologiques "
-            "sur la timeline, d'exporter des segments ou captures, et de générer un rapport de campagne.",
-            "KOSMOS IHM is the interface for qualifying and analyzing videos collected "
-            "by the KOSMOS underwater robots. It allows you to open a campaign, view "
-            "each video, enter field metadata, annotate biological events "
-            "on the timeline, export segments or captures, and generate a campaign report."
-        )))
-        layout.addSpacing(28)
-
-        # ── Technologies ─────────────────────────────────────────────────────
-        layout.addWidget(self._section_title("Technologies"))
-        layout.addSpacing(10)
-        layout.addWidget(self._tech_table())
-        layout.addSpacing(28)
-
-        # ── Équipe ───────────────────────────────────────────────────────────
-        layout.addWidget(self._section_title(self.translate("Équipe & Institution", "Team & Institution")))
-        layout.addSpacing(10)
-        for name, role_fr, role_en in _TEAM:
-            layout.addWidget(self._team_row(name, self.translate(role_fr, role_en)))
-            layout.addSpacing(4)
-        layout.addSpacing(28)
-
-        # ── Licence & contact ─────────────────────────────────────────────────
-        layout.addWidget(self._section_title(self.translate("Licence & Contact", "License & Contact")))
-        layout.addSpacing(10)
-        layout.addWidget(self._paragraph(self.translate(
-            "Logiciel développé dans le cadre du projet KOSMOS — IMT Atlantique.\n"
-            "Utilisation interne et scientifique.",
-            "Software developed as part of the KOSMOS project — IMT Atlantique.\n"
-            "Internal and scientific use."
-        )))
-        layout.addSpacing(28)
-
-        # ── Pied de page ─────────────────────────────────────────────────────
-        layout.addStretch()
+        layout.addWidget(self._hero_banner())
+        layout.addWidget(self._features_section())
+        layout.addWidget(self._tech_section())
+        layout.addWidget(self._team_section())
         layout.addWidget(self._footer())
 
-    def _make_hero(self) -> QtWidgets.QHBoxLayout:
-        hero = QtWidgets.QHBoxLayout()
-        hero.setSpacing(32)
+    # ── Hero ────────────────────────────────────────────────────────────────────
+
+    def _hero_banner(self) -> QtWidgets.QWidget:
+        banner = QtWidgets.QWidget()
+        banner.setStyleSheet(
+            f"background: qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+            f" stop:0 #0a1520, stop:0.5 #10243a, stop:1 #0d1b2a);"
+            f" border-bottom: 1px solid {_ACCENT2};"
+        )
+        banner.setMinimumHeight(220)
+
+        outer = QtWidgets.QHBoxLayout(banner)
+        outer.setContentsMargins(60, 40, 60, 40)
+        outer.setSpacing(0)
 
         # Logo
-        logo_path = os.path.join(
-            os.path.dirname(__file__), '..', 'img', 'logo_kosmos.png'
-        )
-        logo_label = QtWidgets.QLabel()
-        logo_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        logo_path = os.path.join(os.path.dirname(__file__), '..', 'img', 'logo_kosmos.png')
+        logo_lbl = QtWidgets.QLabel()
+        logo_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        logo_lbl.setFixedSize(130, 130)
         if os.path.isfile(logo_path):
-            pix = QtGui.QPixmap(logo_path).scaledToHeight(
-                110, QtCore.Qt.TransformationMode.SmoothTransformation
+            pix = QtGui.QPixmap(logo_path).scaled(
+                120, 120,
+                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
             )
-            logo_label.setPixmap(pix)
+            logo_lbl.setPixmap(pix)
         else:
-            logo_label.setText("KOSMOS")
-            logo_label.setStyleSheet("color: #2778A2; font-size: 28px; font-weight: bold;")
-        logo_label.setFixedWidth(180)
+            logo_lbl.setText("K")
+            logo_lbl.setStyleSheet(f"color: {_ACCENT}; font-size: 56px; font-weight: bold;")
 
-        # Titre + version
-        title_col = QtWidgets.QVBoxLayout()
-        title_col.setSpacing(6)
+        outer.addWidget(logo_lbl)
+        outer.addSpacing(36)
 
-        lbl_title = QtWidgets.QLabel("KOSMOS IHM")
-        lbl_title.setStyleSheet(
-            "color: #F2BFB4; font-size: 30px; font-weight: bold;"
-            " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif;"
+        # Texte central
+        col = QtWidgets.QVBoxLayout()
+        col.setSpacing(6)
+        col.addStretch()
+
+        t_app = QtWidgets.QLabel("KOSMOS IHM")
+        t_app.setStyleSheet(
+            f"color: {_SALMON}; font-size: 34px; font-weight: 900;"
+            f" font-family: 'Segoe UI Black', 'Segoe UI', sans-serif;"
+            f" background: transparent; letter-spacing: 1px;"
         )
 
-        lbl_sub = QtWidgets.QLabel(self.translate(
-            "Interface de qualification des vidéos sous-marines",
-            "Interface for qualifying underwater videos"
+        t_sub = QtWidgets.QLabel(self.translate(
+            "Interface de qualification et d'analyse des vidéos sous-marines KOSMOS",
+            "Qualification and analysis interface for KOSMOS underwater videos",
         ))
-        lbl_sub.setStyleSheet(
-            "color: #7ec8e3; font-size: 14px; font-family: 'Segoe UI', sans-serif;"
+        t_sub.setStyleSheet(
+            f"color: {_CYAN}; font-size: 13px;"
+            f" font-family: 'Segoe UI', sans-serif; background: transparent;"
         )
+        t_sub.setWordWrap(True)
 
-        lbl_ver = QtWidgets.QLabel(f"Version {APP_VERSION}  —  IMT Atlantique")
-        lbl_ver.setStyleSheet(
-            "color: #5a7a8a; font-size: 11px; font-family: 'Segoe UI', sans-serif;"
+        t_desc = QtWidgets.QLabel(self.translate(
+            "Ouvrez une campagne, visionnez, annotez et exportez vos données terrain.",
+            "Open a campaign, review, annotate and export your field data.",
+        ))
+        t_desc.setStyleSheet(
+            f"color: {_MUTED}; font-size: 11px;"
+            f" font-family: 'Segoe UI', sans-serif; background: transparent;"
         )
+        t_desc.setWordWrap(True)
 
-        title_col.addStretch()
-        title_col.addWidget(lbl_title)
-        title_col.addWidget(lbl_sub)
-        title_col.addSpacing(8)
-        title_col.addWidget(lbl_ver)
-        title_col.addStretch()
+        col.addWidget(t_app)
+        col.addWidget(t_sub)
+        col.addSpacing(8)
+        col.addWidget(t_desc)
+        col.addStretch()
 
-        hero.addWidget(logo_label)
-        hero.addLayout(title_col)
-        hero.addStretch()
+        outer.addLayout(col, stretch=1)
+        outer.addSpacing(32)
 
-        # Badge version (carré coloré)
-        badge = self._version_badge()
-        hero.addWidget(badge, alignment=QtCore.Qt.AlignmentFlag.AlignTop)
+        # Badges droite
+        badges = QtWidgets.QVBoxLayout()
+        badges.setSpacing(8)
+        badges.addStretch()
+        for label, value, color in [
+            (self.translate("Version", "Version"), APP_VERSION, _SALMON),
+            ("Python", "3.11+", _CYAN),
+            ("PyQt6", "6.x", _CYAN),
+            (self.translate("Plateforme", "Platform"), "Windows", _SUBTLE),
+        ]:
+            badges.addWidget(self._pill(label, value, color))
+        badges.addStretch()
 
-        return hero
+        outer.addLayout(badges)
+        return banner
 
-    def _version_badge(self) -> QtWidgets.QFrame:
+    def _pill(self, label: str, value: str, color: str) -> QtWidgets.QFrame:
         frame = QtWidgets.QFrame()
         frame.setStyleSheet(
-            "background-color: #162433; border: 1px solid #2778A2;"
-            " border-radius: 8px; padding: 12px 18px;"
+            f"background-color: {_BG3}; border: 1px solid {_ACCENT2};"
+            f" border-radius: 6px;"
         )
-        layout = QtWidgets.QVBoxLayout(frame)
-        layout.setSpacing(4)
-        layout.setContentsMargins(16, 12, 16, 12)
-
-        def _row(label, value, color="#d4e8f5"):
-            h = QtWidgets.QHBoxLayout()
-            lbl = QtWidgets.QLabel(label)
-            lbl.setStyleSheet("color: #5a7a8a; font-size: 10px; min-width: 70px;")
-            val = QtWidgets.QLabel(value)
-            val.setStyleSheet(f"color: {color}; font-size: 10px; font-weight: bold;")
-            h.addWidget(lbl)
-            h.addWidget(val)
-            return h
-
-        layout.addLayout(_row("Version", APP_VERSION, "#F2BFB4"))
-        layout.addLayout(_row("PyQt6", "6.x"))
-        layout.addLayout(_row("Python", "3.11+"))
-        layout.addLayout(_row(self.translate("Plateforme", "Platform"), "Windows"))
+        h = QtWidgets.QHBoxLayout(frame)
+        h.setContentsMargins(12, 5, 12, 5)
+        h.setSpacing(10)
+        l1 = QtWidgets.QLabel(label)
+        l1.setStyleSheet(f"color: {_MUTED}; font-size: 10px; background: transparent;")
+        l2 = QtWidgets.QLabel(value)
+        l2.setStyleSheet(f"color: {color}; font-size: 10px; font-weight: bold; background: transparent;")
+        h.addWidget(l1)
+        h.addWidget(l2)
         return frame
+
+    # ── Fonctionnalités ─────────────────────────────────────────────────────────
+
+    def _features_section(self) -> QtWidgets.QWidget:
+        section = QtWidgets.QWidget()
+        section.setStyleSheet(f"background-color: {_BG};")
+        outer = QtWidgets.QVBoxLayout(section)
+        outer.setContentsMargins(60, 36, 60, 36)
+        outer.setSpacing(16)
+
+        outer.addWidget(self._section_title(
+            self.translate("Fonctionnalités", "Features")
+        ))
+
+        grid = QtWidgets.QGridLayout()
+        grid.setSpacing(12)
+
+        for i, (icon, name, desc_fr, desc_en) in enumerate(_FEATURES):
+            card = self._feature_card(icon, name, self.translate(desc_fr, desc_en))
+            grid.addWidget(card, i // 3, i % 3)
+
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(2, 1)
+        outer.addLayout(grid)
+        return section
+
+    def _feature_card(self, icon: str, name: str, desc: str) -> QtWidgets.QFrame:
+        frame = QtWidgets.QFrame()
+        frame.setStyleSheet(
+            f"background-color: {_BG2}; border: 1px solid #1e3448;"
+            f" border-radius: 10px;"
+        )
+        frame.setMinimumHeight(100)
+        v = QtWidgets.QVBoxLayout(frame)
+        v.setContentsMargins(18, 16, 18, 16)
+        v.setSpacing(6)
+
+        h = QtWidgets.QHBoxLayout()
+        h.setSpacing(10)
+        lbl_icon = QtWidgets.QLabel(icon)
+        lbl_icon.setStyleSheet(f"font-size: 20px; background: transparent; color: {_TEXT};")
+        lbl_name = QtWidgets.QLabel(name)
+        lbl_name.setStyleSheet(
+            f"color: {_SALMON}; font-size: 13px; font-weight: bold;"
+            f" font-family: 'Segoe UI', sans-serif; background: transparent;"
+        )
+        h.addWidget(lbl_icon)
+        h.addWidget(lbl_name)
+        h.addStretch()
+        v.addLayout(h)
+
+        lbl_desc = QtWidgets.QLabel(desc)
+        lbl_desc.setWordWrap(True)
+        lbl_desc.setStyleSheet(
+            f"color: {_MUTED}; font-size: 11px;"
+            f" font-family: 'Segoe UI', sans-serif; background: transparent;"
+        )
+        v.addWidget(lbl_desc)
+        v.addStretch()
+        return frame
+
+    # ── Technologies ────────────────────────────────────────────────────────────
+
+    def _tech_section(self) -> QtWidgets.QWidget:
+        section = QtWidgets.QWidget()
+        section.setStyleSheet(f"background-color: {_BG3}; border-top: 1px solid #1e3448; border-bottom: 1px solid #1e3448;")
+        outer = QtWidgets.QVBoxLayout(section)
+        outer.setContentsMargins(60, 36, 60, 36)
+        outer.setSpacing(16)
+
+        outer.addWidget(self._section_title("Technologies"))
+
+        grid = QtWidgets.QGridLayout()
+        grid.setHorizontalSpacing(32)
+        grid.setVerticalSpacing(10)
+
+        for row, (lib, desc_fr, desc_en) in enumerate(_TECH_STACK):
+            dot = QtWidgets.QLabel("●")
+            dot.setStyleSheet(f"color: {_ACCENT}; font-size: 8px; background: transparent;")
+            dot.setFixedWidth(16)
+            dot.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter | QtCore.Qt.AlignmentFlag.AlignVCenter)
+
+            l_lib = QtWidgets.QLabel(lib)
+            l_lib.setStyleSheet(
+                f"color: {_CYAN}; font-weight: bold; font-size: 12px;"
+                f" font-family: 'Segoe UI', sans-serif; background: transparent;"
+            )
+            l_lib.setFixedWidth(100)
+
+            l_desc = QtWidgets.QLabel(self.translate(desc_fr, desc_en))
+            l_desc.setStyleSheet(
+                f"color: {_SUBTLE}; font-size: 11px;"
+                f" font-family: 'Segoe UI', sans-serif; background: transparent;"
+            )
+
+            grid.addWidget(dot,   row, 0)
+            grid.addWidget(l_lib, row, 1)
+            grid.addWidget(l_desc, row, 2)
+
+        grid.setColumnStretch(2, 1)
+        outer.addLayout(grid)
+        return section
+
+    # ── Équipe ──────────────────────────────────────────────────────────────────
+
+    def _team_section(self) -> QtWidgets.QWidget:
+        section = QtWidgets.QWidget()
+        section.setStyleSheet(f"background-color: {_BG};")
+        outer = QtWidgets.QVBoxLayout(section)
+        outer.setContentsMargins(60, 36, 60, 36)
+        outer.setSpacing(16)
+
+        outer.addWidget(self._section_title(
+            self.translate("Équipe & Institution", "Team & Institution")
+        ))
+
+        cards = QtWidgets.QHBoxLayout()
+        cards.setSpacing(16)
+
+        for name, role_fr, role_en, institution in _TEAM:
+            cards.addWidget(self._team_card(name, self.translate(role_fr, role_en), institution))
+
+        cards.addStretch()
+        outer.addLayout(cards)
+        return section
+
+    def _team_card(self, name: str, role: str, institution: str) -> QtWidgets.QFrame:
+        frame = QtWidgets.QFrame()
+        frame.setFixedWidth(240)
+        frame.setStyleSheet(
+            f"background-color: {_BG2}; border: 1px solid #1e3448; border-radius: 10px;"
+        )
+        v = QtWidgets.QVBoxLayout(frame)
+        v.setContentsMargins(18, 16, 18, 16)
+        v.setSpacing(4)
+
+        avatar = QtWidgets.QLabel("👤")
+        avatar.setStyleSheet(f"font-size: 26px; background: transparent; color: {_TEXT};")
+        avatar.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
+
+        l_name = QtWidgets.QLabel(name)
+        l_name.setWordWrap(True)
+        l_name.setStyleSheet(
+            f"color: {_TEXT}; font-size: 12px; font-weight: bold;"
+            f" font-family: 'Segoe UI', sans-serif; background: transparent;"
+        )
+
+        l_role = QtWidgets.QLabel(role)
+        l_role.setWordWrap(True)
+        l_role.setStyleSheet(
+            f"color: {_CYAN}; font-size: 11px;"
+            f" font-family: 'Segoe UI', sans-serif; background: transparent;"
+        )
+
+        l_inst = QtWidgets.QLabel(institution)
+        l_inst.setStyleSheet(
+            f"color: {_MUTED}; font-size: 10px;"
+            f" font-family: 'Segoe UI', sans-serif; background: transparent;"
+        )
+
+        v.addWidget(avatar)
+        v.addSpacing(4)
+        v.addWidget(l_name)
+        v.addWidget(l_role)
+        v.addSpacing(4)
+        v.addWidget(l_inst)
+        v.addStretch()
+        return frame
+
+    # ── Footer ──────────────────────────────────────────────────────────────────
+
+    def _footer(self) -> QtWidgets.QWidget:
+        footer = QtWidgets.QWidget()
+        footer.setStyleSheet(
+            f"background-color: #08131e; border-top: 1px solid #1e3448;"
+        )
+        h = QtWidgets.QHBoxLayout(footer)
+        h.setContentsMargins(60, 16, 60, 16)
+        h.setSpacing(0)
+
+        lbl = QtWidgets.QLabel(
+            "© 2026 Institut Mines-Télécom Atlantique — Projet KOSMOS"
+        )
+        lbl.setStyleSheet(
+            f"color: {_MUTED}; font-size: 10px; font-family: 'Segoe UI', sans-serif;"
+            f" background: transparent;"
+        )
+
+        lbl_v = QtWidgets.QLabel(f"v{APP_VERSION}")
+        lbl_v.setStyleSheet(
+            f"color: #2a4057; font-size: 10px; font-family: 'Segoe UI', sans-serif;"
+            f" background: transparent;"
+        )
+
+        h.addWidget(lbl)
+        h.addStretch()
+        h.addWidget(lbl_v)
+        return footer
+
+    # ── Helpers ─────────────────────────────────────────────────────────────────
 
     def _section_title(self, text: str) -> QtWidgets.QWidget:
         w = QtWidgets.QWidget()
-        layout = QtWidgets.QVBoxLayout(w)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        w.setStyleSheet("background: transparent;")
+        v = QtWidgets.QVBoxLayout(w)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(6)
 
         lbl = QtWidgets.QLabel(text)
         lbl.setStyleSheet(
-            "color: #F2BFB4; font-size: 16px; font-weight: bold;"
-            " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif;"
+            f"color: {_SALMON}; font-size: 15px; font-weight: bold;"
+            f" font-family: 'Segoe UI Black', 'Segoe UI', sans-serif;"
+            f" background: transparent;"
         )
-        layout.addWidget(lbl)
+        v.addWidget(lbl)
 
         line = QtWidgets.QFrame()
         line.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        line.setStyleSheet("background-color: #2778A2; max-height: 1px; border: none;")
-        layout.addWidget(line)
+        line.setMaximumHeight(1)
+        line.setStyleSheet(f"background-color: {_ACCENT}; border: none;")
+        v.addWidget(line)
         return w
-
-    def _paragraph(self, text: str) -> QtWidgets.QLabel:
-        lbl = QtWidgets.QLabel(text)
-        lbl.setWordWrap(True)
-        lbl.setStyleSheet(
-            "color: #a0c4d8; font-size: 12px; line-height: 1.6;"
-            " font-family: 'Segoe UI', sans-serif;"
-        )
-        return lbl
-
-    def _tech_table(self) -> QtWidgets.QFrame:
-        frame = QtWidgets.QFrame()
-        frame.setStyleSheet(
-            "background-color: #0f2030; border: 1px solid #1e3448; border-radius: 6px;"
-        )
-        grid = QtWidgets.QGridLayout(frame)
-        grid.setContentsMargins(18, 12, 18, 12)
-        grid.setHorizontalSpacing(28)
-        grid.setVerticalSpacing(8)
-
-        for row, (lib, desc_fr, desc_en) in enumerate(_TECH_STACK):
-            lbl_lib = QtWidgets.QLabel(lib)
-            lbl_lib.setStyleSheet(
-                "color: #7ec8e3; font-weight: bold; font-size: 12px;"
-                " font-family: 'Segoe UI', sans-serif; background: transparent;"
-            )
-            lbl_desc = QtWidgets.QLabel(self.translate(desc_fr, desc_en))
-            lbl_desc.setStyleSheet(
-                "color: #6a9ab0; font-size: 11px; font-family: 'Segoe UI', sans-serif;"
-                " background: transparent;"
-            )
-            grid.addWidget(lbl_lib,  row, 0)
-            grid.addWidget(lbl_desc, row, 1)
-
-        grid.setColumnStretch(1, 1)
-        return frame
-
-    def _team_row(self, name: str, role: str) -> QtWidgets.QFrame:
-        frame = QtWidgets.QFrame()
-        frame.setStyleSheet("background-color: transparent;")
-        h = QtWidgets.QHBoxLayout(frame)
-        h.setContentsMargins(0, 0, 0, 0)
-        h.setSpacing(16)
-
-        dot = QtWidgets.QLabel("▸")
-        dot.setStyleSheet("color: #2778A2; font-size: 13px;")
-        dot.setFixedWidth(16)
-
-        lbl_name = QtWidgets.QLabel(name)
-        lbl_name.setStyleSheet(
-            "color: #d4e8f5; font-weight: bold; font-size: 12px;"
-            " font-family: 'Segoe UI', sans-serif;"
-        )
-        lbl_name.setFixedWidth(260)
-
-        lbl_role = QtWidgets.QLabel(role)
-        lbl_role.setStyleSheet(
-            "color: #5a7a8a; font-size: 11px; font-family: 'Segoe UI', sans-serif;"
-        )
-
-        h.addWidget(dot)
-        h.addWidget(lbl_name)
-        h.addWidget(lbl_role)
-        h.addStretch()
-        return frame
-
-    def _footer(self) -> QtWidgets.QLabel:
-        lbl = QtWidgets.QLabel(
-            "© 2025 Institut Mines-Télécom Atlantique — Projet KOSMOS"
-        )
-        lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        lbl.setStyleSheet(
-            "color: #2a4057; font-size: 10px; font-family: 'Segoe UI', sans-serif;"
-            " padding-top: 12px; border-top: 1px solid #1e3448;"
-        )
-        return lbl
