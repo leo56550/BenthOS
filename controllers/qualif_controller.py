@@ -2187,7 +2187,13 @@ class QualifController:
 
     def _on_camera_frame_ready(self, slot_id: int, frame_data):
         """Appelé dans le thread principal quand une frame est prête : remplace le placeholder."""
-        if frame_data is None or slot_id not in self._camera_slot_labels:
+        if slot_id not in self._camera_slot_labels:
+            return
+
+        # frame_data None = échec d'extraction → masquer le cadre entièrement
+        if frame_data is None:
+            w_photo, _angle, _ts = self._camera_slot_labels[slot_id]
+            w_photo.hide()
             return
 
         w_photo, angle, ts = self._camera_slot_labels[slot_id]

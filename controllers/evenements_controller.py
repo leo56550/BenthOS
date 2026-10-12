@@ -2696,7 +2696,25 @@ class EvenementsController:
 
     def _on_sector_frame_ready(self, slot_id: int, frame_data):
         """Remplace le placeholder par la frame extraite."""
-        if frame_data is None or slot_id not in self._sector_slot_labels:
+        if slot_id not in self._sector_slot_labels:
+            return
+
+        # frame_data None = échec d'extraction → masquer le cadre entièrement
+        if frame_data is None:
+            w_photo, _angle, _ts = self._sector_slot_labels[slot_id]
+            w_photo.hide()
+            # Mise à jour progression même en cas d'échec
+            self._sector_loaded_count = getattr(self, '_sector_loaded_count', 0) + 1
+            total = getattr(self, '_sector_total_tasks', 0)
+            lbl_prog = getattr(self, '_sector_progress_lbl', None)
+            if lbl_prog is not None:
+                if self._sector_loaded_count >= total:
+                    lbl_prog.hide()
+                else:
+                    lbl_prog.setText(self.translate(
+                        f"Chargement des miniatures : {self._sector_loaded_count} / {total}",
+                        f"Loading thumbnails: {self._sector_loaded_count} / {total}",
+                    ))
             return
 
         # Mise à jour de la barre de progression
