@@ -2610,6 +2610,13 @@ class MetadonneesController:
         # Désactiver le filtre JSON pour ne pas masquer les lignes sans _temp.json
         if hasattr(self, '_btn_json_filter') and self._btn_json_filter.isChecked():
             self._btn_json_filter.setChecked(False)
+        # Réinitialiser l'état du tri codestation
+        self._ft_sorted_by_codestation = False
+        if hasattr(self, '_ft_table_saved_order'):
+            del self._ft_table_saved_order
+        if hasattr(self, '_btn_sort_codestation'):
+            self._btn_sort_codestation.setText(
+                self.translate("TRIER CODESTATION ↓", "SORT CODESTATION ↓"))
         self._ft_table.blockSignals(True)
         self._ft_table.setUpdatesEnabled(False)
         self._ft_table.setSortingEnabled(False)
@@ -3884,14 +3891,86 @@ class MetadonneesController:
         return result
 
     def _sort_by_codestation(self):
-        """Trie le tableau infostation par codestation (ou numéro de point) croissant."""
+        """Toggle : trie par codestation croissant, re-clic remet l'ordre d'origine."""
         if not hasattr(self, '_ft_table') or self._ft_table is None:
             return
-        code_col = next(
-            (i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "codeObs"), None)
-        if code_col is None:
+        if getattr(self, '_ft_sorted_by_codestation', False):
+            self._restore_ft_table_order()
+            self._ft_sorted_by_codestation = False
+            if hasattr(self, '_btn_sort_codestation'):
+                self._btn_sort_codestation.setText(
+                    self.translate("TRIER CODESTATION ↓", "SORT CODESTATION ↓"))
+        else:
+            code_col = next(
+                (i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "codeObs"), None)
+            if code_col is None:
+                return
+            self._save_ft_table_order()
+            self._ft_table.setSortingEnabled(False)
+            self._ft_table.sortItems(code_col, QtCore.Qt.SortOrder.AscendingOrder)
+            self._ft_sorted_by_codestation = True
+            if hasattr(self, '_btn_sort_codestation'):
+                self._btn_sort_codestation.setText(
+                    self.translate("ORDRE ORIGINAL ↺", "ORIGINAL ORDER ↺"))
+
+    def _save_ft_table_order(self):
+        """Sauvegarde l'ordre et le contenu de toutes les lignes pour pouvoir le restaurer."""
+        tbl = self._ft_table
+        n_cols = tbl.columnCount()
+        saved = []
+        for row in range(tbl.rowCount()):
+            row_data = []
+            for col in range(n_cols):
+                item = tbl.item(row, col)
+                if item:
+                    row_data.append({
+                        'text': item.text(),
+                        'bg': item.background().color().rgba() if item.background().style() != QtCore.Qt.BrushStyle.NoBrush else None,
+                        'fg': item.foreground().color().rgba() if item.foreground().style() != QtCore.Qt.BrushStyle.NoBrush else None,
+                        'user': item.data(QtCore.Qt.ItemDataRole.UserRole),
+                        'tooltip': item.toolTip(),
+                        'bold': item.font().bold(),
+                        'hidden': tbl.isRowHidden(row) if col == 0 else False,
+                    })
+                else:
+                    row_data.append(None)
+            saved.append(row_data)
+        self._ft_table_saved_order = saved
+
+    def _restore_ft_table_order(self):
+        """Restaure le tableau dans l'ordre sauvegardé par _save_ft_table_order."""
+        if not hasattr(self, '_ft_table_saved_order'):
             return
-        self._ft_table.sortItems(code_col, QtCore.Qt.SortOrder.AscendingOrder)
+        tbl = self._ft_table
+        saved = self._ft_table_saved_order
+        tbl.setSortingEnabled(False)
+        tbl.blockSignals(True)
+        tbl.setUpdatesEnabled(False)
+        tbl.setRowCount(len(saved))
+        for row, row_data in enumerate(saved):
+            for col, cell in enumerate(row_data):
+                if cell is None:
+                    tbl.setItem(row, col, QtWidgets.QTableWidgetItem(""))
+                    continue
+                item = QtWidgets.QTableWidgetItem(cell['text'])
+                if cell['bg'] is not None:
+                    item.setBackground(QtGui.QColor.fromRgba(cell['bg']))
+                if cell['fg'] is not None:
+                    item.setForeground(QtGui.QColor.fromRgba(cell['fg']))
+                if cell['user'] is not None:
+                    item.setData(QtCore.Qt.ItemDataRole.UserRole, cell['user'])
+                if cell['tooltip']:
+                    item.setToolTip(cell['tooltip'])
+                if cell['bold']:
+                    font = item.font()
+                    font.setBold(True)
+                    item.setFont(font)
+                tbl.setItem(row, col, item)
+            if row_data and row_data[0] and row_data[0].get('hidden'):
+                tbl.setRowHidden(row, True)
+        tbl.blockSignals(False)
+        tbl.setUpdatesEnabled(True)
+        del self._ft_table_saved_order
 
     def _open_map_action(self):
         """Ouvre la carte de campagne (Leaflet, QDialog) centrée sur la vidéo en cours."""

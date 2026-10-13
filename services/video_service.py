@@ -119,6 +119,10 @@ def check_stereo_status(video_path: str):
         stem = os.path.splitext(os.path.basename(v))[0]
         if stem.lower().endswith("_stereo"):
             base = stem[:-7]  # retire "_stereo"
+            # Ignorer les paires stéréo de segments (_01_stereo, _02_stereo...)
+            # pour ne retourner que la paire principale (X.mp4 + X_stereo.mp4)
+            if _re.search(r'_\d+$', base):
+                continue
             main_candidate = os.path.join(video_dir, base + ".mp4")
             if os.path.exists(main_candidate):
                 return True, [main_candidate, v]

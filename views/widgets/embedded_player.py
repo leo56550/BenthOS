@@ -1062,6 +1062,11 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
     def on_player_duration_changed(self, duration_ms: int):
         """Propage la durée totale à la timeline et rafraîchit les labels."""
+        if duration_ms <= 0:
+            return
+        # En mode stéréo, ne pas écraser si player_R a déjà imposé une durée plus longue
+        if self.is_stereo and duration_ms < self.timeline.total_duration:
+            return
         self.timeline.set_total_duration(duration_ms)
         self.update_top_time_label(self.player.position(), duration_ms)
         self.update_frame_label(self.player.position())
@@ -1123,6 +1128,18 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                 self.player.setSource(QtCore.QUrl.fromLocalFile(path_l))
                 self.player_R.setSource(QtCore.QUrl.fromLocalFile(path_r))
                 has_video = True
+                # Si player_R (fichier _stereo) est plus long, mettre à jour la timeline
+                def _on_R_duration(dur_ms: int, _pr=self.player_R):
+                    if dur_ms <= 0:
+                        return
+                    try:
+                        _pr.durationChanged.disconnect(_on_R_duration)
+                    except Exception:
+                        pass
+                    if dur_ms > self.player.duration():
+                        self.timeline.set_total_duration(dur_ms)
+                        self.update_top_time_label(self.player.position(), dur_ms)
+                self.player_R.durationChanged.connect(_on_R_duration)
             # Reset cam toggles : Gauche sélectionnée, Droite désélectionnée
             self.btn_cam_L.blockSignals(True)
             self.btn_cam_L.setChecked(True)
