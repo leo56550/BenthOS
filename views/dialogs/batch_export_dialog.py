@@ -5,9 +5,10 @@ class BatchExportDialog(QtWidgets.QDialog):
     """Dialogue d'export en batch : sélection des vidéos + options d'export identiques à ExportOptionsDialog."""
 
     def __init__(self, video_paths: list[str], parent=None, is_stereo: bool = False,
-                 language: str = 'fr'):
+                 language: str = 'fr', exportable_paths: set = None):
         super().__init__(parent)
         self._video_paths = video_paths
+        self._exportable_paths = exportable_paths if exportable_paths is not None else set(video_paths)
         self.is_stereo = is_stereo
         self.current_language = language
 
@@ -102,8 +103,21 @@ class BatchExportDialog(QtWidgets.QDialog):
         import os
         for vp in video_paths:
             name = os.path.basename(vp)
+            exportable = vp in self._exportable_paths
             cb = QtWidgets.QCheckBox(name, inner)
-            cb.setChecked(True)
+            if exportable:
+                cb.setChecked(True)
+            else:
+                cb.setChecked(False)
+                cb.setEnabled(False)
+                cb.setStyleSheet(
+                    "QCheckBox { color: #555555; }"
+                    "QCheckBox::indicator { border: 1px solid #333333; background: #0d1622; }"
+                )
+                cb.setToolTip(self.translate(
+                    "Pas de bornes exportables (atterrissage/décollage ou début/fin annotation)",
+                    "No exportable bounds (landing/takeoff or annotation start/end)",
+                ))
             inner_layout.addWidget(cb)
             self._checkboxes.append((cb, vp))
 
@@ -189,12 +203,14 @@ class BatchExportDialog(QtWidgets.QDialog):
         return fr if self.current_language == 'fr' else en
 
     def _check_all(self):
-        for cb, _ in self._checkboxes:
-            cb.setChecked(True)
+        for cb, vp in self._checkboxes:
+            if vp in self._exportable_paths:
+                cb.setChecked(True)
 
     def _uncheck_all(self):
-        for cb, _ in self._checkboxes:
-            cb.setChecked(False)
+        for cb, vp in self._checkboxes:
+            if vp in self._exportable_paths:
+                cb.setChecked(False)
 
     def _on_include_images_toggled(self, checked: bool):
         self.fps_group.setEnabled(checked)
@@ -202,7 +218,7 @@ class BatchExportDialog(QtWidgets.QDialog):
         self.chk_rectify.setEnabled(checked and self.is_stereo)
 
     def _on_accept(self):
-        if not any(cb.isChecked() for cb, _ in self._checkboxes):
+        if not any(cb.isChecked() for cb, vp in self._checkboxes if vp in self._exportable_paths):
             QtWidgets.QMessageBox.warning(
                 self,
                 self.translate("Aucune vidéo sélectionnée", "No videos selected"),
@@ -260,7 +276,7 @@ class BatchExportDialog(QtWidgets.QDialog):
     # ── résultats ──────────────────────────────────────────────────────────
 
     def get_selected_video_paths(self) -> list[str]:
-        return [vp for cb, vp in self._checkboxes if cb.isChecked()]
+        return [vp for cb, vp in self._checkboxes if cb.isChecked() and vp in self._exportable_paths]
 
     def get_processing_options(self) -> dict:
         selected_categories = [

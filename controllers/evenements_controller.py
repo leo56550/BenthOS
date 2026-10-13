@@ -599,13 +599,6 @@ class EvenementsController:
         if hasattr(self, '_lbl_batch_export'):
             self._lbl_batch_export.setText(
                 self.translate("Export campagne", "Campaign export"))
-        if hasattr(self, 'btn_batch_select_export'):
-            self.btn_batch_select_export.setText(
-                self.translate("Exporter en batch (sélection)", "Batch export (selection)"))
-            self.btn_batch_select_export.setToolTip(self.translate(
-                "Exporte les vidéos sélectionnées de la campagne avec les options choisies.",
-                "Exports selected campaign videos with chosen options.",
-            ))
         if hasattr(self, '_btn_batch_cancel'):
             self._btn_batch_cancel.setText(self.translate("Annuler", "Cancel"))
 
@@ -1905,8 +1898,11 @@ class EvenementsController:
             "QPushButton { background-color: #e68c14; color: white; font-weight: bold; "
             "font-size: 13px; border: 1px solid #f09624; border-radius: 6px; padding: 8px 10px; }"
             "QPushButton:hover { background-color: #f09624; }"
+            "QPushButton[no_video='true'] { background-color: #7a5a1a; color: #aaaaaa; "
+            "border: 1px solid #5a4010; }"
+            "QPushButton[no_video='true']:hover { background-color: #8a6a2a; }"
         )
-        self.export_button.setEnabled(False)
+        self.export_button.setProperty('no_video', True)
 
         self.export_progress = QtWidgets.QProgressBar(self.export_container)
         self.export_progress.setMinimum(0)
@@ -2007,21 +2003,7 @@ class EvenementsController:
             "color: #7ec8e3; font-size: 15px; font-weight: bold; border: none;")
         layout.addWidget(self._lbl_batch_export)
 
-        self.btn_batch_select_export = QtWidgets.QPushButton(
-            self.translate("Exporter en batch (sélection)", "Batch export (selection)"))
-        self.btn_batch_select_export.setStyleSheet(
-            "QPushButton { background-color: #1e6e8c; color: white; font-weight: bold; "
-            "font-size: 13px; border: 1px solid #2778a2; border-radius: 6px; padding: 8px 10px; }"
-            "QPushButton:hover { background-color: #2778a2; }"
-            "QPushButton:disabled { background-color: #1a3040; color: #607080; border-color: #2a4057; }"
-        )
-        self.btn_batch_select_export.setToolTip(self.translate(
-            "Exporte les vidéos sélectionnées de la campagne avec les options choisies.",
-            "Exports selected campaign videos with chosen options.",
-        ))
-        self.btn_batch_select_export.setEnabled(False)
-        self.btn_batch_select_export.clicked.connect(self._on_batch_select_export_clicked)
-        layout.addWidget(self.btn_batch_select_export)
+        # Bouton batch supprimé — accès via clic droit sur "EXPORTER LES ÉVÉNEMENTS"
 
         self._btn_batch_cancel = QtWidgets.QPushButton(
             self.translate("Annuler", "Cancel"))
@@ -2072,14 +2054,21 @@ class EvenementsController:
         layout.addStretch(1)
 
         self.export_button.clicked.connect(self.on_export_segment_clicked)
+        # Clic droit → menu "Exporter en batch"
+        self.export_button.setContextMenuPolicy(
+            QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self.export_button.customContextMenuRequested.connect(
+            self._on_export_button_context_menu)
         self.export_worker = None
         self._batch_coordinator = None
 
     def _update_export_button_state(self):
-        """Active le bouton Export seulement si une vidéo est chargée."""
+        """Met à jour l'apparence du bouton Export (toujours cliquable pour le menu contextuel)."""
         has_video = bool(self.current_video_path)
         if hasattr(self, 'export_button') and self.export_button:
-            self.export_button.setEnabled(has_video)
+            self.export_button.setProperty('no_video', not has_video)
+            self.export_button.style().unpolish(self.export_button)
+            self.export_button.style().polish(self.export_button)
 
     # --- Capture mode helpers ---
 
@@ -4098,6 +4087,45 @@ class EvenementsController:
         except Exception:
             return None
 
+    def _get_annotation_segment_bounds_for_video(self, video_path: str):
+        """Version batch de _get_annotation_segment_bounds pour une vidéo quelconque."""
+        json_path = resolve_video_json_path(self._working_dir, video_path)
+        if not json_path or not os.path.exists(json_path):
+            return None
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            obs = data.get('video_observation', {})
+            start_frame = end_frame = None
+            for item in self._read_events_motor(obs):
+                if not isinstance(item, dict):
+                    continue
+                val = str(item.get('description_fr') or item.get('value', '')).strip()
+                fn = item.get('frame_number')
+                if fn is None:
+                    continue
+                if self._is_annotation_start_event(val) and start_frame is None:
+                    start_frame = fn
+                elif self._is_annotation_end_event(val) and end_frame is None:
+                    end_frame = fn
+            if start_frame is None or end_frame is None:
+                return None
+            cap = cv2.VideoCapture(video_path)
+            fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+            cap.release()
+            start_ms = ((float(int(start_frame)) - 1.0) / fps) * 1000.0
+            end_ms = ((float(int(end_frame)) - 1.0) / fps) * 1000.0
+            return start_ms, end_ms
+        except Exception:
+            return None
+
+    def _video_has_exportable_bounds(self, video_path: str) -> bool:
+        """Retourne True si la vidéo possède des bornes exportables (atterrissage/décollage OU annotation)."""
+        return (
+            self._get_segment_bounds_for_video(video_path) is not None
+            or self._get_annotation_segment_bounds_for_video(video_path) is not None
+        )
+
     def on_export_segment_clicked(self):
         """Lance le dialogue d'options puis démarre ExportWorker sur le segment atterrissage→décollage."""
         if not self.current_video_path or not os.path.exists(self.current_video_path):
@@ -4294,10 +4322,24 @@ class EvenementsController:
         self._working_dir = path
         if hasattr(self, '_bar_delegate'):
             self._bar_delegate.set_working_dir(path)
-        if hasattr(self, 'btn_batch_select_export'):
-            self.btn_batch_select_export.setEnabled(bool(path))
+        pass  # batch accessible via clic droit sur export_button
 
     # ── Export campagne (batch complet) ──────────────────────────────────────
+
+    def _on_export_button_context_menu(self, pos):
+        """Clic droit sur 'EXPORTER LES ÉVÉNEMENTS' → menu contextuel avec 'Exporter en batch'."""
+        menu = QtWidgets.QMenu(self.page)
+        menu.setStyleSheet(
+            "QMenu { background-color: #111820; color: #b0c8d8; border: 1px solid #2778a2; }"
+            "QMenu::item:selected { background-color: #2778a2; color: white; }"
+            "QMenu::item { padding: 6px 20px; }"
+        )
+        action_batch = menu.addAction(
+            self.translate("Exporter en batch…", "Batch export…"))
+        action_batch.setEnabled(bool(self._working_dir))
+        chosen = menu.exec(self.export_button.mapToGlobal(pos))
+        if chosen is action_batch:
+            self._on_batch_select_export_clicked()
 
     def _on_batch_select_export_clicked(self):
         """Ouvre BatchExportDialog (sélection vidéos + options) puis lance l'export batch filtré."""
@@ -4320,9 +4362,12 @@ class EvenementsController:
             )
             return
 
+        exportable_paths = {vp for vp in video_paths if self._video_has_exportable_bounds(vp)}
+
         is_stereo = getattr(self, '_is_stereo', False)
         dialog = BatchExportDialog(
             video_paths=video_paths,
+            exportable_paths=exportable_paths,
             parent=self.page,
             is_stereo=is_stereo,
             language=self.current_language,
@@ -4336,7 +4381,6 @@ class EvenementsController:
         if not selected:
             return
 
-        self.btn_batch_select_export.setEnabled(False)
         self._btn_batch_cancel.setVisible(True)
         self._batch_overall_progress.setMaximum(len(selected))
         self._batch_overall_progress.setValue(0)
@@ -4394,7 +4438,6 @@ class EvenementsController:
 
         options = dialog.get_processing_options()
 
-        self.btn_batch_select_export.setEnabled(False)
         self._btn_batch_cancel.setVisible(True)
         self._batch_overall_progress.setMaximum(len(video_paths))
         self._batch_overall_progress.setValue(0)
@@ -4457,8 +4500,6 @@ class EvenementsController:
         self._batch_overall_progress.setVisible(False)
         self._batch_video_progress.setVisible(False)
         self._btn_batch_cancel.setVisible(False)
-        if hasattr(self, 'btn_batch_select_export'):
-            self.btn_batch_select_export.setEnabled(bool(self._working_dir))
         parts = [self.translate(f"✓ {done} exportée(s)", f"✓ {done} exported")]
         if skipped:
             parts.append(self.translate(f"{skipped} ignorée(s)", f"{skipped} skipped"))
