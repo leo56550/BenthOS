@@ -4540,16 +4540,9 @@ class EvenementsController:
             video_obs = json_data.get('video_observation', {})
             video_name = os.path.basename(video_path)
             start_frame = int((start_ms / 1000.0) * video_fps)
+            end_frame = int((end_ms / 1000.0) * video_fps)
 
             events_list, track_id = self._build_events_list(video_obs, event_categories, video_fps)
-
-            motor_events = []
-            system_event_path = os.path.normpath(os.path.join(parent_dir, "systemEvent.csv"))
-            if os.path.exists(system_event_path):
-                try:
-                    motor_events = get_motor_stable_timestamps(system_event_path, delay=6.0, start_track_id=track_id)
-                except Exception as e:
-                    print(f"[CSV] Error motor file: {e}")
 
             from datetime import datetime
             os.makedirs(video_out, exist_ok=True)
@@ -4564,13 +4557,12 @@ class EvenementsController:
                     f"\"exported_time: \"\"{datetime.now().strftime('%d/%m/%Y at %H:%M:%S')}\"\"\"\n"
                 )
                 for ev in events_list:
-                    for frame in range(ev['start'], ev['end'] + 1):
+                    is_takeoff = any(kw in ev['name'].lower() for kw in ['décollage', 'decollage', 'takeoff', 'take_off'])
+                    is_landing = any(kw in ev['name'].lower() for kw in ['atterrissage', 'atterissage', 'landing'])
+                    if not is_takeoff and not is_landing and int(ev['start']) > end_frame:
+                        continue
+                    for frame in range(max(ev['start'], start_frame), min(ev['end'], end_frame) + 1):
                         f.write(f"{ev['id']},{video_name},{frame},0,0,0,0,1,-1,{ev['name']},1,\n")
-                for m_ev in motor_events:
-                    f_s = int(m_ev['timestamp'] * video_fps)
-                    f_e = int((m_ev['timestamp'] + m_ev['duration']) * video_fps)
-                    for frame in range(f_s, f_e + 1):
-                        f.write(f"{m_ev['track_id']},{video_name},{frame},0,0,0,0,1,-1,{m_ev['type']},1,\n")
             return True
         except Exception as e:
             print(f"[CSV NO-IMG ERROR] {e}")
@@ -4616,20 +4608,13 @@ class EvenementsController:
 
             # Correspondance video_frame → seq_idx :  seq = round((F - start_frame) / interval) + 1
             start_frame = int((start_ms / 1000.0) * video_fps)
+            end_frame = int((end_ms / 1000.0) * video_fps)
             interval = max(1, int(video_fps / 5.0))
 
             def frame_to_seq(video_frame: int) -> int:
                 return max(1, min(round((video_frame - start_frame) / interval) + 1, total_images))
 
             events_list, track_id = self._build_events_list(video_obs, event_categories, video_fps)
-
-            motor_events = []
-            system_event_path = os.path.normpath(os.path.join(parent_dir, "systemEvent.csv"))
-            if os.path.exists(system_event_path):
-                try:
-                    motor_events = get_motor_stable_timestamps(system_event_path, delay=6.0, start_track_id=track_id)
-                except Exception as e:
-                    print(f"[CSV] Error motor file: {e}")
 
             from datetime import datetime
             with open(events_csv_path, 'w', newline='', encoding='utf-8') as f:
@@ -4645,20 +4630,18 @@ class EvenementsController:
 
                 for ev in events_list:
                     is_takeoff = any(kw in ev['name'].lower() for kw in ['décollage', 'decollage', 'takeoff', 'take_off'])
+                    is_landing = any(kw in ev['name'].lower() for kw in ['atterrissage', 'atterissage', 'landing'])
+                    # Ignorer les événements hors de la fenêtre d'export
+                    if not is_takeoff and not is_landing and int(ev['start']) > end_frame:
+                        continue
+                    if not is_takeoff and not is_landing and int(ev['start']) < start_frame:
+                        continue
                     s_idx = frame_to_seq(ev['start'])
                     e_idx = total_images if is_takeoff else frame_to_seq(ev['end'])
                     for seq_num in range(s_idx, e_idx + 1):
                         if seq_num in seq_to_image:
                             img_full = os.path.normpath(os.path.join(img_dir, seq_to_image[seq_num]))
                             f.write(f"{ev['id']},{img_full},{seq_num},0,0,0,0,1,-1,{ev['name']},1,\n")
-
-                for m_ev in motor_events:
-                    f_s = int(m_ev['timestamp'] * video_fps)
-                    f_e = int((m_ev['timestamp'] + m_ev['duration']) * video_fps)
-                    for seq_num in range(frame_to_seq(f_s), frame_to_seq(f_e) + 1):
-                        if seq_num in seq_to_image:
-                            img_full = os.path.normpath(os.path.join(img_dir, seq_to_image[seq_num]))
-                            f.write(f"{m_ev['track_id']},{img_full},{seq_num},0,0,0,0,1,-1,{m_ev['type']},1,\n")
 
             return True
         except Exception as e:
