@@ -3906,7 +3906,6 @@ class MetadonneesController:
             if code_col is None:
                 return
             self._save_ft_table_order()
-            self._ft_table.setSortingEnabled(False)
             self._ft_table.sortItems(code_col, QtCore.Qt.SortOrder.AscendingOrder)
             self._ft_sorted_by_codestation = True
             if hasattr(self, '_btn_sort_codestation'):
@@ -3914,63 +3913,44 @@ class MetadonneesController:
                     self.translate("ORDRE ORIGINAL ↺", "ORIGINAL ORDER ↺"))
 
     def _save_ft_table_order(self):
-        """Sauvegarde l'ordre et le contenu de toutes les lignes pour pouvoir le restaurer."""
+        """Sauvegarde les références aux QTableWidgetItem dans l'ordre actuel."""
         tbl = self._ft_table
+        n_rows = tbl.rowCount()
         n_cols = tbl.columnCount()
-        saved = []
-        for row in range(tbl.rowCount()):
-            row_data = []
-            for col in range(n_cols):
-                item = tbl.item(row, col)
-                if item:
-                    row_data.append({
-                        'text': item.text(),
-                        'bg': item.background().color().rgba() if item.background().style() != QtCore.Qt.BrushStyle.NoBrush else None,
-                        'fg': item.foreground().color().rgba() if item.foreground().style() != QtCore.Qt.BrushStyle.NoBrush else None,
-                        'user': item.data(QtCore.Qt.ItemDataRole.UserRole),
-                        'tooltip': item.toolTip(),
-                        'bold': item.font().bold(),
-                        'hidden': tbl.isRowHidden(row) if col == 0 else False,
-                    })
-                else:
-                    row_data.append(None)
-            saved.append(row_data)
-        self._ft_table_saved_order = saved
+        self._ft_table_saved_items = [
+            [tbl.item(row, col) for col in range(n_cols)]
+            for row in range(n_rows)
+        ]
+        self._ft_table_saved_hidden = [tbl.isRowHidden(row) for row in range(n_rows)]
 
     def _restore_ft_table_order(self):
-        """Restaure le tableau dans l'ordre sauvegardé par _save_ft_table_order."""
-        if not hasattr(self, '_ft_table_saved_order'):
+        """Restaure l'ordre original en replaçant les items sauvegardés (sans les recréer)."""
+        if not hasattr(self, '_ft_table_saved_items'):
             return
         tbl = self._ft_table
-        saved = self._ft_table_saved_order
+        saved_items = self._ft_table_saved_items
+        saved_hidden = getattr(self, '_ft_table_saved_hidden', [])
+        n_rows = tbl.rowCount()
+        n_cols = tbl.columnCount()
         tbl.setSortingEnabled(False)
         tbl.blockSignals(True)
         tbl.setUpdatesEnabled(False)
-        tbl.setRowCount(len(saved))
-        for row, row_data in enumerate(saved):
-            for col, cell in enumerate(row_data):
-                if cell is None:
-                    tbl.setItem(row, col, QtWidgets.QTableWidgetItem(""))
-                    continue
-                item = QtWidgets.QTableWidgetItem(cell['text'])
-                if cell['bg'] is not None:
-                    item.setBackground(QtGui.QColor.fromRgba(cell['bg']))
-                if cell['fg'] is not None:
-                    item.setForeground(QtGui.QColor.fromRgba(cell['fg']))
-                if cell['user'] is not None:
-                    item.setData(QtCore.Qt.ItemDataRole.UserRole, cell['user'])
-                if cell['tooltip']:
-                    item.setToolTip(cell['tooltip'])
-                if cell['bold']:
-                    font = item.font()
-                    font.setBold(True)
-                    item.setFont(font)
-                tbl.setItem(row, col, item)
-            if row_data and row_data[0] and row_data[0].get('hidden'):
-                tbl.setRowHidden(row, True)
+        # Retirer tous les items sans les détruire
+        for row in range(n_rows):
+            for col in range(n_cols):
+                tbl.takeItem(row, col)
+        # Remettre les items dans l'ordre d'origine
+        for row, row_items in enumerate(saved_items):
+            for col, item in enumerate(row_items):
+                if item is not None:
+                    tbl.setItem(row, col, item)
+            if row < len(saved_hidden):
+                tbl.setRowHidden(row, saved_hidden[row])
         tbl.blockSignals(False)
         tbl.setUpdatesEnabled(True)
-        del self._ft_table_saved_order
+        del self._ft_table_saved_items
+        if hasattr(self, '_ft_table_saved_hidden'):
+            del self._ft_table_saved_hidden
 
     def _open_map_action(self):
         """Ouvre la carte de campagne (Leaflet, QDialog) centrée sur la vidéo en cours."""
