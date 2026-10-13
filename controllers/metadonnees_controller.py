@@ -772,7 +772,7 @@ class MetadonneesController:
         fb_row.addWidget(_lbl_filter)
 
         self._btn_json_filter = QtWidgets.QPushButton(
-            self.translate("Données appariées", "Matched data"))
+            self.translate("Données appairées", "Matched data"))
         self._btn_json_filter.setCheckable(True)
         self._btn_json_filter.setToolTip(self.translate(
             "Afficher uniquement les lignes dont le _temp.json a été créé",
@@ -967,6 +967,7 @@ class MetadonneesController:
         self._set_video_buttons_enabled(False)
         self._ft_table.setSortingEnabled(False)
         self._ft_table.blockSignals(True)
+        self._ft_table.setUpdatesEnabled(False)
         self._ft_table.setRowCount(0)
         self._ft_highlighted_item0 = None
 
@@ -1029,6 +1030,7 @@ class MetadonneesController:
                 self._ft_table.setItem(trow, col_i, cell)
 
         self._ft_table.blockSignals(False)
+        self._ft_table.setUpdatesEnabled(True)
         self._ft_table.setSortingEnabled(True)
 
     def _refresh_table_cells_from_jsons(self):
@@ -1724,7 +1726,7 @@ class MetadonneesController:
         if hasattr(self, '_btn_sort_codestation'):
             self._btn_sort_codestation.setText(self.translate("TRIER CODESTATION ↓", "SORT CODESTATION ↓"))
         if hasattr(self, '_btn_json_filter'):
-            self._btn_json_filter.setText(self.translate("Données appariées", "Matched data"))
+            self._btn_json_filter.setText(self.translate("Données appairées", "Matched data"))
         if hasattr(self, '_ft_table'):
             self._ft_table.setHorizontalHeaderLabels(self._get_ft_header_labels())
 
@@ -2605,7 +2607,11 @@ class MetadonneesController:
             return
 
         # ── Remplissage du tableau ────────────────────────────────────────
+        # Désactiver le filtre JSON pour ne pas masquer les lignes sans _temp.json
+        if hasattr(self, '_btn_json_filter') and self._btn_json_filter.isChecked():
+            self._btn_json_filter.setChecked(False)
         self._ft_table.blockSignals(True)
+        self._ft_table.setUpdatesEnabled(False)
         self._ft_table.setSortingEnabled(False)
         self._ft_table.setRowCount(0)
         self._ft_table_video_paths = []
@@ -2641,6 +2647,7 @@ class MetadonneesController:
                 self._ft_table.setItem(trow, col_i, cell)
 
         self._ft_table.blockSignals(False)
+        self._ft_table.setUpdatesEnabled(True)
         self._ft_table.setSortingEnabled(True)
         self._apply_ft_table_system_colors()
         self._apply_ft_table_json_bold()

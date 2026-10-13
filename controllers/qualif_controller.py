@@ -1585,6 +1585,11 @@ class QualifController:
         # GPS est maintenant disponible alors que la carte précédente a été construite sans
         # aucun marqueur → forcer la reconstruction pour retirer l'overlay "pas de GPS".
         _force_rebuild = bool(valid_coords) and not getattr(self, '_map_has_gps', False)
+        print(f"[MAP] update_minimap: map_initialized={getattr(self,'map_initialized',False)}, "
+              f"_force_rebuild={_force_rebuild}, _map_has_gps={getattr(self,'_map_has_gps',False)}, "
+              f"valid_coords={len(valid_coords)}, extra_points={len(extra_points or {})}, "
+              f"show_dialog={show_dialog}, dialog_visible={self.map_dialog.isVisible()}, "
+              f"_map_shown_once={getattr(self,'_map_shown_once',False)}")
         if not getattr(self, 'map_initialized', False) or _force_rebuild:
             m = folium.Map(location=center, zoom_start=17, tiles=None)
             folium.TileLayer(tiles="openstreetmap", name="OpenStreetMap", max_zoom=19).add_to(m)
@@ -1901,12 +1906,20 @@ class QualifController:
             data = io.BytesIO()
             m.save(data, close_file=False)
             self._map_html_cache = data.getvalue().decode()
-            self.map_dialog.map_view.setHtml(self._map_html_cache)
             self.map_initialized = True
             self._map_has_gps = bool(valid_coords)
             if show_dialog and not self.map_dialog.isVisible():
                 self.map_dialog.show()
-                self._refresh_map_on_first_show()
+                _html = self._map_html_cache
+                print(f"[MAP] show() → load via timer 50ms, html len={len(_html)}")
+                QtCore.QTimer.singleShot(
+                    50, lambda h=_html: self._load_map_html(h, "après show")
+                )
+            elif self.map_dialog.isVisible():
+                print(f"[MAP] dialog déjà visible, load direct")
+                self._load_map_html(self._map_html_cache, "dialog visible")
+            else:
+                print(f"[MAP] build sans show, html mis en cache len={len(self._map_html_cache)}")
             if selected_name and selected_name in valid_coords:
                 QtCore.QTimer.singleShot(600, lambda: self.apply_red_marker_js(selected_name))
         else:
@@ -1933,20 +1946,52 @@ class QualifController:
                     QtCore.QTimer.singleShot(80, lambda: self.apply_red_marker_js(selected_name))
 
     def _refresh_map_on_first_show(self):
-        """Repousse le HTML de la carte juste après le tout premier .show() du dialogue.
+        """Branche "pas de rebuild" : repousse le HTML si la carte n'a jamais été montrée.
 
-        QWebEngineView peut ne jamais peindre un setHtml() reçu pendant qu'il est encore
-        caché (surface de rendu Chromium pas encore réalisée) — ce qui produit une carte
-        vide/qui ne s'ouvre pas la première fois, mais fonctionne ensuite une fois le
-        widget déjà réalisé. On garantit ici un setHtml() une fois le dialogue visible.
+        Le cas "rebuild" se charge lui-même de pousser le HTML après show() via timer.
+        Cette méthode couvre le cas où update_minimap n'a PAS reconstruit la carte
+        (map_initialized était déjà True) mais ouvre quand même le dialogue.
         """
         if getattr(self, '_map_shown_once', False):
+            print("[MAP] _refresh_map_on_first_show: déjà montré, rien à faire")
             return
         self._map_shown_once = True
         if getattr(self, '_map_html_cache', None):
+            _html = self._map_html_cache
+            print(f"[MAP] _refresh_map_on_first_show: premier show, load via timer len={len(_html)}")
             QtCore.QTimer.singleShot(
-                0, lambda: self.map_dialog.map_view.setHtml(self._map_html_cache)
+                50, lambda h=_html: self._load_map_html(h, "_refresh_first_show")
             )
+
+    def _load_map_html(self, html: str, label: str = ""):
+        """Charge le HTML de la carte via un fichier temporaire + setUrl.
+
+        Contourne les limites de setHtml (2 MB, pas de base URL, surface Chromium)
+        en écrivant le HTML dans un fichier temp et en le chargeant avec setUrl.
+        """
+        import tempfile
+        import os as _os
+        from PyQt6.QtCore import QUrl
+        tmp = tempfile.NamedTemporaryFile(
+            mode='w', suffix='.html', delete=False, encoding='utf-8'
+        )
+        tmp.write(html)
+        tmp.flush()
+        tmp.close()
+        _path = tmp.name
+        print(f"[MAP] _load_map_html ({label}): temp={_path}, len={len(html)}")
+        def _on_load_finished(ok):
+            print(f"[MAP] loadFinished ok={ok}")
+            try:
+                self.map_dialog.map_view.loadFinished.disconnect(_on_load_finished)
+            except Exception:
+                pass
+            try:
+                _os.unlink(_path)
+            except Exception:
+                pass
+        self.map_dialog.map_view.loadFinished.connect(_on_load_finished)
+        self.map_dialog.map_view.setUrl(QUrl.fromLocalFile(_path))
 
     def _on_marker_moved(self, video_name: str, lat: float, lon: float):
         """Écrit la nouvelle position (marqueur déplacé à la main sur la carte) dans le

@@ -1,5 +1,6 @@
 from PyQt6 import QtWidgets, QtCore
 from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWebEngineCore import QWebEngineSettings
 
 
 class MapBridge(QtCore.QObject):
@@ -34,6 +35,10 @@ class MapDialog(QtWidgets.QDialog):
 
         self.map_view = QWebEngineView(self)
         self.map_view.page().setWebChannel(self.channel)
+        # Autoriser les ressources CDN (Leaflet, tuiles) depuis une URL file://
+        self.map_view.page().settings().setAttribute(
+            QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True
+        )
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)

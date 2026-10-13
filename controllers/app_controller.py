@@ -1092,13 +1092,20 @@ class AppController(QtCore.QObject):
 
     def _open_map_from_metadonnees(self, video_name: str = None):
         """Ouvre la carte de campagne (QDialog Leaflet) depuis la page Métadonnées."""
+        # Toujours reconstruire la carte : les données (coords, extra_points) ont pu changer
+        # depuis la dernière ouverture (import CSV, correction manuelle, etc.).
         if self.working_dir and self.qualif_ctrl._working_dir != self.working_dir:
             self.qualif_ctrl._working_dir = self.working_dir
-            self.qualif_ctrl.map_initialized = False
+        self.qualif_ctrl.map_initialized = False
+        self.qualif_ctrl._map_has_gps = False
         extra_points = {}
         # En mode données historiques (video_model vide), alimenter la carte depuis le tableau CSV
         if self.qualif_ctrl.video_model.rowCount() == 0:
-            extra_points = self.metadonnees_ctrl.collect_ft_table_coords(self.working_dir)
+            wd = self.working_dir or getattr(self.metadonnees_ctrl, '_csv_folder', '') or ''
+            extra_points = self.metadonnees_ctrl.collect_ft_table_coords(wd)
+        print(f"[MAP] _open_map_from_metadonnees: video_model.rowCount={self.qualif_ctrl.video_model.rowCount()}, "
+              f"extra_points={len(extra_points)}, working_dir={self.working_dir!r}, "
+              f"csv_folder={getattr(self.metadonnees_ctrl,'_csv_folder','')!r}")
         self.qualif_ctrl.update_minimap(video_name, show_dialog=True, extra_points=extra_points)
 
     def _refresh_dashboard(self, *_):
