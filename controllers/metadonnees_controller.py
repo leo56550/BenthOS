@@ -273,7 +273,7 @@ _INFOSTATION_CSV_SCHEMA: list[tuple] = [
     ("video_observation", "habitat_annotator",         "Analyseur habitat"),      # col 38
     ("video_observation", "distance_min",              "Distance analysable min (m)"),  # col 39
     ("video_observation", "distance_max",              "Distance analysable max (m)"),  # col 40
-    (None,                "substrat",                  "Substrat"),               # col 41 – non mappé
+    ("video_observation", "substrat",                  "Substrat"),               # col 41
 ]
 
 # Colonnes du CSV infostation (ordre XLSX)
@@ -331,8 +331,7 @@ _COL_NAME_EN: dict[str, str] = {
 # Tuple : (col_name, section, field_key, read_only)
 # read_only = champs calculés (section None ou _COMPUTED_FIELDS) + champs identiques pour toutes les vidéos
 _FT_TABLE_COLS: list[tuple] = [
-    (col_name, section, field_key,
-     section is None or field_key in _COMPUTED_FIELDS or field_key in _CAMPAIGN_HEADER_KEYS)
+    (col_name, section, field_key, False)
     for section, field_key, col_name in _INFOSTATION_CSV_SCHEMA
 ]
 
@@ -1034,16 +1033,14 @@ class MetadonneesController:
             trow = self._ft_table.rowCount()
             self._ft_table.insertRow(trow)
 
-            for col_i, (col_label, block_name, json_key, read_only) in enumerate(_FT_TABLE_COLS):
+            for col_i, (col_label, block_name, json_key, _) in enumerate(_FT_TABLE_COLS):
                 val = str(row_data[col_i] if col_i < len(row_data) else "")
                 cell = QtWidgets.QTableWidgetItem(val)
                 cell.setTextAlignment(
                     QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft)
-                cell.setFlags(_ro_flags if read_only else _rw_flags)
+                cell.setFlags(_rw_flags)
                 cell.setBackground(QtGui.QBrush(row_bg))
                 cell.setData(self._FT_BASE_BG_ROLE, QtGui.QColor(row_bg))
-                if read_only:
-                    cell.setForeground(QtGui.QBrush(QtGui.QColor("#7a9aaa")))
                 if col_i == 0:
                     cell.setData(QtCore.Qt.ItemDataRole.UserRole, video_path)
                 self._ft_table.setItem(trow, col_i, cell)
@@ -1279,9 +1276,6 @@ class MetadonneesController:
             col = index.column()
             if not (0 <= col < len(_FT_TABLE_COLS)):
                 continue
-            _, _, _, read_only = _FT_TABLE_COLS[col]
-            if read_only:
-                continue
             item = self._ft_table.item(index.row(), col)
             if item and item.text():
                 item.setText("")
@@ -1407,8 +1401,8 @@ class MetadonneesController:
 
     def _on_ft_table_cell_changed(self, row: int, col: int):
         """Sauvegarde la valeur éditée dans le JSON de la vidéo correspondante."""
-        _col_label, block_name, json_key, read_only = _FT_TABLE_COLS[col]
-        if read_only or block_name is None or json_key is None:
+        _col_label, block_name, json_key, _ro = _FT_TABLE_COLS[col]
+        if block_name is None or json_key is None:
             return
 
         cell = self._ft_table.item(row, col)
@@ -2709,7 +2703,7 @@ class MetadonneesController:
                 cell = QtWidgets.QTableWidgetItem(val)
                 _base = (QtCore.Qt.ItemFlag.ItemIsSelectable |
                          QtCore.Qt.ItemFlag.ItemIsEnabled)
-                cell.setFlags(_base if _ro else _base | QtCore.Qt.ItemFlag.ItemIsEditable)
+                cell.setFlags(_base | QtCore.Qt.ItemFlag.ItemIsEditable)
                 self._ft_table.setItem(trow, col_i, cell)
 
         self._ft_table.blockSignals(False)
