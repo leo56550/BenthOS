@@ -2578,6 +2578,9 @@ class MetadonneesController:
 
     def load_csv_into_table(self, file_path: str):
         """Charge un CSV ou XLSX infostation et l'affiche directement dans le tableau (lecture seule)."""
+        import time as _time
+        t0 = _time.perf_counter()
+        print(f"[IMPORT HISTORIQUE] Lecture fichier : {os.path.basename(file_path)}")
         # ── Lecture du fichier ────────────────────────────────────────────
         try:
             ext = os.path.splitext(file_path)[1].lower()
@@ -2656,18 +2659,24 @@ class MetadonneesController:
         self._ft_table.blockSignals(False)
         self._ft_table.setUpdatesEnabled(True)
         self._ft_table.setSortingEnabled(True)
+        n_rows = self._ft_table.rowCount()
+        print(f"[IMPORT HISTORIQUE] Tableau chargé : {n_rows} ligne(s) en {_time.perf_counter() - t0:.2f}s")
+        print(f"[IMPORT HISTORIQUE] Application des couleurs et JSON bold…")
         self._apply_ft_table_system_colors()
         self._apply_ft_table_json_bold()
+        print(f"[IMPORT HISTORIQUE] Tableau prêt ({_time.perf_counter() - t0:.2f}s total)")
         if self._ft_table.rowCount() > 0:
             self._set_video_buttons_enabled(True)
         if hasattr(self, '_filter_bar'):
             self._filter_bar.setVisible(True)
 
     def _resolve_video_path_from_row(self, row: int, folder_path: str,
-                                       vpath_col: int | None, vnum_col: int | None) -> str | None:
+                                       vpath_col: int | None, vnum_col: int | None,
+                                       file_index: dict | None = None) -> str | None:
         """Retourne le chemin absolu de la vidéo pour la ligne `row`, en croisant
         la colonne 'Dossier Datawork' (vpath_col) et 'Nom de la video' (vnum_col)
         avec les bases candidates (folder_path, parent de folder_path).
+        file_index: dict stem_lower → full_path pré-construit par _build_video_file_index().
         Retourne None si aucun fichier trouvé.
         """
         if vnum_col is None:
@@ -2693,21 +2702,19 @@ class MetadonneesController:
 
         if folder_csv and not os.path.isabs(folder_csv):
             # Dossier Datawork renseigné → matching par chemin complet UNIQUEMENT.
-            # Si le fichier n'existe pas à cet endroit, la ligne n'appartient pas
-            # au dossier sélectionné (ne pas tomber sur une autre campagne par stem).
             for base in bases:
-                # Structure 1 : Dossier Datawork est le dossier contenant la vidéo
                 c1 = os.path.join(base, folder_csv, fname)
                 if os.path.isfile(c1):
                     return c1
-                # Structure 2 : dernier composant = id numérique (structure camp\sys\video.mp4)
                 c2 = os.path.join(os.path.dirname(os.path.join(base, folder_csv)), fname)
                 if os.path.isfile(c2):
                     return c2
-            return None  # chemin précis fourni mais fichier absent → pas de match
+            return None
 
-        # Fallback uniquement si Dossier Datawork est absent (lignes sans info de path)
+        # Fallback : utilise l'index pré-construit si disponible, sinon os.walk (lent)
         stem = os.path.splitext(fname)[0].lower()
+        if file_index is not None:
+            return file_index.get(stem)
         _VIDEO_EXTS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.mts', '.m2ts', '.mpg', '.mpeg', '.m4v'}
         for root, _dirs, files in os.walk(folder_path):
             for f in files:
@@ -2715,6 +2722,20 @@ class MetadonneesController:
                         and os.path.splitext(f)[0].lower() == stem):
                     return os.path.join(root, f)
         return None
+
+    @staticmethod
+    def _build_video_file_index(folder_path: str) -> dict[str, str]:
+        """Construit un index stem_lower → chemin_absolu en un seul os.walk."""
+        _VIDEO_EXTS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.mts', '.m2ts', '.mpg', '.mpeg', '.m4v'}
+        index: dict[str, str] = {}
+        for root, _dirs, files in os.walk(folder_path):
+            for f in files:
+                ext = os.path.splitext(f)[1].lower()
+                if ext in _VIDEO_EXTS:
+                    stem = os.path.splitext(f)[0].lower()
+                    if stem not in index:
+                        index[stem] = os.path.join(root, f)
+        return index
 
     def count_existing_temp_jsons(self, folder_path: str) -> int:
         """Compte les _temp.json déjà présents pour les vidéos du tableau dans folder_path."""
@@ -2745,6 +2766,9 @@ class MetadonneesController:
         Retourne (nb_générés, nb_lignes_tableau, [(video_name, raison_echec), ...]).
         """
         import copy as _copy
+        import time as _time
+        from PyQt6.QtWidgets import QApplication, QProgressDialog
+        from PyQt6.QtCore import Qt
 
         failures: list[tuple[str, str]] = []
 
@@ -2783,7 +2807,33 @@ class MetadonneesController:
         total = self._ft_table.rowCount()
         generated = 0
 
+        # ── Pré-indexation des fichiers vidéo (un seul os.walk) ──────────────
+        t0 = _time.perf_counter()
+        print(f"[IMPORT HISTORIQUE] Indexation des fichiers vidéo dans : {folder_path}")
+        file_index = self._build_video_file_index(folder_path)
+        print(f"[IMPORT HISTORIQUE] Index construit : {len(file_index)} vidéo(s) trouvée(s) "
+              f"en {_time.perf_counter() - t0:.2f}s")
+
+        # ── Dialog de progression ─────────────────────────────────────────────
+        progress = QProgressDialog("Génération des fichiers JSON…", "Annuler", 0, total)
+        progress.setWindowTitle("Import données historiques")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+        QApplication.processEvents()
+
+        t1 = _time.perf_counter()
+        print(f"[IMPORT HISTORIQUE] Démarrage génération de {total} ligne(s) — mode={mode}")
+
         for row in range(total):
+            if progress.wasCanceled():
+                print(f"[IMPORT HISTORIQUE] Annulé par l'utilisateur à la ligne {row}/{total}")
+                break
+
+            progress.setValue(row)
+            if row % 10 == 0:
+                QApplication.processEvents()
+
             item = self._ft_table.item(row, video_name_col)
             video_val = item.text().strip() if item else ''
             if not video_val:
@@ -2792,7 +2842,7 @@ class MetadonneesController:
 
             # Matching par chemin complet (Dossier Datawork + Nom de la video)
             video_path = self._resolve_video_path_from_row(
-                row, folder_path, video_path_col, video_name_col
+                row, folder_path, video_path_col, video_name_col, file_index=file_index
             )
             if not video_path:
                 failures.append((video_val, "Fichier vidéo non trouvé dans le dossier sélectionné"))
@@ -2879,6 +2929,13 @@ class MetadonneesController:
             except Exception as e:
                 failures.append((video_val, f"Erreur écriture : {e}"))
 
+        progress.setValue(total)
+        progress.close()
+        elapsed = _time.perf_counter() - t1
+        print(f"[IMPORT HISTORIQUE] Terminé : {generated}/{total} JSON générés, "
+              f"{len(failures)} échec(s) — {elapsed:.2f}s "
+              f"({elapsed / total * 1000:.0f} ms/ligne)" if total else
+              f"[IMPORT HISTORIQUE] Terminé : aucune ligne à traiter")
         return generated, total, failures
 
     # ── Import CSV historique (matching + écriture temp.json) ────────────

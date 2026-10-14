@@ -651,10 +651,14 @@ class AppController(QtCore.QObject):
         # - si une campagne est ouverte (video_model peuplé) → reconstruction complète avec tri
         # - sinon (import CSV seul) → mise à jour des cellules en place depuis les temp.json
         if self.metadonnees_ctrl.video_model.rowCount() > 0:
+            print("[IMPORT HISTORIQUE] Reconstruction du tableau depuis les JSON…")
             self.metadonnees_ctrl._rebuild_ft_table()
             self.metadonnees_ctrl._apply_ft_table_json_bold()
+            print("[IMPORT HISTORIQUE] Tableau reconstruit.")
         else:
+            print("[IMPORT HISTORIQUE] Rafraîchissement des cellules depuis les JSON…")
             self.metadonnees_ctrl._refresh_table_cells_from_jsons()
+            print("[IMPORT HISTORIQUE] Rafraîchissement terminé.")
         # Forcer le repaint de la liste vidéo (barres de complétion + codestation)
         if hasattr(self.validation_ctrl, 'video_tree') and self.validation_ctrl.video_tree:
             self.validation_ctrl.video_tree.viewport().update()
