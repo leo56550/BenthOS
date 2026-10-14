@@ -850,8 +850,14 @@ class QualifController:
             return
         self.load_campaign_folder(directory, derusher_name)
 
-    def load_campaign_folder(self, directory: str, derusher_name: str):
-        """Charge une campagne depuis *directory* sans ouvrir de QFileDialog."""
+    def load_campaign_folder(self, directory: str, derusher_name: str, step_cb=None):
+        """Charge une campagne depuis *directory* sans ouvrir de QFileDialog.
+
+        step_cb(msg, value, maximum) : callback optionnel pour mettre à jour l'overlay.
+        """
+        import time as _time
+        t0 = _time.perf_counter()
+
         self.current_campaign_folder = directory
         self.video_model.removeRows(0, self.video_model.rowCount())
         if self.trash_video_tree:
@@ -859,15 +865,28 @@ class QualifController:
         self.map_initialized = False
         self._start_watching_campaign(directory)
 
+        if step_cb:
+            step_cb(self.translate("Scan des vidéos…", "Scanning videos…"), 0, 0)
+        print(f"[CAMPAGNE] Scan des MP4 dans : {directory}")
         videos = get_all_mp4_files(directory)
         if not videos:
             print("[WARNING] No MP4 files found.")
             return
 
+        main_videos = [v for v in videos
+                       if not os.path.splitext(v["name"])[0].lower().endswith("_stereo")]
+        n_main = len(main_videos)
+        print(f"[CAMPAGNE] {n_main} vidéo(s) principale(s) trouvée(s) "
+              f"en {_time.perf_counter()-t0:.2f}s")
+
         _time_cache: dict = {}
-        for video in videos:
+        for idx, video in enumerate(main_videos):
             stem = os.path.splitext(video["name"])[0]
-            # Les fichiers _stereo.mp4 ne sont pas des entrées indépendantes
+            if step_cb:
+                step_cb(self.translate(
+                    f"Chargement vidéo {idx+1}/{n_main} — {video['name']}",
+                    f"Loading video {idx+1}/{n_main} — {video['name']}"), idx + 1, n_main)
+            # Les fichiers _stereo.mp4 ne sont pas des entrées indépendantes (déjà filtrés)
             if stem.lower().endswith("_stereo"):
                 continue
             col_name = QtGui.QStandardItem(video["name"])
@@ -906,10 +925,18 @@ class QualifController:
         self.update_minimap(self.selected_video_name, show_dialog=False)
         self._start_thumbnail_generation()
 
-        for video in videos:
-            initialise_temp_json_if_needed(video["path"])    # crée <stem>_temp.json (valeurs nulles)
-            update_temp_json_paths(video["path"])             # remplit les champs chemin si absents
+        print(f"[CAMPAGNE] Initialisation des JSON pour {len(videos)} vidéo(s)…")
+        t1 = _time.perf_counter()
+        for i, video in enumerate(videos):
+            if step_cb:
+                name = os.path.basename(video["path"])
+                step_cb(self.translate(
+                    f"Initialisation JSON {i+1}/{len(videos)} — {name}",
+                    f"JSON init {i+1}/{len(videos)} — {name}"), i + 1, len(videos))
+            initialise_temp_json_if_needed(video["path"])
+            update_temp_json_paths(video["path"])
             QtWidgets.QApplication.processEvents()
+        print(f"[CAMPAGNE] JSON initialisés en {_time.perf_counter()-t1:.2f}s")
 
         # Doit s'exécuter avant le choix du JSON de référence ci-dessous : une vidéo
         # mise à la corbeille (qualifiable='no') sort de video_model et ne reçoit plus
@@ -944,8 +971,11 @@ class QualifController:
             self.load_and_display_campaign_json(first_loaded_json)
 
         self._reset_left_splitter_sizes()
+        if step_cb:
+            step_cb(self.translate("Couleurs de complétion…", "Completion colors…"), 0, 0)
         self.refresh_completion_colors()
         self._rebuild_video_rows()
+        print(f"[CAMPAGNE] load_campaign_folder terminé en {_time.perf_counter()-t0:.2f}s total")
 
     # ── Indicateur de complétion ─────────────────────────────────────────
 

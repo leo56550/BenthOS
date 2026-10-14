@@ -65,6 +65,17 @@ class _CampaignLoadingOverlay(QtWidgets.QWidget):
     def set_message(self, msg: str):
         self._lbl_msg.setText(msg)
 
+    def set_progress(self, value: int, maximum: int):
+        """Passe la barre en mode déterminé et met à jour la valeur."""
+        if maximum != self._bar.maximum():
+            self._bar.setRange(0, maximum)
+        self._bar.setValue(value)
+
+    def step(self, msg: str, value: int, maximum: int):
+        """Met à jour message + progression en un seul appel."""
+        self.set_message(msg)
+        self.set_progress(value, maximum)
+
     def _tick(self):
         self._fi = (self._fi + 1) % len(self._SPINNER)
         self._lbl_icon.setText(self._SPINNER[self._fi])
@@ -259,7 +270,7 @@ class AppController(QtCore.QObject):
             # select_video_by_name n'a pas trouvé la vidéo, restaurer
             self.qualif_ctrl.selected_video_name = prev
 
-    def _sync_all_to_working_dir(self) -> None:
+    def _sync_all_to_working_dir(self, overlay_cb=None) -> None:
         """Copie les fichiers compagnon de toutes les vidéos dans le répertoire de travail.
 
         Seules les copies de travail sont modifiées — les JSON bruts ne sont jamais touchés.
@@ -275,35 +286,58 @@ class AppController(QtCore.QObject):
             if video_path:
                 video_paths.append(video_path)
 
-        # Écriture du dérusher uniquement dans les copies de travail (jamais dans les bruts)
+        n = len(video_paths)
+        if overlay_cb and n:
+            overlay_cb(self.translate(
+                f"Synchronisation des données… (0/{n})",
+                f"Syncing data… (0/{n})"), 0, n)
+
         if self._current_derusher_name:
-            self._write_derusher_to_working_copies(video_paths, self._current_derusher_name)
+            self._write_derusher_to_working_copies(
+                video_paths, self._current_derusher_name, overlay_cb=overlay_cb)
         QtWidgets.QApplication.processEvents()
 
 
-    def _persist_motor_events_for_all_videos(self, force: bool = False) -> None:
+    def _persist_motor_events_for_all_videos(self, force: bool = False,
+                                              overlay_cb=None) -> None:
         """Écrit (ou recalcule) les rotations moteur dans chaque _temp.json au chargement."""
         from services.motor_service import persist_motor_events_from_csv
         from services.campaign_service import get_temp_json_path
+        import time as _time
         model = self.qualif_ctrl.video_model
+        n = model.rowCount()
         total = 0
-        for row in range(model.rowCount()):
+        print(f"[CAMPAGNE] Calcul des événements moteur pour {n} vidéo(s)…")
+        t0 = _time.perf_counter()
+        for row in range(n):
             item = model.item(row, 0)
             video_path = item.data(QtCore.Qt.ItemDataRole.UserRole) if item else None
             if not video_path:
                 continue
+            if overlay_cb:
+                name = os.path.basename(video_path)
+                overlay_cb(self.translate(
+                    f"Événements moteur {row+1}/{n} — {name}",
+                    f"Motor events {row+1}/{n} — {name}"), row + 1, n)
             json_path = get_temp_json_path(video_path)
             if os.path.isfile(json_path):
                 total += persist_motor_events_from_csv(video_path, json_path, force=force)
             QtWidgets.QApplication.processEvents()
-        if total:
-            print(f"[MOTOR] {total} rotation(s) moteur inscrites dans les _temp.json au chargement.")
+        print(f"[CAMPAGNE] Événements moteur : {total} rotation(s) inscrite(s) "
+              f"en {_time.perf_counter()-t0:.2f}s")
 
-    def _write_derusher_to_working_copies(self, video_paths: list, derusher_name: str) -> None:
+    def _write_derusher_to_working_copies(self, video_paths: list, derusher_name: str,
+                                          overlay_cb=None) -> None:
         """Écrit le nom du dérusher dans les copies de travail des JSONs vidéo."""
         import json as _json
+        n = len(video_paths)
         count = 0
-        for video_path in video_paths:
+        for i, video_path in enumerate(video_paths):
+            if overlay_cb:
+                name = os.path.basename(video_path)
+                overlay_cb(self.translate(
+                    f"Synchronisation {i+1}/{n} — {name}",
+                    f"Syncing {i+1}/{n} — {name}"), i + 1, n)
             wjson = get_working_video_json_path(self.working_dir, video_path)
             if not os.path.isfile(wjson):
                 QtWidgets.QApplication.processEvents()
@@ -804,19 +838,38 @@ class AppController(QtCore.QObject):
             "Scanning campaign videos…"))
         _overlay.start()
 
+        import time as _time
+        t0 = _time.perf_counter()
+
+        def _step(msg: str, value: int, maximum: int):
+            _overlay.step(msg, value, maximum)
+            QtWidgets.QApplication.processEvents()
+
         try:
             # Étape 1 — Charger le dossier
+            print(f"[CAMPAGNE] Ouverture : {campaign_folder or '(dialog)'}")
             if campaign_folder:
-                self.qualif_ctrl.load_campaign_folder(campaign_folder, nom_derusher)
+                self.qualif_ctrl.load_campaign_folder(campaign_folder, nom_derusher,
+                                                      step_cb=_step)
             else:
-                _overlay.stop()          # laisser le dialog de sélection s'ouvrir proprement
+                _overlay.stop()
                 self.qualif_ctrl.open_system_explorer(nom_derusher)
                 _overlay = _CampaignLoadingOverlay(self.window)
                 _overlay.set_message(self.translate(
                     "Analyse des vidéos de la campagne…",
                     "Scanning campaign videos…"))
                 _overlay.start()
+                self.qualif_ctrl.load_campaign_folder(
+                    self.qualif_ctrl.current_campaign_folder,
+                    nom_derusher, step_cb=lambda m, v, n: (
+                        _overlay.step(m, v, n),
+                        QtWidgets.QApplication.processEvents(),
+                    ))
 
+            n_videos = self.qualif_ctrl.video_model.rowCount()
+            print(f"[CAMPAGNE] {n_videos} vidéo(s) chargée(s) en {_time.perf_counter()-t0:.2f}s")
+
+            _step(self.translate("Propagation des modèles…", "Propagating models…"), 0, 0)
             self._refresh_all_page_models()
             self._detect_campaign_mode()
             self.refresh_status_bar()
@@ -853,19 +906,11 @@ class AppController(QtCore.QObject):
                         ctrl.set_working_dir(working_dir)
 
             # Étape 2 — Rotations moteur
-            _overlay.set_message(self.translate(
-                "Calcul des événements moteur…",
-                "Computing motor events…"))
-            QtWidgets.QApplication.processEvents()
             self._campaign_ready = True
-            self._persist_motor_events_for_all_videos(force=False)
+            self._persist_motor_events_for_all_videos(force=False, overlay_cb=_step)
 
             # Étape 3 — Sync répertoire de travail
-            _overlay.set_message(self.translate(
-                "Synchronisation des données…",
-                "Syncing data…"))
-            QtWidgets.QApplication.processEvents()
-            self._sync_all_to_working_dir()
+            self._sync_all_to_working_dir(overlay_cb=_step)
 
             if data_systeme:
                 if self.working_dir:
