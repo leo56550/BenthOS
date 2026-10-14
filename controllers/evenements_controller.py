@@ -503,7 +503,8 @@ class EvenementsController:
             # (nom + heure/durée/taille) — le panneau de cette page est plus étroit qu'ailleurs.
             self.tree_view_events.setColumnWidth(3, 88)
 
-        self.tree_captures.itemChanged.connect(self.on_arbre_item_changed)
+        if hasattr(self, 'tree_captures') and self.tree_captures:
+            self.tree_captures.itemChanged.connect(self.on_arbre_item_changed)
 
     # --- Language ---
 
@@ -2631,6 +2632,9 @@ class EvenementsController:
         progress_dlg.setMinimumDuration(0)
         progress_dlg.setValue(0)
 
+        if hasattr(self, '_batch_worker') and self._batch_worker and self._batch_worker.isRunning():
+            self._batch_worker.requestInterruption()
+            self._batch_worker.wait(2000)
         self._batch_worker = _BatchLandingWorker(video_paths, overwrite=overwrite)
         self._batch_worker.progress.connect(lambda done, _t: progress_dlg.setValue(done))
         progress_dlg.canceled.connect(self._batch_worker.requestInterruption)
@@ -3277,7 +3281,7 @@ class EvenementsController:
                     data["video_observation"].get(json_key))
                 saved_value = {
                     "event_id": event_uid,
-                    "time_code": self.event_player.timeline._format_ms(event_dict["start"]),
+                    "time_code": self._format_ms_safe(event_dict["start"]),
                     "start_ms": int(event_dict["start"]),
                     "frame_number": frame_start,
                     "description_fr": label,
@@ -3322,8 +3326,8 @@ class EvenementsController:
                     data["video_observation"][json_key] = [{"authorized_values_fr": [], "values": []}]
                 saved_value = {
                     "event_id": event_uid,
-                    "time_code_start": self.event_player.timeline._format_ms(event_dict["start"]),
-                    "time_code_end": self.event_player.timeline._format_ms(event_dict["end"]),
+                    "time_code_start": self._format_ms_safe(event_dict["start"]),
+                    "time_code_end": self._format_ms_safe(event_dict["end"]),
                     "frame_number_start": frame_start,
                     "frame_number_end": frame_end,
                     "description_fr": None,
@@ -3864,15 +3868,18 @@ class EvenementsController:
                     video_obs[json_key][0]["values"] = other_events
                     if "events_motor" not in video_obs or not video_obs["events_motor"]:
                         video_obs["events_motor"] = [{"authorized_values_fr": [], "values": []}]
-                    existing_deploy = video_obs["events_motor"][0].get("values", [])
-                    for evt in deployment_events:
-                        if not any(
-                            e.get("value") == evt.get("value")
-                            and e.get("frame_number_start") == evt.get("frame_number_start")
-                            for e in existing_deploy
-                        ):
-                            existing_deploy.append(evt)
-                    video_obs["events_motor"][0]["values"] = existing_deploy
+                    first_motor = video_obs["events_motor"][0]
+                    # Ne modifier que le format wrapper ({"values": [...]}), pas le format flat
+                    if "values" in first_motor and "frame_number" not in first_motor:
+                        existing_deploy = first_motor.get("values", [])
+                        for evt in deployment_events:
+                            if not any(
+                                e.get("value") == evt.get("value")
+                                and e.get("frame_number_start") == evt.get("frame_number_start")
+                                for e in existing_deploy
+                            ):
+                                existing_deploy.append(evt)
+                        first_motor["values"] = existing_deploy
             if modified:
                 data["video_observation"] = video_obs
                 with open(self.current_json_path, 'w', encoding='utf-8') as f:
@@ -3946,6 +3953,14 @@ class EvenementsController:
 
         return events_list, track_id
 
+    def _format_ms_safe(self, ms: int) -> str:
+        """Convertit ms en timecode hh:mm:ss.mmm — utilise event_player si disponible."""
+        if hasattr(self, 'event_player') and self.event_player:
+            return self.event_player.timeline._format_ms(ms)
+        total_s = int(ms / 1000)
+        h, m, s = total_s // 3600, (total_s % 3600) // 60, total_s % 60
+        return f"{h:02d}:{m:02d}:{s:02d}.{int(ms % 1000):03d}"
+
     @staticmethod
     def _timecode_str_to_ms(tc) -> int | None:
         """Convertit 'hh:mm:ss' ou 'mm:ss' en millisecondes. None si non parsable/vide."""
@@ -3968,7 +3983,7 @@ class EvenementsController:
         if not self.current_video_path or not os.path.exists(self.current_video_path):
             return None
         # Utilise le JSON actif (répertoire de travail si disponible, sinon source)
-        json_path = self.current_json_path or get_video_json_path(self.current_video_path)
+        json_path = self.current_json_path or resolve_video_json_path(self._working_dir, self.current_video_path)
         if not json_path or not os.path.exists(json_path):
             return None
         try:
@@ -4017,7 +4032,7 @@ class EvenementsController:
         """Lit les frames début/fin annotation du JSON et retourne (start_ms, end_ms), ou None."""
         if not self.current_video_path or not os.path.exists(self.current_video_path):
             return None
-        json_path = self.current_json_path or get_video_json_path(self.current_video_path)
+        json_path = self.current_json_path or resolve_video_json_path(self._working_dir, self.current_video_path)
         if not json_path or not os.path.exists(json_path):
             return None
         try:

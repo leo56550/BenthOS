@@ -793,13 +793,15 @@ class ExtractionController:
                 icon = QtGui.QIcon(pixmap)
             else:
                 cap = cv2.VideoCapture(file_path)
-                ret, frame = cap.read()
-                if ret:
-                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    h, w, ch = rgb.shape
-                    qimg = QtGui.QImage(rgb.data, w, h, ch * w, QtGui.QImage.Format.Format_RGB888)
-                    icon = QtGui.QIcon(QtGui.QPixmap.fromImage(qimg).scaled(64, 48))
-                cap.release()
+                try:
+                    ret, frame = cap.read()
+                    if ret:
+                        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        h, w, ch = rgb.shape
+                        qimg = QtGui.QImage(rgb.data, w, h, ch * w, QtGui.QImage.Format.Format_RGB888)
+                        icon = QtGui.QIcon(QtGui.QPixmap.fromImage(qimg).scaled(64, 48))
+                finally:
+                    cap.release()
         except Exception as e:
             print(f"Erreur génération icône : {e}")
 

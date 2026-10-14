@@ -114,6 +114,9 @@ class ExportWorker(QThread):
                 matches = [(None, i) for i in range(start_f, end_f, interval)]
 
             if len(matches) == 0:
+                capR.release()
+                if capL:
+                    capL.release()
                 self.export_finished.emit(0)
                 return
 
@@ -161,6 +164,15 @@ class ExportWorker(QThread):
             self.export_finished.emit(total_extracted)
 
         except Exception as e:
+            try:
+                capR.release()
+            except Exception:
+                pass
+            try:
+                if capL:
+                    capL.release()
+            except Exception:
+                pass
             print(f"\n[ERREUR CRITIQUE] {str(e)}")
             self.export_error.emit(f"Erreur Export : {str(e)}")
 
@@ -296,4 +308,12 @@ class VideoSegmentationWorker(QThread):
             self.export_finished.emit(msg)
 
         except Exception as e:
+            try:
+                cap.release()
+            except Exception:
+                pass
+            try:
+                out.release()
+            except Exception:
+                pass
             self.export_error.emit(f"Erreur lors de l'export : {str(e)}")

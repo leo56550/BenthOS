@@ -72,6 +72,7 @@ def get_all_mp4_files(parent_folder: str) -> list:
                     })
                     cap.release()
                 else:
+                    cap.release()
                     video_data.append({
                         "name": file,
                         "path": full_path,
