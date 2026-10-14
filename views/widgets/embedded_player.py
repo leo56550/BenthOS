@@ -281,6 +281,9 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self._last_ui_update_ms: int = 0
         self._label_update_ms: int = 0
         self._tel_cursor_ms:   int = 0
+        # Interpolation entre les mises à jour Qt de position (~50 ms) pour un curseur fluide
+        self._interp_pos_ms:   int = 0
+        self._interp_time_ms:  int = 0
 
         # Image corrections (active only when paused)
         self._last_raw_frame: np.ndarray | None = None
@@ -1014,8 +1017,11 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         if self.is_stereo and abs(self.player_R.position() - position_ms) > 50:
             self.player_R.setPosition(position_ms)
 
-        # Pendant la lecture, le smooth_timer gère les mises à jour UI
+        # Pendant la lecture, le smooth_timer gère les mises à jour UI ;
+        # on mémorise la position réelle pour l'interpolation.
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self._interp_pos_ms = position_ms
+            self._interp_time_ms = int(time.monotonic() * 1000)
             return
 
         if not self.timeline.is_dragging:
@@ -1032,18 +1038,23 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         """Appelé à ~50 fps pendant la lecture pour animer le curseur timeline en douceur."""
         if self.timeline.is_dragging:
             return
-        pos = self.player.position()
+        now_ms = int(time.monotonic() * 1000)
+        # Interpolation linéaire entre les mises à jour Qt (~50 ms) pour un curseur continu à 50 fps
+        if self._interp_time_ms > 0:
+            pos = min(self._interp_pos_ms + (now_ms - self._interp_time_ms),
+                      self.player.duration())
+        else:
+            pos = self.player.position()
         self.timeline.set_current_position(pos)
         self.center_scroll_on_cursor(pos)
-        now_ms = int(time.monotonic() * 1000)
         # Labels mis à jour à ~8 fps pour limiter les redraws texte
         if now_ms - self._label_update_ms >= 120:
             self._label_update_ms = now_ms
             self.update_top_time_label(pos, self.player.duration())
             self.update_frame_label(pos)
-        # Curseur télémétrie mis à jour à ~25 fps max
+        # Curseur télémétrie synchronisé à ~50 fps (coalescing Qt évite les repaints redondants)
         if (hasattr(self, 'telemetry_dialog') and self.telemetry_dialog.isVisible()
-                and now_ms - self._tel_cursor_ms >= 40):
+                and now_ms - self._tel_cursor_ms >= 20):
             self._tel_cursor_ms = now_ms
             self.telemetry_dialog.set_cursor(pos / 1000.0)
 

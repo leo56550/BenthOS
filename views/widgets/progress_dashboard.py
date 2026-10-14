@@ -58,6 +58,46 @@ def _is_filled(val) -> bool:
     return bool(s) and s not in ("?", "None", "null")
 
 
+_LANDING_KW  = ("atterrissage", "atterissage", "landing")
+_TAKEOFF_KW  = ("décollage", "decollage", "takeoff")
+
+
+def _has_landing_and_takeoff(obs: dict) -> bool:
+    """Retourne True si le JSON contient à la fois un atterrissage et un décollage."""
+    # Source principale : champs scalaires dédiés (boutons Atterrissage / Décollage)
+    landing = str((obs.get("timecode_landing") or {}).get("value") or "").strip()
+    takeoff = str((obs.get("timecode_takeoff") or {}).get("value") or "").strip()
+    if landing and takeoff:
+        return True
+
+    has_l, has_t = bool(landing), bool(takeoff)
+
+    # Repli : events_motor (format flat nouveau ou wrapper ancien)
+    motor = obs.get("events_motor") or []
+    if isinstance(motor, list):
+        for item in motor:
+            if not isinstance(item, dict):
+                continue
+            # Format flat (nouveau) : description_fr
+            val = str(item.get("description_fr") or item.get("value", "")).strip().lower()
+            if not has_l and any(kw in val for kw in _LANDING_KW):
+                has_l = True
+            if not has_t and any(kw in val for kw in _TAKEOFF_KW):
+                has_t = True
+            # Format wrapper (ancien) : sous-liste "values"
+            for nested in item.get("values", []):
+                if isinstance(nested, dict):
+                    nval = str(nested.get("value", "")).strip().lower()
+                    if not has_l and any(kw in nval for kw in _LANDING_KW):
+                        has_l = True
+                    if not has_t and any(kw in nval for kw in _TAKEOFF_KW):
+                        has_t = True
+            if has_l and has_t:
+                return True
+
+    return has_l and has_t
+
+
 # ── Worker thread ─────────────────────────────────────────────────────────────
 
 class _StatsWorker(QtCore.QThread):
@@ -101,19 +141,7 @@ class _StatsWorker(QtCore.QThread):
                 key = expl_val.lower()
                 expl_breakdown[key] = expl_breakdown.get(key, 0) + 1
 
-            has_events = False
-            motor = obs.get("events_motor")
-            if isinstance(motor, list) and motor:
-                has_events = True
-            if not has_events:
-                for key_ev in ("events_animal", "events_interesting_images"):
-                    block = obs.get(key_ev)
-                    if isinstance(block, list) and block:
-                        vals = block[0].get("values") if isinstance(block[0], dict) else None
-                        if vals:
-                            has_events = True
-                            break
-            if has_events:
+            if _has_landing_and_takeoff(obs):
                 derushees += 1
 
             sections = {"video_observation": obs, "survey": surv, "system": sys_}
