@@ -174,6 +174,7 @@ class QualifController:
         self._miniature_pixmaps: list = []   # pixmaps de la vue courante (None = en cours de chargement)
         self._camera_slot_labels: dict = {}  # slot_id → (QFrame, QLabel_img, angle, ts)
         self.campaign_fields = {}
+        self._campaign_videos_filled: bool = False
         self._working_dir = ""
         self.current_campaign_folder = None
         self.current_json_path = None
@@ -944,20 +945,40 @@ class QualifController:
         # sa _temp.json comme référence pour les propriétés de campagne.
         self._restore_qualifiable_state()
 
-        # JSON de référence pour les propriétés de campagne + infos système : on prend la
-        # première vidéo encore présente dans video_model (donc synchronisée par
-        # synchronize_campaign_field), jamais une vidéo trouvée dans le dossier mais
-        # déjà écartée.
+        # JSON de référence pour les propriétés de campagne + infos système : on prend le
+        # premier JSON (parmi les vidéos encore dans video_model) qui a des données survey
+        # non vides, pour préremplir les champs même si la première vidéo alphabétique est vide.
+        # Jamais une vidéo écartée (hors video_model) car synchronize_campaign_field ne l'atteint plus.
         first_loaded_json = None
+        _first_json_any = None
         for row in range(self.video_model.rowCount()):
             item = self.video_model.item(row, 0)
             vp = item.data(QtCore.Qt.ItemDataRole.UserRole) if item else None
             if not vp:
                 continue
             json_path = get_temp_json_path(str(vp))
-            if os.path.exists(json_path):
-                first_loaded_json = json_path
-                break
+            if not os.path.exists(json_path):
+                continue
+            if _first_json_any is None:
+                _first_json_any = json_path
+            try:
+                with open(json_path, 'r', encoding='utf-8') as _f:
+                    _survey = json.load(_f).get("survey", {})
+                if any(
+                    bool((_sv.get("value") if isinstance(_sv, dict) else _sv) and
+                         str(_sv.get("value") if isinstance(_sv, dict) else _sv or "").strip())
+                    for _sv in _survey.values()
+                ):
+                    first_loaded_json = json_path
+                    print(f"[CAMPAGNE] JSON de référence (survey rempli) : {os.path.basename(json_path)}")
+                    break
+            except Exception:
+                pass
+        if first_loaded_json is None:
+            first_loaded_json = _first_json_any
+            if first_loaded_json:
+                print(f"[CAMPAGNE] JSON de référence (fallback, survey vide) : "
+                      f"{os.path.basename(first_loaded_json)}")
 
         self.system_data = None
         if first_loaded_json:
@@ -969,6 +990,14 @@ class QualifController:
             except Exception as e:
                 print(f"[ERROR] Could not read system data: {e}")
             self.load_and_display_campaign_json(first_loaded_json)
+            _had_incomplete = self._propagate_survey_to_empty_videos(first_loaded_json)
+            if _had_incomplete:
+                # Certaines vidéos avaient des données manquantes → propagation faite → rouge
+                self._campaign_videos_filled = False
+                self._update_campaign_save_indicator()
+            else:
+                # Toutes les vidéos avaient déjà leurs données → vérification complète
+                self._refresh_campaign_consistency()
 
         self._reset_left_splitter_sizes()
         if step_cb:
@@ -1323,8 +1352,115 @@ class QualifController:
 
         self._update_campaign_save_indicator()
 
+    def _propagate_survey_to_empty_videos(self, ref_json_path: str) -> bool:
+        """Copie les données survey du JSON de référence vers tous les _temp.json des vidéos
+        qui ont des champs survey vides.
+
+        Retourne True si au moins une vidéo avait des données manquantes (même si elles ont été remplies).
+        Le cadre reste rouge dans ce cas — la campagne était incomplète à l'ouverture.
+        """
+        if not ref_json_path or not os.path.isfile(ref_json_path):
+            return False
+        try:
+            with open(ref_json_path, 'r', encoding='utf-8') as _f:
+                ref_survey: dict = json.load(_f).get("survey", {})
+        except Exception as e:
+            print(f"[CAMPAGNE] Impossible de lire le JSON de référence : {e}")
+            return False
+
+        # Garde uniquement les clés qui ont une valeur non vide dans le JSON de référence
+        ref_values = {
+            k: (v.get("value") if isinstance(v, dict) else v)
+            for k, v in ref_survey.items()
+        }
+        ref_values = {k: v for k, v in ref_values.items() if v and str(v).strip()}
+        if not ref_values:
+            return False
+
+        had_incomplete = False
+        n_filled = 0
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            vp = item.data(QtCore.Qt.ItemDataRole.UserRole) if item else None
+            if not vp:
+                continue
+            json_path = get_temp_json_path(str(vp))
+            if json_path == ref_json_path:
+                continue  # pas besoin de réécrire la référence sur elle-même
+            if not os.path.isfile(json_path):
+                had_incomplete = True
+                continue
+            try:
+                with open(json_path, 'r', encoding='utf-8') as _f:
+                    data = json.load(_f)
+                survey = data.setdefault("survey", {})
+                changed = False
+                for key, ref_val in ref_values.items():
+                    entry = survey.get(key, {})
+                    cur_val = (entry.get("value") if isinstance(entry, dict) else entry)
+                    if cur_val and str(cur_val).strip():
+                        continue  # déjà rempli → ne pas écraser
+                    had_incomplete = True
+                    if key in survey and isinstance(survey[key], dict):
+                        survey[key]["value"] = ref_val
+                    else:
+                        survey[key] = {"value": ref_val}
+                    changed = True
+                if changed:
+                    with open(json_path, 'w', encoding='utf-8') as _f:
+                        json.dump(data, _f, indent=4, ensure_ascii=False)
+                    n_filled += 1
+            except Exception as e:
+                print(f"[CAMPAGNE] Propagation survey impossible pour "
+                      f"{os.path.basename(json_path)} : {e}")
+                had_incomplete = True
+
+        if n_filled:
+            print(f"[CAMPAGNE] Survey propagé vers {n_filled} vidéo(s) incomplète(s)")
+        return had_incomplete
+
+    def _refresh_campaign_consistency(self):
+        """Scanne tous les _temp.json pour savoir si chaque vidéo a ses champs campagne remplis.
+
+        Met à jour self._campaign_videos_filled puis appelle _update_campaign_save_indicator.
+        Appelé au chargement de campagne et après chaque synchronize_campaign_field.
+        """
+        if not self.campaign_fields:
+            self._campaign_videos_filled = False
+            self._update_campaign_save_indicator()
+            return
+        keys = list(self.campaign_fields.keys())
+        n_ok = 0
+        n_total = 0
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            vp = item.data(QtCore.Qt.ItemDataRole.UserRole) if item else None
+            if not vp:
+                continue
+            n_total += 1
+            json_path = get_temp_json_path(str(vp))
+            if not os.path.isfile(json_path):
+                continue
+            try:
+                with open(json_path, 'r', encoding='utf-8') as _f:
+                    survey = json.load(_f).get("survey", {})
+            except Exception:
+                continue
+            video_ok = all(
+                bool(
+                    (survey.get(k, {}).get("value") if isinstance(survey.get(k, {}), dict)
+                     else survey.get(k)) or ""
+                )
+                for k in keys
+            )
+            if video_ok:
+                n_ok += 1
+        self._campaign_videos_filled = (n_total > 0 and n_ok == n_total)
+        print(f"[CAMPAGNE] Propriétés campagne : {n_ok}/{n_total} vidéo(s) complètes")
+        self._update_campaign_save_indicator()
+
     def _update_campaign_save_indicator(self):
-        """Contour vert si tous les champs de campagne sont remplis, rouge sinon."""
+        """Contour vert si tous les _temp.json des vidéos ont les champs campagne remplis, rouge sinon."""
         if not self.campaign_fields:
             # Aucun formulaire chargé → état neutre
             if self.frame_campaign:
@@ -1333,13 +1469,7 @@ class QualifController:
                     "border-radius: 8px; border: 1px solid #152d42;")
             return
 
-        all_filled = all(
-            bool(w.text().strip())
-            for w in self.campaign_fields.values()
-            if hasattr(w, 'text')
-        )
-
-        if all_filled:
+        if self._campaign_videos_filled:
             title_text  = self.translate("✓ Propriétés de campagne", "✓ Campaign Properties")
             title_color = "#4caf50"
             border      = "2px solid #4caf50"
@@ -1419,7 +1549,7 @@ class QualifController:
                 print(f"[CAMPAIGN]   ✗ {os.path.basename(json_path)} : {e}")
                 n_skip += 1
         print(f"[CAMPAIGN] {n_ok} écrit(s), {n_skip} ignoré(s)")
-        self._update_campaign_save_indicator()
+        self._refresh_campaign_consistency()
 
     # --- Video selection ---
 

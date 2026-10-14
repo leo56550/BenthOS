@@ -933,6 +933,25 @@ class MetadonneesController:
 
         outer.addWidget(self._ft_table, stretch=1)
 
+        # ── Barre de colonnes masquées ────────────────────────────────────────
+        self._hidden_col_chips: dict[int, QtWidgets.QPushButton] = {}
+        self._hidden_cols_bar = QtWidgets.QWidget()
+        self._hidden_cols_bar.setMaximumHeight(32)
+        self._hidden_cols_bar.setStyleSheet(
+            "background-color: #0e1d2b; border-top: 1px solid #1e3347;")
+        _bar_layout = QtWidgets.QHBoxLayout(self._hidden_cols_bar)
+        _bar_layout.setContentsMargins(6, 3, 6, 3)
+        _bar_layout.setSpacing(4)
+        _bar_lbl = QtWidgets.QLabel("Colonnes masquées :")
+        _bar_lbl.setStyleSheet(
+            "color: #7ec8e3; font-size: 10px; font-family: 'Segoe UI', sans-serif;"
+            " border: none; background: transparent;")
+        _bar_layout.addWidget(_bar_lbl)
+        _bar_layout.addStretch()
+        self._hidden_cols_bar_layout = _bar_layout
+        self._hidden_cols_bar.setVisible(False)
+        outer.addWidget(self._hidden_cols_bar)
+
         self.refresh_statistics()
 
     # ── Tableau feuille terrain ───────────────────────────────────────────
@@ -1664,11 +1683,42 @@ class MetadonneesController:
         """Double-clic sur un en-tête de colonne du tableau infostation : la cache."""
         if not (0 <= col < self._ft_table.columnCount()):
             return
+        if col in self._hidden_col_chips:
+            return
         self._ft_table.horizontalHeader().setSectionHidden(col, True)
+        labels = self._get_ft_header_labels()
+        label = labels[col] if col < len(labels) else f"Colonne {col + 1}"
+        btn = QtWidgets.QPushButton(f"{label}  ×")
+        btn.setToolTip(f"Cliquer pour réafficher « {label} »")
+        btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        btn.setStyleSheet(
+            "QPushButton {"
+            "  background-color: #1c2e40; color: #F2BFB4;"
+            "  border: 1px solid #2a4057; border-radius: 10px;"
+            "  font-size: 10px; font-family: 'Segoe UI', sans-serif;"
+            "  padding: 1px 8px;"
+            "}"
+            "QPushButton:hover { background-color: #2a4057; }"
+        )
+        btn.clicked.connect(lambda _, c=col: self._restore_ft_column(c))
+        # Insérer avant le stretch (dernier élément)
+        idx = self._hidden_cols_bar_layout.count() - 1
+        self._hidden_cols_bar_layout.insertWidget(idx, btn)
+        self._hidden_col_chips[col] = btn
+        self._hidden_cols_bar.setVisible(True)
+
+    def _restore_ft_column(self, col: int):
+        """Réaffiche une colonne masquée et supprime son chip de la barre."""
+        self._ft_table.horizontalHeader().setSectionHidden(col, False)
+        btn = self._hidden_col_chips.pop(col, None)
+        if btn is not None:
+            self._hidden_cols_bar_layout.removeWidget(btn)
+            btn.deleteLater()
+        if not self._hidden_col_chips:
+            self._hidden_cols_bar.setVisible(False)
 
     def _show_ft_header_menu(self, pos):
-        """Clic droit sur un en-tête : menu pour réafficher les colonnes cachées
-        (seul moyen de revenir en arrière après un double-clic qui en a caché une)."""
+        """Clic droit sur un en-tête : menu pour réafficher les colonnes cachées."""
         header = self._ft_table.horizontalHeader()
         labels = self._get_ft_header_labels()
         menu = QtWidgets.QMenu(self._ft_table)
@@ -1680,15 +1730,21 @@ class MetadonneesController:
             action.setChecked(not header.isSectionHidden(col))
             if header.isSectionHidden(col):
                 any_hidden = True
-            action.toggled.connect(
-                lambda checked, c=col: header.setSectionHidden(c, not checked))
+
+            def _toggle(checked, c=col):
+                if not checked:
+                    self._hide_ft_column(c)
+                else:
+                    self._restore_ft_column(c)
+
+            action.toggled.connect(_toggle)
         if any_hidden:
             menu.addSeparator()
             action_all = menu.addAction(
                 self.translate("Tout afficher", "Show all columns"))
             action_all.triggered.connect(
-                lambda: [header.setSectionHidden(c, False)
-                         for c in range(self._ft_table.columnCount())])
+                lambda: [self._restore_ft_column(c)
+                         for c in list(self._hidden_col_chips.keys())])
         menu.exec(header.mapToGlobal(pos))
 
     # ── Public interface ─────────────────────────────────────────────────

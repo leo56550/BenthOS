@@ -871,6 +871,9 @@ class AppController(QtCore.QObject):
 
             _step(self.translate("Propagation des modèles…", "Propagating models…"), 0, 0)
             self._refresh_all_page_models()
+            # Reconstruit le tableau infostation depuis les temp.json (incl. données propagées)
+            if hasattr(self.metadonnees_ctrl, '_rebuild_ft_table'):
+                self.metadonnees_ctrl._rebuild_ft_table()
             self._detect_campaign_mode()
             self.refresh_status_bar()
             self._refresh_dashboard()
