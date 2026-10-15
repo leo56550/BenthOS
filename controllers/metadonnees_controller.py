@@ -3626,8 +3626,37 @@ class MetadonneesController:
                 return
 
         # ── 2. Tout est rempli ou génération forcée ───────────────────────────
-        self._generate_benthoss_folder()
-        self.generate_infostation_csv()
+        n_videos = self.video_model.rowCount()
+        _pdlg = QtWidgets.QProgressDialog(
+            self.translate("Génération en cours…", "Generating…"),
+            None, 0, n_videos * 2, self.widget
+        )
+        _pdlg.setWindowTitle(self.translate("Génération Infostation", "Infostation Generation"))
+        _pdlg.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
+        _pdlg.setMinimumDuration(0)
+        _pdlg.setMinimumWidth(340)
+        _pdlg.setStyleSheet("""
+            QProgressDialog { background-color: #0d1b2a; color: #F2BFB4; }
+            QLabel { color: #F2BFB4; font-family: 'Segoe UI', sans-serif; font-size: 11px; }
+            QProgressBar {
+                border: 1px solid #2778A2; border-radius: 4px;
+                background-color: #162433; text-align: center; color: white;
+            }
+            QProgressBar::chunk { background-color: #2778A2; border-radius: 3px; }
+        """)
+        _pdlg.setValue(0)
+        _step = [0]
+
+        def _progress_cb(label: str):
+            _step[0] += 1
+            _pdlg.setLabelText(label)
+            _pdlg.setValue(_step[0])
+            QtWidgets.QApplication.processEvents()
+
+        self._generate_benthoss_folder(_progress_cb=_progress_cb)
+        self.generate_infostation_csv(_progress_cb=_progress_cb)
+        _pdlg.setValue(_pdlg.maximum())
+        _pdlg.close()
 
     def _blink_widgets(self, header_widgets: list, table_cells: list):
         """Fait clignoter en rouge les champs vides (3 allers-retours, 200 ms chacun)."""
@@ -3735,7 +3764,7 @@ class MetadonneesController:
         parts = [p for p in [date_part + time_part, region, codestation] if p]
         return "_".join(parts) if parts else ""
 
-    def _generate_benthoss_folder(self):
+    def _generate_benthoss_folder(self, _progress_cb=None):
         """Génère BenthOS_sorties/<YYYYMMDDhhmm_AREA_codeStation>/ avec IMG/, JSON, VIAME.csv et .lnk."""
         if not self._working_dir:
             QtWidgets.QMessageBox.warning(
@@ -3750,8 +3779,14 @@ class MetadonneesController:
         benthoss_dir = self._working_dir  # BenthOS_sorties IS le dossier de travail
         errors = []
         generated = []
+        _total_rows = self.video_model.rowCount()
 
-        for row in range(self.video_model.rowCount()):
+        for row in range(_total_rows):
+            if _progress_cb:
+                _progress_cb(self.translate(
+                    f"Dossiers BenthOS… {row + 1}/{_total_rows}",
+                    f"BenthOS folders… {row + 1}/{_total_rows}"
+                ))
             item = self.video_model.item(row, 0)
             if not item:
                 continue
@@ -4200,7 +4235,7 @@ class MetadonneesController:
         finally:
             self._working_dir = old_working_dir
 
-    def generate_infostation_csv(self):
+    def generate_infostation_csv(self, _progress_cb=None):
         """Génère silencieusement le CSV Infostation (appelé aussi par l'auto-sync)."""
         if not self._working_dir:
             return
@@ -4210,12 +4245,19 @@ class MetadonneesController:
 
         csv_path = get_infostation_path(self._working_dir)
         os.makedirs(self._working_dir, exist_ok=True)
+        sorted_paths = self._sort_paths_by_station_time(video_paths)
+        _total = len(sorted_paths)
 
         try:
             with open(csv_path, 'w', newline='', encoding='cp1252', errors='replace') as f:
                 writer = csv.writer(f, delimiter=';', quoting=csv.QUOTE_MINIMAL)
                 writer.writerow(_INFOSTATION_COLUMNS)
-                for vp in self._sort_paths_by_station_time(video_paths):
+                for i, vp in enumerate(sorted_paths):
+                    if _progress_cb:
+                        _progress_cb(self.translate(
+                            f"CSV Infostation… {i + 1}/{_total}",
+                            f"Infostation CSV… {i + 1}/{_total}"
+                        ))
                     try:
                         row_data = self._build_infostation_row(vp, for_csv=True)
                         writer.writerow([str(v).replace('\n', ' | ').replace('\r', '')

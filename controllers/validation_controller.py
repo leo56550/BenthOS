@@ -78,12 +78,14 @@ class ValidationController:
     """Contrôleur de la page Validation : lecture vidéo et saisie de l'exploitabilité."""
 
     def __init__(self, page_widget: QtWidgets.QWidget, shared_model: QtGui.QStandardItemModel,
-                 on_video_focused=None, on_qualification_changed=None):
+                 on_video_focused=None, on_qualification_changed=None,
+                 get_aruco_result=None):
         """Initialise le player embarqué, l'arbre vidéo et le combo exploitabilité."""
         self.page = page_widget
         self.video_model = shared_model
         self._on_video_focused = on_video_focused
         self._on_qualification_changed = on_qualification_changed
+        self._get_aruco_result = get_aruco_result
         self.current_language = 'en'
         self.current_json_path = None
         self.current_video_path = None
@@ -141,6 +143,16 @@ class ValidationController:
             )
             # Cacher le bouton ardoise original du player
             self.player.btn_ardoise.setVisible(False)
+
+            # Badge ArUco dans la barre de temps du player (à droite du compteur de frames)
+            self._aruco_badge = QtWidgets.QLabel("")
+            self._aruco_badge.setContentsMargins(8, 2, 8, 2)
+            self._aruco_badge.setStyleSheet(
+                "QLabel { color: #888; background: #1a2a3a; border: 1px solid #3a5060;"
+                " border-radius: 4px; font-size: 11px; }"
+            )
+            self._aruco_badge.setVisible(False)
+            self.player.time_layout.addWidget(self._aruco_badge)
 
             # Clic ou double-clic sur un événement → seek immédiat
             self.player.timeline.eventSelected.connect(self._seek_to_timeline_event)
@@ -688,7 +700,16 @@ class ValidationController:
                     pass
         except Exception:
             pass
-        self.player.load_video_and_events(video_to_load, detected_events, is_stereo=is_stereo)
+
+        # Calcul de la position de départ (ArUco) avant le chargement
+        _aruco_start_ms = 0
+        if self._get_aruco_result:
+            _ar = self._get_aruco_result(selected_video_path)
+            if _ar:
+                _aruco_start_ms = _ar.get("frame_ms", 0)
+
+        self.player.load_video_and_events(video_to_load, detected_events, is_stereo=is_stereo,
+                                          start_position_ms=_aruco_start_ms)
 
         csv_telemetry = selected_video_path.replace(".mp4", ".csv")
         if os.path.exists(csv_telemetry):
@@ -719,6 +740,26 @@ class ValidationController:
             has_events = os.path.exists(csv_system) or self._json_has_rotation_events()
             self.btn_toggle_sector_view.setEnabled(has_events)
         self._sector_dirty = False
+
+        # ── Badge ArUco ──────────────────────────────────────────────────────
+        if self._get_aruco_result and hasattr(self, '_aruco_badge'):
+            aruco = self._get_aruco_result(selected_video_path)
+            if aruco:
+                _ms = aruco.get("frame_ms", 0)
+                _secs = _ms // 1000
+                _time_str = f"{_secs // 60:02d}:{_secs % 60:02d}"
+                self._aruco_badge.setText(f"✓ QRcode détecté : {_time_str}")
+                self._aruco_badge.setStyleSheet(
+                    "QLabel { color: #7fff7f; background: #0d2a0d; border: 1px solid #3a7a3a;"
+                    " border-radius: 4px; font-size: 11px; }"
+                )
+            else:
+                self._aruco_badge.setText("✗ QRcode non détecté")
+                self._aruco_badge.setStyleSheet(
+                    "QLabel { color: #888; background: #1a2a3a; border: 1px solid #3a5060;"
+                    " border-radius: 4px; font-size: 11px; }"
+                )
+            self._aruco_badge.setVisible(True)
 
     def _toggle_sector_view(self):
         """Alterne entre le lecteur vidéo et la vue des secteurs (photos de rotation moteur)."""

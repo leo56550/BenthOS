@@ -135,10 +135,12 @@ class AppController(QtCore.QObject):
             on_before_delete=self._release_file_in_all_players,
             on_qualification_changed=self._on_qualification_changed,
         )
+        self._aruco_results: dict = {}
         self.validation_ctrl = ValidationController(
             window.page_validation, self.qualif_ctrl.video_model,
             on_video_focused=self._focus_map,
             on_qualification_changed=self._on_qualification_changed,
+            get_aruco_result=self._aruco_results.get,
         )
         self.evenements_ctrl = EvenementsController(
             window.page_evenements, self.qualif_ctrl.video_model,
@@ -945,6 +947,47 @@ class AppController(QtCore.QObject):
                     self.switch_page(w.page_qualification)
                 else:
                     self.lock_navigation(True)
+
+            # Étape 4 — Détection ArUco (parallèle, pendant l'overlay)
+            self._aruco_results.clear()
+            _aruco_paths = []
+            _model = self.qualif_ctrl.video_model
+            for _row in range(_model.rowCount()):
+                _item = _model.item(_row, 0)
+                if _item:
+                    _vp = str(_item.data(QtCore.Qt.ItemDataRole.UserRole) or "")
+                    if _vp and os.path.isfile(_vp):
+                        _aruco_paths.append(_vp)
+
+            if _aruco_paths:
+                from services.aruco_service import detect_aruco_in_video
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                _n = len(_aruco_paths)
+                _workers = min(4, os.cpu_count() or 2, _n)
+                _step(
+                    self.translate(
+                        f"Détection QR code… (0/{_n})",
+                        f"QR code detection… (0/{_n})",
+                    ),
+                    0, _n,
+                )
+                _done = 0
+                with ThreadPoolExecutor(max_workers=_workers) as _pool:
+                    _futures = {_pool.submit(detect_aruco_in_video, vp): vp
+                                for vp in _aruco_paths}
+                    for _fut in as_completed(_futures):
+                        _vp = _futures[_fut]
+                        self._aruco_results[_vp] = _fut.result()
+                        _done += 1
+                        _step(
+                            self.translate(
+                                f"Détection QR code… ({_done}/{_n})",
+                                f"QR code detection… ({_done}/{_n})",
+                            ),
+                            _done, _n,
+                        )
+                _found = sum(1 for r in self._aruco_results.values() if r)
+                print(f"[ARUCO] Scan terminé — {_found}/{_n} vidéo(s) avec marker ArUco")
 
         finally:
             _overlay.stop()

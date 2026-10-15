@@ -1112,7 +1112,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             return 0.0
 
 
-    def load_video_and_events(self, video_data, events: list, is_stereo: bool = False):
+    def load_video_and_events(self, video_data, events: list, is_stereo: bool = False,
+                              start_position_ms: int = 0):
         """Charge une vidéo (mono ou stéréo), configure la timeline et démarre la lecture."""
         if self._fs_window is not None:
             self._exit_fullscreen()
@@ -1173,7 +1174,21 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
         self.display_stack.setCurrentIndex(1 if has_video else 0)
         if has_video:
-            self.play_all()
+            if start_position_ms > 0:
+                # On lance la lecture normalement, puis on seek dès que
+                # le player est effectivement en PlayingState.
+                # setPosition() avant play() est ignoré par Qt6 sur certains codecs.
+                def _seek_on_playing(state, _pos=start_position_ms):
+                    if state == QMediaPlayer.PlaybackState.PlayingState:
+                        try:
+                            self.player.playbackStateChanged.disconnect(_seek_on_playing)
+                        except Exception:
+                            pass
+                        self.player.setPosition(_pos)
+                self.player.playbackStateChanged.connect(_seek_on_playing)
+                self.play_all()
+            else:
+                self.play_all()
 
         self.timeline.update()
 
