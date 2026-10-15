@@ -294,6 +294,46 @@ class QualifController:
         self._videos_scroll_layout.setSpacing(2)
         self._videos_scroll_layout.addStretch()
         self._videos_scroll.setWidget(self._videos_scroll_content)
+
+        # Navigation clavier ↑/↓ + Échap dans la liste vidéo
+        self._videos_scroll.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
+        _ctrl_ref = self
+
+        class _VideoKeyNav(QtCore.QObject):
+            def eventFilter(self_kn, obj, event):
+                if event.type() != QtCore.QEvent.Type.KeyPress:
+                    return False
+                key = event.key()
+                paths = list(_ctrl_ref._video_row_widgets.keys())
+                if not paths:
+                    return False
+                cur = _ctrl_ref._selected_video_path
+                try:
+                    cur_idx = paths.index(cur) if cur is not None else -1
+                except ValueError:
+                    cur_idx = -1
+                if key == QtCore.Qt.Key.Key_Up and cur_idx > 0:
+                    new_path = paths[cur_idx - 1]
+                    _ctrl_ref._on_video_row_clicked(new_path)
+                    frame = _ctrl_ref._video_row_widgets.get(new_path)
+                    if frame:
+                        _ctrl_ref._videos_scroll.ensureWidgetVisible(frame)
+                    return True
+                if key == QtCore.Qt.Key.Key_Down and cur_idx < len(paths) - 1:
+                    new_path = paths[cur_idx + 1]
+                    _ctrl_ref._on_video_row_clicked(new_path)
+                    frame = _ctrl_ref._video_row_widgets.get(new_path)
+                    if frame:
+                        _ctrl_ref._videos_scroll.ensureWidgetVisible(frame)
+                    return True
+                if key == QtCore.Qt.Key.Key_Escape:
+                    _ctrl_ref._deselect_current_video()
+                    return True
+                return False
+
+        self._video_key_nav = _VideoKeyNav(self._videos_scroll)
+        self._videos_scroll.installEventFilter(self._video_key_nav)
+
         layout_block.addWidget(self._videos_scroll)
 
         if hasattr(splitter, "indexOf"):
@@ -690,10 +730,31 @@ class QualifController:
 
         return frame
 
+    def _deselect_current_video(self):
+        """Désélectionne la vidéo courante (Échap)."""
+        if not self._selected_video_path:
+            return
+        prev = self._selected_video_path
+        self._selected_video_path = None
+        frame = self._video_row_widgets.get(prev)
+        if frame:
+            is_t = not any(
+                self.video_model.item(r, 0) is not None
+                and str(self.video_model.item(r, 0).data(
+                    QtCore.Qt.ItemDataRole.UserRole)) == prev
+                for r in range(self.video_model.rowCount())
+            )
+            bg = "#111820" if is_t else "#1a2a3a"
+            frame.setStyleSheet(
+                f"QFrame#vrow {{ background-color: {bg}; border-radius: 4px;"
+                f" border: 1px solid {bg}; }}"
+            )
+
     def _on_video_row_clicked(self, video_path: str):
         """Sélectionne une vidéo depuis la liste personnalisée."""
         prev_path = self._selected_video_path
         self._selected_video_path = video_path
+        self._videos_scroll.setFocus()
 
         # Mettre à jour le style des lignes affectées sans reconstruire la liste
         for path, frame in self._video_row_widgets.items():

@@ -930,6 +930,48 @@ class MetadonneesController:
         del_shortcut.setContext(QtCore.Qt.ShortcutContext.WidgetShortcut)
         del_shortcut.activated.connect(self._delete_selected_ft_cells)
 
+        # ── Barre de recherche Ctrl+F ──────────────────────────────────────
+        self._search_bar = QtWidgets.QWidget()
+        self._search_bar.setFixedHeight(32)
+        self._search_bar.setStyleSheet(
+            "background-color: #0c1720; border-bottom: 1px solid #1a2e40;")
+        _sb_row = QtWidgets.QHBoxLayout(self._search_bar)
+        _sb_row.setContentsMargins(8, 3, 8, 3)
+        _sb_row.setSpacing(6)
+        _sb_lbl = QtWidgets.QLabel(self.translate("Recherche :", "Search:"))
+        _sb_lbl.setStyleSheet(
+            "color: #7ec8e3; font-size: 10px; font-weight: bold; border: none;"
+            " font-family: 'Segoe UI', sans-serif;")
+        _sb_row.addWidget(_sb_lbl)
+        self._search_input = QtWidgets.QLineEdit()
+        self._search_input.setPlaceholderText(
+            self.translate("Nom de fichier, station, valeur…", "Filename, station, value…"))
+        self._search_input.setStyleSheet(
+            "QLineEdit { background-color: #162433; color: #F2BFB4;"
+            " border: 1px solid #2a4057; border-radius: 3px; padding: 2px 6px;"
+            " font-size: 10px; font-family: 'Segoe UI', sans-serif; }"
+            " QLineEdit:focus { border-color: #2778A2; }")
+        self._search_input.textChanged.connect(self._apply_ft_search_filter)
+        _esc_search = QtGui.QShortcut(
+            QtGui.QKeySequence(QtCore.Qt.Key.Key_Escape), self._search_input)
+        _esc_search.setContext(QtCore.Qt.ShortcutContext.WidgetShortcut)
+        _esc_search.activated.connect(self._hide_ft_search)
+        _sb_row.addWidget(self._search_input, stretch=1)
+        _sb_close = QtWidgets.QPushButton("✕")
+        _sb_close.setFixedSize(20, 20)
+        _sb_close.setStyleSheet(
+            "QPushButton { background: transparent; color: #5a8aaa; border: none; font-size: 12px; }"
+            " QPushButton:hover { color: #F2BFB4; }")
+        _sb_close.clicked.connect(self._hide_ft_search)
+        _sb_row.addWidget(_sb_close)
+        self._search_bar.setVisible(False)
+        outer.addWidget(self._search_bar)
+
+        _ctrlf = QtGui.QShortcut(
+            QtGui.QKeySequence(QtCore.Qt.Modifier.CTRL | QtCore.Qt.Key.Key_F),
+            self.widget)
+        _ctrlf.activated.connect(self._show_ft_search)
+
         outer.addWidget(self._ft_table, stretch=1)
 
         # ── Barre de colonnes masquées ────────────────────────────────────────
@@ -982,6 +1024,8 @@ class MetadonneesController:
             self._filter_bar.setVisible(False)
             if hasattr(self, '_btn_json_filter'):
                 self._btn_json_filter.setChecked(False)
+        if hasattr(self, '_search_bar') and self._search_bar.isVisible():
+            self._hide_ft_search()
         self._set_video_buttons_enabled(False)
         self._ft_table.setSortingEnabled(False)
         self._ft_table.blockSignals(True)
@@ -1210,6 +1254,38 @@ class MetadonneesController:
         # Ré-appliquer le filtre actif si besoin
         if hasattr(self, '_btn_json_filter') and self._btn_json_filter.isChecked():
             self._toggle_json_filter(True)
+
+    def _show_ft_search(self):
+        """Affiche la barre de recherche et donne le focus au champ."""
+        if hasattr(self, '_search_bar'):
+            self._search_bar.setVisible(True)
+            self._search_input.setFocus()
+            self._search_input.selectAll()
+
+    def _hide_ft_search(self):
+        """Masque la barre de recherche et réaffiche toutes les lignes."""
+        if hasattr(self, '_search_bar'):
+            self._search_bar.setVisible(False)
+            self._search_input.blockSignals(True)
+            self._search_input.clear()
+            self._search_input.blockSignals(False)
+            for row in range(self._ft_table.rowCount()):
+                self._ft_table.setRowHidden(row, False)
+            self._ft_table.setFocus()
+
+    def _apply_ft_search_filter(self, text: str):
+        """Filtre les lignes du tableau selon le texte saisi."""
+        text = text.strip().lower()
+        for row in range(self._ft_table.rowCount()):
+            if not text:
+                self._ft_table.setRowHidden(row, False)
+                continue
+            match = any(
+                text in (self._ft_table.item(row, col).text().lower()
+                         if self._ft_table.item(row, col) else "")
+                for col in range(self._ft_table.columnCount())
+            )
+            self._ft_table.setRowHidden(row, not match)
 
     def _toggle_json_filter(self, checked: bool):
         """Masque les lignes sans _temp.json quand le filtre est actif."""
