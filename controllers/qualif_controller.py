@@ -1740,11 +1740,14 @@ class QualifController:
                 # Priorité : champ date survey → chemin vidéo
                 _date_raw = str((sv.get("date") or {}).get("value") or "").strip()
                 _yr_m = _re_yr.search(r'(20\d{2})', _date_raw) or _re_yr.search(r'(?<!\d)(20\d{2})(?!\d)', str(vpath))
+                _datawork_path = str((obs.get("video_path") or {}).get("value") or "").strip()
                 marker_meta[item.text()] = {
                     "exploitable": str((obs.get("exploitable") or {}).get("value") or "").strip().lower(),
                     "codestation": compute_codestation(sv, obs),
                     "depth": str(_depth_val).strip(),
                     "video_path": str(vpath),
+                    "datawork_path": _datawork_path,
+                    "date": _date_raw,
                     "year": _yr_m.group(1) if _yr_m else "",
                 }
             except Exception:
@@ -1780,6 +1783,8 @@ class QualifController:
                             "codestation": str(pt.get("codestation") or "").strip(),
                             "depth": str(pt.get("depth") or "").strip(),
                             "video_path": str(pt.get("video_path") or "").strip(),
+                            "datawork_path": str(pt.get("datawork_path") or "").strip(),
+                            "date": str(pt.get("date") or "").strip(),
                             "year": str(pt.get("year") or "").strip(),
                         }
 
@@ -2003,22 +2008,24 @@ class QualifController:
                 filter_group = self._marker_filter_group(meta.get("exploitable", ""))
                 _depth_raw   = meta.get("depth", "")
                 depth_val    = str(_depth_raw).strip() if _depth_raw not in (None, "", "None", "null") else ""
-                video_path_m = meta.get("video_path", "")
-                # Chemin relatif depuis le dossier parent du working_dir
-                try:
-                    _base = os.path.dirname(self._working_dir) if self._working_dir else ""
-                    if video_path_m and _base:
-                        path_display = os.path.relpath(video_path_m, _base).replace("\\", "/")
-                    elif video_path_m:
-                        _parts = video_path_m.replace("\\", "/").rstrip("/").split("/")
-                        path_display = "/".join(_parts[-2:]) if len(_parts) >= 2 else name
-                    else:
-                        path_display = name
-                except (ValueError, TypeError):
+                video_path_m  = meta.get("video_path", "")
+                datawork_path = meta.get("datawork_path", "")
+                if datawork_path:
+                    path_display = datawork_path.replace("\\", "/")
+                elif video_path_m:
+                    try:
+                        _base = os.path.dirname(self._working_dir) if self._working_dir else ""
+                        path_display = (os.path.relpath(video_path_m, _base).replace("\\", "/")
+                                        if _base else video_path_m.replace("\\", "/"))
+                    except (ValueError, TypeError):
+                        path_display = video_path_m.replace("\\", "/")
+                else:
                     path_display = name
+                date_val     = meta.get("date", "")
                 lbl_exploit  = self.translate("Exploitabilité", "Exploitability")
                 lbl_depth    = self.translate("Profondeur", "Depth")
                 lbl_code     = self.translate("Code station", "Station code")
+                lbl_date     = self.translate("Date", "Date")
                 exploit_text = meta.get("exploitable") or "—"
                 popup_html = f"""
 <div style="
@@ -2027,7 +2034,7 @@ class QualifController:
     color:#c8d8e8;
     border-radius:8px;
     min-width:200px;
-    max-width:280px;
+    max-width:320px;
     padding:0;
     overflow:hidden;
 ">
@@ -2045,6 +2052,7 @@ class QualifController:
   </div>
   <div style="padding:10px 12px;line-height:1.9;">
     {'<div><span style="color:#5a7a9a;font-size:11px;">' + lbl_code + ' :</span> <span style="font-weight:600;">' + codestation + '</span></div>' if codestation else ''}
+    {'<div><span style="color:#5a7a9a;font-size:11px;">' + lbl_date + ' :</span> <span style="font-weight:600;">' + date_val + '</span></div>' if date_val else ''}
     <div><span style="color:#5a7a9a;font-size:11px;">{lbl_exploit} :</span>
          <span style="font-weight:600;color:{color};">{exploit_text}</span></div>
     {'<div><span style="color:#5a7a9a;font-size:11px;">' + lbl_depth + ' :</span> <span style="font-weight:600;">' + depth_val + ' m</span></div>' if depth_val else ''}

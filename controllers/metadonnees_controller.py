@@ -4049,6 +4049,7 @@ class MetadonneesController:
         cobs_col  = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "codeObs"),      None)
         depth_col = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "depth"),        None)
         date_col  = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "date"),         None)
+        vpath_col = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "video_path"),   None)
         if lat_col is None or lon_col is None:
             return result
         for row in range(self._ft_table.rowCount()):
@@ -4079,22 +4080,34 @@ class MetadonneesController:
             if depth_col is not None:
                 depth_item = self._ft_table.item(row, depth_col)
                 depth = (depth_item.text().strip() if depth_item else "")
-            # Recherche du fichier vidéo dans le répertoire de travail
+            # Chemin absolu depuis le UserRole de la col 0 (plus fiable que os.walk)
+            item0 = self._ft_table.item(row, 0)
             video_path = ""
-            wd = working_dir or getattr(self, '_working_dir', '') or ''
-            if wd and name.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
-                for dirpath, _dirs, files in os.walk(wd):
-                    if name in files:
-                        video_path = os.path.join(dirpath, name)
-                        break
-            # Année : priorité champ date survey → chemin vidéo → répertoire de travail
+            if item0:
+                _ur = item0.data(QtCore.Qt.ItemDataRole.UserRole)
+                if _ur:
+                    video_path = str(_ur)
+            # Dossier Datawork : colonne dédiée, sinon dérivé du chemin absolu
+            datawork_path = ""
+            if vpath_col is not None:
+                vpath_item = self._ft_table.item(row, vpath_col)
+                datawork_path = (vpath_item.text().strip() if vpath_item else "")
+            if not datawork_path and video_path:
+                wd = working_dir or getattr(self, '_working_dir', '') or ''
+                try:
+                    _base = os.path.dirname(wd) if wd else ""
+                    datawork_path = (os.path.relpath(os.path.dirname(video_path), _base)
+                                     if _base else os.path.dirname(video_path))
+                except (ValueError, TypeError):
+                    datawork_path = os.path.dirname(video_path)
+            # Année : priorité champ date survey → chemin vidéo
             import re as _re_yr
             date_str = ""
             if date_col is not None:
                 date_item = self._ft_table.item(row, date_col)
                 date_str = (date_item.text().strip() if date_item else "")
             _yr_m = (_re_yr.search(r'(20\d{2})', date_str)
-                     or _re_yr.search(r'(?<!\d)(20\d{2})(?!\d)', video_path or wd or ""))
+                     or _re_yr.search(r'(?<!\d)(20\d{2})(?!\d)', video_path or ""))
             year = _yr_m.group(1) if _yr_m else ""
             result[name] = {
                 "coords": [lat, lon],
@@ -4102,6 +4115,8 @@ class MetadonneesController:
                 "codestation": codestation,
                 "depth": depth,
                 "video_path": video_path,
+                "datawork_path": datawork_path,
+                "date": date_str,
                 "year": year,
             }
         return result
