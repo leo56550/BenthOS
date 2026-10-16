@@ -3087,6 +3087,27 @@ class MetadonneesController:
             else:
                 vobs["video_number"] = {"value": _vn_val}
 
+            # Préserver les champs de qualification depuis le _temp.json existant
+            # si le CSV n'a pas fourni de valeur différente du défaut template.
+            # Evite d'écraser exploitable/qualifiable saisis via la page Validation.
+            if os.path.isfile(temp_path):
+                try:
+                    with open(temp_path, 'r', encoding='utf-8') as _f_ex:
+                        _ex = json.load(_f_ex)
+                    _vo_ex  = _ex.get('video_observation', {})
+                    _vo_new = jdata.get('video_observation', {})
+                    for _pfk in ('exploitable', 'qualifiable'):
+                        _tval = (_TEMPLATE_BASE.get('video_observation', {}).get(_pfk) or {}).get('value')
+                        _cval = (_vo_new.get(_pfk) or {}).get('value')
+                        _eval = (_vo_ex.get(_pfk) or {}).get('value')
+                        if _cval == _tval and _eval is not None and _eval != _tval:
+                            if isinstance(_vo_new.get(_pfk), dict):
+                                _vo_new[_pfk]['value'] = _eval
+                            else:
+                                _vo_new[_pfk] = {'value': _eval}
+                except Exception:
+                    pass
+
             try:
                 _fix_section_misplacements(jdata)
                 with open(temp_path, 'w', encoding='utf-8') as f:
@@ -3211,6 +3232,26 @@ class MetadonneesController:
                     obs_b['codeObs']['value'] = direct_code
                 else:
                     obs_b['codeObs'] = {'value': direct_code}
+
+            # Préserver les champs de qualification depuis le _temp.json existant
+            # si le CSV n'a pas fourni de valeur différente du défaut template.
+            if os.path.isfile(temp_path):
+                try:
+                    with open(temp_path, 'r', encoding='utf-8') as _f_ex:
+                        _ex = json.load(_f_ex)
+                    _vo_ex  = _ex.get('video_observation', {})
+                    _vo_new = jdata.get('video_observation', {})
+                    for _pfk in ('exploitable', 'qualifiable'):
+                        _tval = (_TEMPLATE_BASE.get('video_observation', {}).get(_pfk) or {}).get('value')
+                        _cval = (_vo_new.get(_pfk) or {}).get('value')
+                        _eval = (_vo_ex.get(_pfk) or {}).get('value')
+                        if _cval == _tval and _eval is not None and _eval != _tval:
+                            if isinstance(_vo_new.get(_pfk), dict):
+                                _vo_new[_pfk]['value'] = _eval
+                            else:
+                                _vo_new[_pfk] = {'value': _eval}
+                except Exception:
+                    pass
 
             try:
                 _fix_section_misplacements(jdata)
