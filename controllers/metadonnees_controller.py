@@ -2474,11 +2474,14 @@ class MetadonneesController:
         return str(val) if val is not None else ""
 
     @staticmethod
-    def _fmt_date(yyyymmdd: str) -> str:
-        """Convertit '20190819' → '19/08/2019'."""
-        if len(yyyymmdd) == 8 and yyyymmdd.isdigit():
-            return f"{yyyymmdd[6:8]}/{yyyymmdd[4:6]}/{yyyymmdd[0:4]}"
-        return yyyymmdd
+    def _fmt_date(date_str: str) -> str:
+        """Normalise YYYYMMDD ou YYMMDD → YYYYMMDD pour le CSV."""
+        digits = re.sub(r"[^0-9]", "", date_str or "")
+        if len(digits) == 8:
+            return digits
+        if len(digits) == 6:
+            return f"20{digits}"
+        return date_str
 
     @staticmethod
     def _extract_stem_parts(stem: str):
