@@ -928,6 +928,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
     def _on_playback_state_changed(self, state):
         """Met à jour l'état des corrections et émet playback_state_changed lors d'un changement d'état."""
         is_playing = (state == QMediaPlayer.PlaybackState.PlayingState)
+        print(f"[SEEK] _on_playback_state_changed is_playing={is_playing} left_display.index={self.left_display.currentIndex()}")
         if is_playing:
             # Reprendre la lecture : repasser au rendu hardware, purger la frame brute
             self.left_display.setCurrentIndex(0)
@@ -1127,6 +1128,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
         has_video = False
 
+        _seek_pos = start_position_ms
+
         if is_stereo and isinstance(video_data, list) and len(video_data) >= 2:
             path_l, path_r = video_data[0], video_data[1]
             if os.path.exists(path_l) and os.path.exists(path_r):
@@ -1174,21 +1177,94 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
         self.display_stack.setCurrentIndex(1 if has_video else 0)
         if has_video:
-            if start_position_ms > 0:
-                # On lance la lecture normalement, puis on seek dès que
-                # le player est effectivement en PlayingState.
-                # setPosition() avant play() est ignoré par Qt6 sur certains codecs.
-                def _seek_on_playing(state, _pos=start_position_ms):
-                    if state == QMediaPlayer.PlaybackState.PlayingState:
+            # Extraire la frame exacte AVANT play_all() — play_all() déclenche
+            # _on_playback_state_changed(Playing) qui efface l'overlay (setCurrentIndex(0)).
+            # On stocke l'image et on l'affiche seulement APRÈS la pause finale.
+            _qr_img: QtGui.QImage | None = None
+            if _seek_pos > 0 and self.current_video_path:
+                print(f"[SEEK] Extraction OpenCV frame à {_seek_pos}ms depuis {os.path.basename(self.current_video_path)}")
+                _cv = cv2.VideoCapture(self.current_video_path)
+                if _cv.isOpened():
+                    _cv.set(cv2.CAP_PROP_POS_MSEC, float(_seek_pos))
+                    _shown = None
+                    _iterations = 0
+                    for _ in range(300):
+                        _pre_ms = int(_cv.get(cv2.CAP_PROP_POS_MSEC))
+                        _ok, _fr = _cv.read()
+                        _iterations += 1
+                        if not _ok:
+                            print(f"[SEEK] cap.read() échoué après {_iterations} itérations")
+                            break
+                        _shown = _fr
+                        if _pre_ms >= _seek_pos:
+                            print(f"[SEEK] Frame trouvée en {_iterations} itérations, pre_ms={_pre_ms}ms")
+                            break
+                    else:
+                        print(f"[SEEK] Limite 300 itérations atteinte, prise de la dernière frame")
+                    _cv.release()
+                    if _shown is not None:
+                        _rgb = cv2.cvtColor(_shown, cv2.COLOR_BGR2RGB)
+                        _h, _w = _rgb.shape[:2]
+                        _qr_img = QtGui.QImage(
+                            _rgb.data, _w, _h, 3 * _w,
+                            QtGui.QImage.Format.Format_RGB888).copy()
+                        print(f"[SEEK] _qr_img créé ({_w}×{_h})")
+                    else:
+                        print(f"[SEEK] _qr_img=None, _shown est None")
+                else:
+                    print(f"[SEEK] Impossible d'ouvrir la vidéo via OpenCV")
+            else:
+                print(f"[SEEK] _seek_pos={_seek_pos}, current_video_path={self.current_video_path!r} — pas d'extraction")
+
+            def _show_qr_overlay():
+                """Affiche l'overlay OpenCV — appelé après pause_all() pour ne pas être écrasé."""
+                print(f"[SEEK] _show_qr_overlay() appelé — _qr_img={'OK' if _qr_img is not None else 'None'}, left_display.currentIndex={self.left_display.currentIndex()}")
+                if _qr_img is not None:
+                    self.correction_overlay.set_image(_qr_img)
+                    self.left_display.setCurrentIndex(1)
+                    print(f"[SEEK] left_display basculé à index 1 (overlay)")
+                # Forcer les labels et le curseur timeline à _seek_pos :
+                # pendant la lecture, on_player_position_changed early-return et le smooth_timer
+                # s'arrête à pause → les labels restent à leur dernière valeur (souvent 0ms).
+                self.update_top_time_label(_seek_pos, self.player.duration())
+                self.update_frame_label(_seek_pos)
+                self.timeline.set_current_position(_seek_pos)
+                self.center_scroll_on_cursor(_seek_pos)
+
+            print(f"[SEEK] Appel play_all()")
+            self.play_all()
+            if _seek_pos > 0:
+                # Phase 1 : attendre pos > 0 (media chargé), lancer le seek.
+                # Phase 2 : attendre pos >= _seek_pos, mettre en pause et afficher l'overlay.
+                _state = [0]
+                def _on_pos_seek(pos, _p=_seek_pos):
+                    print(f"[SEEK] positionChanged pos={pos}ms state={_state[0]}")
+                    if _state[0] == 0 and pos > 0:
+                        _state[0] = 1
+                        print(f"[SEEK] Phase1→setPosition({_p}ms)")
+                        self.player.setPosition(_p)
+                    elif _state[0] == 1 and pos >= _p - 80:
+                        _state[0] = 2
+                        print(f"[SEEK] Phase2→pause+overlay à pos={pos}ms")
                         try:
-                            self.player.playbackStateChanged.disconnect(_seek_on_playing)
+                            self.player.positionChanged.disconnect(_on_pos_seek)
                         except Exception:
                             pass
-                        self.player.setPosition(_pos)
-                self.player.playbackStateChanged.connect(_seek_on_playing)
-                self.play_all()
-            else:
-                self.play_all()
+                        self.pause_all()
+                        _show_qr_overlay()
+                self.player.positionChanged.connect(_on_pos_seek)
+
+                def _safety_pause():
+                    print(f"[SEEK] _safety_pause() state={_state[0]}")
+                    if _state[0] < 2:
+                        _state[0] = 2
+                        try:
+                            self.player.positionChanged.disconnect(_on_pos_seek)
+                        except Exception:
+                            pass
+                        self.pause_all()
+                        _show_qr_overlay()
+                QtCore.QTimer.singleShot(2000, _safety_pause)
 
         self.timeline.update()
 

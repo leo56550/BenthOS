@@ -4178,15 +4178,29 @@ class MetadonneesController:
         self._on_open_map(video_name)
 
     def _export_infostation_action(self):
-        """Point d'entrée utilisateur : vérifie toutes les métadonnées, bloque si incomplet."""
-        if not self._working_dir:
-            QtWidgets.QMessageBox.warning(
-                self.widget,
-                self.translate("Répertoire manquant", "Missing directory"),
-                self.translate("Sélectionnez d'abord un répertoire de travail (page Accueil).",
-                               "Please select a working directory first (Home page.")
-            )
+        """Point d'entrée utilisateur : demande la destination, vérifie les métadonnées, génère."""
+        start_dir = self._working_dir or ""
+
+        output_dir = QtWidgets.QFileDialog.getExistingDirectory(
+            self.widget,
+            self.translate("Choisir le répertoire de sortie", "Choose output directory"),
+            start_dir,
+        )
+        if not output_dir:
             return
+
+        # Données historiques sans campagne chargée : exporter le tableau affiché directement
+        if not self._working_dir:
+            csv_path = self._export_ft_table_as_csv(output_dir)
+            if csv_path:
+                QtWidgets.QMessageBox.information(
+                    self.widget,
+                    self.translate("Export terminé", "Export complete"),
+                    self.translate(f"CSV Infostation généré :\n{csv_path}",
+                                   f"Infostation CSV generated:\n{csv_path}")
+                )
+            return
+
         video_paths = self._collect_video_paths()
         if not video_paths:
             return
@@ -4196,15 +4210,47 @@ class MetadonneesController:
             if not self._show_consistency_dialog(issues):
                 return
 
-        # Métadonnées complètes ou export forcé par l'utilisateur
-        self.generate_infostation_csv()
-        csv_path = get_infostation_path(self._working_dir)
+        self.generate_infostation_csv(output_dir=output_dir)
+        csv_name = os.path.basename(get_infostation_path(self._working_dir))
+        csv_path = os.path.join(output_dir, csv_name)
         QtWidgets.QMessageBox.information(
             self.widget,
             self.translate("Export terminé", "Export complete"),
             self.translate(f"CSV Infostation généré :\n{csv_path}",
                            f"Infostation CSV generated:\n{csv_path}")
         )
+
+    def _export_ft_table_as_csv(self, output_dir: str) -> str | None:
+        """Exporte le tableau _ft_table affiché directement en CSV (cas données historiques)."""
+        if not hasattr(self, '_ft_table') or self._ft_table.rowCount() == 0:
+            QtWidgets.QMessageBox.warning(
+                self.widget,
+                self.translate("Tableau vide", "Empty table"),
+                self.translate("Aucune donnée à exporter dans le tableau.",
+                               "No data to export in the table.")
+            )
+            return None
+        csv_path = os.path.join(output_dir, "infoStation.csv")
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+            with open(csv_path, 'w', newline='', encoding='cp1252', errors='replace') as f:
+                writer = csv.writer(f, delimiter=';', quoting=csv.QUOTE_MINIMAL)
+                writer.writerow(_INFOSTATION_COLUMNS)
+                for row in range(self._ft_table.rowCount()):
+                    row_data = []
+                    for col in range(self._ft_table.columnCount()):
+                        item = self._ft_table.item(row, col)
+                        row_data.append(item.text() if item else "")
+                    writer.writerow(row_data)
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(
+                self.widget,
+                self.translate("Erreur", "Error"),
+                self.translate(f"Impossible d'écrire le fichier :\n{e}",
+                               f"Cannot write file:\n{e}")
+            )
+            return None
+        return csv_path
 
     def generate_qualification_infostation(self, video_paths: list, working_dir: str) -> str | None:
         """Génère le CSV Infostation pour les vidéos retenues à la qualification.
@@ -4235,7 +4281,7 @@ class MetadonneesController:
         finally:
             self._working_dir = old_working_dir
 
-    def generate_infostation_csv(self, _progress_cb=None):
+    def generate_infostation_csv(self, _progress_cb=None, output_dir=None):
         """Génère silencieusement le CSV Infostation (appelé aussi par l'auto-sync)."""
         if not self._working_dir:
             return
@@ -4243,8 +4289,10 @@ class MetadonneesController:
         if not video_paths:
             return
 
-        csv_path = get_infostation_path(self._working_dir)
-        os.makedirs(self._working_dir, exist_ok=True)
+        target_dir = output_dir or self._working_dir
+        csv_name = os.path.basename(get_infostation_path(self._working_dir))
+        csv_path = os.path.join(target_dir, csv_name)
+        os.makedirs(target_dir, exist_ok=True)
         sorted_paths = self._sort_paths_by_station_time(video_paths)
         _total = len(sorted_paths)
 

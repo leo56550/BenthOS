@@ -3,6 +3,38 @@ import os
 import traceback
 
 from PyQt6.QtWidgets import QApplication
+
+
+class _FilteredStdout:
+    """Laisse passer uniquement les lignes contenant [SEEK] ou [ARUCO].
+    Bufférise jusqu'au '\\n' pour traiter des lignes complètes — print() appelle
+    write(content) puis write('\\n') séparément, donc filtrer sur write seul
+    supprimerait les newlines et bloquerait l'affichage."""
+    _KEEP = ("[SEEK]", "[ARUCO]")
+
+    def __init__(self, wrapped):
+        self._w = wrapped
+        self._buf = ""
+
+    def write(self, s):
+        self._buf += s
+        while "\n" in self._buf:
+            line, self._buf = self._buf.split("\n", 1)
+            if any(tag in line for tag in self._KEEP):
+                self._w.write(line + "\n")
+                self._w.flush()
+
+    def flush(self):
+        if self._buf and any(tag in self._buf for tag in self._KEEP):
+            self._w.write(self._buf)
+            self._buf = ""
+        self._w.flush()
+
+    def __getattr__(self, name):
+        return getattr(self._w, name)
+
+
+sys.stdout = _FilteredStdout(sys.stdout)
 from PyQt6.QtGui import QFont
 from PyQt6 import QtCore
 

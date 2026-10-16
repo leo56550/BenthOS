@@ -521,7 +521,6 @@ class ValidationController:
                 vob["derush_comment"]["value"] = text or None
             else:
                 vob["derush_comment"] = {"value": text or None}
-            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← video_observation.derush_comment = {text!r}")
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
         except Exception as e:
@@ -707,6 +706,9 @@ class ValidationController:
             _ar = self._get_aruco_result(selected_video_path)
             if _ar:
                 _aruco_start_ms = _ar.get("frame_ms", 0)
+                print(f"[SEEK] Clic vidéo → QRcode détecté frame {_ar.get('frame_number', '?')} ({_aruco_start_ms} ms)")
+            else:
+                print(f"[SEEK] Clic vidéo → pas de QRcode détecté")
 
         self.player.load_video_and_events(video_to_load, detected_events, is_stereo=is_stereo,
                                           start_position_ms=_aruco_start_ms)
@@ -746,9 +748,8 @@ class ValidationController:
             aruco = self._get_aruco_result(selected_video_path)
             if aruco:
                 _ms = aruco.get("frame_ms", 0)
-                _secs = _ms // 1000
-                _time_str = f"{_secs // 60:02d}:{_secs % 60:02d}"
-                self._aruco_badge.setText(f"✓ QRcode détecté : {_time_str}")
+                _frame_num = aruco.get("frame_number", 0)
+                self._aruco_badge.setText(f"✓ QRcode détecté : frame {_frame_num}")
                 self._aruco_badge.setStyleSheet(
                     "QLabel { color: #7fff7f; background: #0d2a0d; border: 1px solid #3a7a3a;"
                     " border-radius: 4px; font-size: 11px; }"
@@ -811,8 +812,6 @@ class ValidationController:
         has_json   = self._json_has_rotation_events()
         has_csv    = os.path.exists(csv_system)
         has_events = has_csv or has_json
-        print(f"[SECTOR-VALID] refresh — vidéo={os.path.basename(self.current_video_path)} "
-              f"json_events={has_json} csv={has_csv} active={self._sector_view_active}")
         if hasattr(self, 'btn_toggle_sector_view'):
             self.btn_toggle_sector_view.setEnabled(has_events)
         if self._sector_view_active:
@@ -872,11 +871,7 @@ class ValidationController:
                 motor_events = get_motor_stable_timestamps(csv_path, delay=6.0)
                 if motor_events:
                     source = "CSV"
-            print(f"[SECTOR-VALID] _load_sector_view — source={source} "
-                  f"n_events={len(motor_events)} skip_csv={skip_csv_fallback} "
-                  f"vidéo={os.path.basename(video_path or '')}")
             if not motor_events:
-                print("[SECTOR-VALID] aucun événement moteur → affichage message vide")
                 lbl = QtWidgets.QLabel(self.translate(
                     "Aucune rotation moteur trouvée dans le fichier CSV.",
                     "No motor rotation found in the CSV file."))
@@ -913,8 +908,6 @@ class ValidationController:
                         mid_ts = (ts + rotation_events[idx + 1]["timestamp"]) / 2.0
                     else:
                         mid_ts = ts + _avg_interval / 2.0
-                    print(f"[SECTOR-VALID]   rotation {g_idx+1}-{idx+1} angle={angle}° "
-                          f"evt_ts={ts:.2f}s mid_ts={mid_ts:.2f}s")
                     is_360 = (angle == 360)
                     fw, fh = (248, 188) if is_360 else (240, 180)
                     border = "3px solid #ff3333" if is_360 else "1px solid #555555"
@@ -948,7 +941,6 @@ class ValidationController:
                 self._sector_worker = _CameraFrameWorker(tasks)
                 self._sector_worker.frame_ready.connect(self._on_sector_frame_ready)
                 self._sector_worker.start()
-            print(f"[SECTOR-VALID] {len(tasks)} miniatures à extraire lancées")
         except Exception as e:
             import traceback
             print(f"[SECTOR-VALID] Erreur _load_sector_view : {e}")
@@ -1155,13 +1147,10 @@ class ValidationController:
     def on_exploitable_changed(self, text: str):
         """Persiste la valeur d'exploitabilité dans le JSON et met à jour les indicateurs."""
         if not self.current_json_path or not text:
-            print(f"[ValidationCtrl] on_exploitable_changed ignoré — path={self.current_json_path!r} text={text!r}")
-            return
-        print(f"[ValidationCtrl] Sauvegarde exploitabilité '{text}' → {self.current_json_path}")
+                return
         try:
             if not os.path.isfile(self.current_json_path):
-                print(f"[ValidationCtrl] ERREUR — fichier JSON introuvable : {self.current_json_path}")
-                return
+                    return
             with open(self.current_json_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             if "video_observation" not in data:
@@ -1172,7 +1161,6 @@ class ValidationController:
             video_obs["exploitable"]["value"] = text
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
-            print(f"[ValidationCtrl] ✓ exploitable='{text}' écrit dans {self.current_json_path}")
 
             self._update_status_badge(text)
 
@@ -1188,9 +1176,8 @@ class ValidationController:
                     item = self.video_model.itemFromIndex(source_index.siblingAtColumn(0))
                     if item:
                         self.refresh_item_indicator(item, self.current_video_path)
-        except Exception as e:
-            print(f"[ValidationCtrl] EXCEPTION dans on_exploitable_changed : {e!r}")
-            import traceback; traceback.print_exc()
+        except Exception:
+            pass
 
     def refresh_item_indicator(self, item, video_path):
         """Met à jour la couleur d'un item selon son statut exploitabilité — préserve les badges de type."""
@@ -1272,7 +1259,6 @@ class ValidationController:
                 obs["station_number"] = {"value": station_num}
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
-            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← video_observation.point_name = {station_num!r}")
             # Mise à jour immédiate dans la liste
             if station_num and self.video_tree and self.video_model:
                 try:
@@ -1405,7 +1391,6 @@ class ValidationController:
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
 
-            print(f"[VALIDATION] timecode_ardoise='{time_str}' écrit dans {self.current_json_path}")
             get_sound_service().play("ardoise")
 
             # Mise à jour immédiate du numéro de point dans la liste vidéo
