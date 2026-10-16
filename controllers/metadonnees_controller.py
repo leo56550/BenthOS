@@ -26,6 +26,30 @@ _TEMPLATE_JSON_PATH = os.path.join(os.path.dirname(__file__), '..', 'template.js
 # Champs calculés automatiquement (non éditables dans le tableau)
 _COMPUTED_FIELDS = {"codeObs", "video_path", "video_number"}
 
+# Sections canoniques par field_key (dérivées de _INFOSTATION_CSV_SCHEMA plus bas)
+# Utilisé par _fix_section_misplacements pour nettoyer les JSONs mal structurés.
+def _fix_section_misplacements(jdata: dict) -> None:
+    """Supprime les field_keys présents dans la mauvaise section d'un jdata.
+
+    Certains JSON bruts d'acquisition (notamment pour les vidéos non-exploitables
+    qui n'ont jamais eu de _temp.json) rangent des champs video_observation sous
+    'survey' ou inversement. Cette fonction les retire de la mauvaise section pour
+    ne les laisser que là où le schéma les attend.
+    """
+    # La table canonique est construite à la demande pour éviter la circularité
+    # (_INFOSTATION_CSV_SCHEMA est défini plus bas dans ce module).
+    canonical: dict[str, str] = {}
+    try:
+        for sec, fk, _ in _INFOSTATION_CSV_SCHEMA:   # noqa: F821 — défini plus bas
+            if sec is not None:
+                canonical[fk] = sec
+    except NameError:
+        return  # module pas encore initialisé
+    for fk, correct_sec in canonical.items():
+        for wrong_sec in list(jdata.keys()):
+            if wrong_sec != correct_sec and fk in jdata.get(wrong_sec, {}):
+                del jdata[wrong_sec][fk]
+
 # Champs de l'en-tête campagne (identiques pour toutes les vidéos → read-only dans le tableau)
 _CAMPAIGN_HEADER_KEYS = {
     "zone", "type", "region", "date",
@@ -3044,6 +3068,7 @@ class MetadonneesController:
                 vobs["video_number"] = {"value": _vn_val}
 
             try:
+                _fix_section_misplacements(jdata)
                 with open(temp_path, 'w', encoding='utf-8') as f:
                     json.dump(jdata, f, indent=4, ensure_ascii=False)
                 generated += 1
@@ -3177,6 +3202,7 @@ class MetadonneesController:
 
             if changed:
                 try:
+                    _fix_section_misplacements(jdata)
                     with open(temp_path, 'w', encoding='utf-8') as f:
                         json.dump(jdata, f, indent=4, ensure_ascii=False)
                     matched += 1
