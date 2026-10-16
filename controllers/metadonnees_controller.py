@@ -2765,11 +2765,19 @@ class MetadonneesController:
                 for ws_row in ws.iter_rows(min_row=2, values_only=True):
                     rows.append({headers[i]: (str(v) if v is not None else '') for i, v in enumerate(ws_row)})
             else:
-                with open(file_path, 'r', encoding='utf-8-sig') as f:
-                    sample = f.read(2048)
+                _encodings = ['utf-8-sig', 'cp1252', 'latin-1']
+                _enc_used = 'utf-8-sig'
+                for _enc in _encodings:
+                    try:
+                        with open(file_path, 'r', encoding=_enc) as f:
+                            sample = f.read(2048)
+                        _enc_used = _enc
+                        break
+                    except UnicodeDecodeError:
+                        continue
                 sep = ';' if sample.count(';') >= sample.count(',') else ','
                 rows = []
-                with open(file_path, 'r', encoding='utf-8-sig', newline='') as f:
+                with open(file_path, 'r', encoding=_enc_used, newline='') as f:
                     reader = csv.DictReader(f, delimiter=sep)
                     for r in reader:
                         rows.append({k.strip(): (v or '').strip() for k, v in r.items()})
@@ -3141,11 +3149,19 @@ class MetadonneesController:
                 for ws_row in ws.iter_rows(min_row=2, values_only=True):
                     rows.append({headers[i]: (str(v) if v is not None else '') for i, v in enumerate(ws_row)})
             else:
-                with open(csv_path, 'r', encoding='utf-8-sig') as f:
-                    sample = f.read(2048)
+                _encodings = ['utf-8-sig', 'cp1252', 'latin-1']
+                _enc_used = 'utf-8-sig'
+                for _enc in _encodings:
+                    try:
+                        with open(csv_path, 'r', encoding=_enc) as f:
+                            sample = f.read(2048)
+                        _enc_used = _enc
+                        break
+                    except UnicodeDecodeError:
+                        continue
                 sep = ';' if sample.count(';') >= sample.count(',') else ','
                 rows = []
-                with open(csv_path, 'r', encoding='utf-8-sig', newline='') as f:
+                with open(csv_path, 'r', encoding=_enc_used, newline='') as f:
                     reader = csv.DictReader(f, delimiter=sep)
                     for r in reader:
                         rows.append(r)
