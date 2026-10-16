@@ -2596,25 +2596,28 @@ class MetadonneesController:
             elif field_key == "date":
                 val = self._fmt_date(val) if (val and for_csv) else (val or "")
 
-            elif field_key == "video_path" and not val:
-                import re as _re_vp
-                _vdir = os.path.dirname(os.path.normpath(video_path))
-                _direct = os.path.basename(_vdir)
-                if _re_vp.match(r'^\d{4}$', _direct):
-                    # Nouvelle structure : campagne\système\station\video.mp4
-                    _sys  = os.path.basename(os.path.dirname(_vdir))
-                    _camp = os.path.basename(os.path.dirname(os.path.dirname(_vdir)))
-                    val   = f"{_camp}\\{_sys}\\{_direct}"
-                else:
-                    # Ancienne structure : campagne\système\video.mp4
-                    _sys  = _direct
-                    _camp = os.path.basename(os.path.dirname(_vdir))
-                    _vid_stem_local = os.path.splitext(os.path.basename(video_path))[0]
-                    try:
-                        _vid_stem_num = str(int(_vid_stem_local))
-                    except ValueError:
-                        _vid_stem_num = _vid_stem_local
-                    val   = f"{_camp}\\{_sys}\\{_vid_stem_num}"
+            elif field_key == "video_path":
+                if not val:
+                    import re as _re_vp
+                    _vdir = os.path.dirname(os.path.normpath(video_path))
+                    _direct = os.path.basename(_vdir)
+                    if _re_vp.match(r'^\d{4}$', _direct):
+                        # Nouvelle structure : campagne\système\station\video.mp4
+                        _sys  = os.path.basename(os.path.dirname(_vdir))
+                        _camp = os.path.basename(os.path.dirname(os.path.dirname(_vdir)))
+                        val   = f"{_camp}\\{_sys}\\{_direct}"
+                    else:
+                        # Ancienne structure : campagne\système\video.mp4
+                        _sys  = _direct
+                        _camp = os.path.basename(os.path.dirname(_vdir))
+                        _vid_stem_local = os.path.splitext(os.path.basename(video_path))[0]
+                        try:
+                            _vid_stem_num = str(int(_vid_stem_local))
+                        except ValueError:
+                            _vid_stem_num = _vid_stem_local
+                        val   = f"{_camp}\\{_sys}\\{_vid_stem_num}"
+                if for_csv and val:
+                    val = val.replace('\\', '\\\\')
 
             elif field_key == "video_file_name" and not val:
                 val = stem
@@ -2625,13 +2628,9 @@ class MetadonneesController:
 
             elif field_key == "latitude":
                 val = val if val else lat_gps
-                if for_csv and val:
-                    val = str(val).replace('.', ',')
 
             elif field_key == "longitude":
                 val = val if val else lon_gps
-                if for_csv and val:
-                    val = str(val).replace('.', ',')
 
             elif field_key == "time" and not val:
                 val = heure_stem
@@ -4259,6 +4258,8 @@ class MetadonneesController:
             return None
         from datetime import datetime as _dt
         csv_path = os.path.join(output_dir, f"{_dt.now().strftime('%y%m%d')}_historical_infoStation.csv")
+        _vpath_col = next(
+            (i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "video_path"), None)
         try:
             os.makedirs(output_dir, exist_ok=True)
             with open(csv_path, 'w', newline='', encoding='cp1252', errors='replace') as f:
@@ -4268,7 +4269,10 @@ class MetadonneesController:
                     row_data = []
                     for col in range(self._ft_table.columnCount()):
                         item = self._ft_table.item(row, col)
-                        row_data.append(item.text() if item else "")
+                        val = item.text() if item else ""
+                        if col == _vpath_col and val:
+                            val = val.replace('\\', '\\\\')
+                        row_data.append(val)
                     writer.writerow(row_data)
         except Exception as e:
             QtWidgets.QMessageBox.warning(
