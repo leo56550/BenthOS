@@ -4177,6 +4177,31 @@ class MetadonneesController:
         video_name = os.path.basename(self.current_video_path) if self.current_video_path else None
         self._on_open_map(video_name)
 
+    def _infostation_csv_name(self) -> str:
+        """Nom du fichier CSV : YYMMDD_infoStation.csv d'après la colonne Date du tableau.
+        Repli sur get_infostation_path (JSON) puis sur la date du jour."""
+        from services.campaign_service import yymmdd_from_date
+        from datetime import datetime as _dt
+        # Index de la colonne "Date" (survey.date) dans _FT_TABLE_COLS / _INFOSTATION_CSV_SCHEMA
+        date_col = next(
+            (i for i, (_, sec, fk, _) in enumerate(_FT_TABLE_COLS)
+             if sec == "survey" and fk == "date"),
+            None,
+        )
+        if date_col is not None and hasattr(self, '_ft_table'):
+            for row in range(self._ft_table.rowCount()):
+                item = self._ft_table.item(row, date_col)
+                if item and item.text().strip():
+                    yymmdd = yymmdd_from_date(item.text().strip())
+                    if yymmdd:
+                        return f"{yymmdd}_infoStation.csv"
+        # Repli JSON (campagne chargée)
+        if self._working_dir:
+            base = os.path.basename(get_infostation_path(self._working_dir))
+            if not base.startswith(_dt.now().strftime("%y%m%d")):
+                return base
+        return f"{_dt.now().strftime('%y%m%d')}_infoStation.csv"
+
     def _export_infostation_action(self):
         """Point d'entrée utilisateur : demande la destination, vérifie les métadonnées, génère."""
         start_dir = self._working_dir or ""
@@ -4211,8 +4236,7 @@ class MetadonneesController:
                 return
 
         self.generate_infostation_csv(output_dir=output_dir)
-        csv_name = os.path.basename(get_infostation_path(self._working_dir))
-        csv_path = os.path.join(output_dir, csv_name)
+        csv_path = os.path.join(output_dir, self._infostation_csv_name())
         QtWidgets.QMessageBox.information(
             self.widget,
             self.translate("Export terminé", "Export complete"),
@@ -4230,7 +4254,7 @@ class MetadonneesController:
                                "No data to export in the table.")
             )
             return None
-        csv_path = os.path.join(output_dir, "infoStation.csv")
+        csv_path = os.path.join(output_dir, self._infostation_csv_name())
         try:
             os.makedirs(output_dir, exist_ok=True)
             with open(csv_path, 'w', newline='', encoding='cp1252', errors='replace') as f:
@@ -4290,7 +4314,7 @@ class MetadonneesController:
             return
 
         target_dir = output_dir or self._working_dir
-        csv_name = os.path.basename(get_infostation_path(self._working_dir))
+        csv_name = self._infostation_csv_name()
         csv_path = os.path.join(target_dir, csv_name)
         os.makedirs(target_dir, exist_ok=True)
         sorted_paths = self._sort_paths_by_station_time(video_paths)
