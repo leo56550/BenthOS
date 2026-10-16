@@ -1683,12 +1683,19 @@ class MetadonneesController:
         # Active les boutons dès qu'une ligne est cliquée (même sans chemin vidéo résolu)
         self._set_video_buttons_enabled(True)
 
-        # Récupère le nom de la vidéo depuis la colonne video_number (pour notifier la carte)
+        # Clé carte : codestation si dispo (unique par obs), sinon nom de fichier.
+        # Doit correspondre à la clé utilisée dans collect_ft_table_coords.
+        _cobs_col = next(
+            (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "codeObs"), None
+        )
         _vnum_col = next(
             (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "video_number"), None
         )
         video_name = ""
-        if _vnum_col is not None:
+        if _cobs_col is not None:
+            cobs_item = self._ft_table.item(row, _cobs_col)
+            video_name = cobs_item.text().strip() if cobs_item else ""
+        if not video_name and _vnum_col is not None:
             vn_item = self._ft_table.item(row, _vnum_col)
             video_name = vn_item.text().strip() if vn_item else ""
         if not video_name:
@@ -4109,7 +4116,11 @@ class MetadonneesController:
             _yr_m = (_re_yr.search(r'(20\d{2})', date_str)
                      or _re_yr.search(r'(?<!\d)(20\d{2})(?!\d)', video_path or ""))
             year = _yr_m.group(1) if _yr_m else ""
-            result[name] = {
+            # Clé unique : codestation de préférence (une observation = un code unique),
+            # fallback sur le nom de fichier. Évite les collisions quand deux lignes
+            # partagent le même nom de vidéo (ex: deux stations filmées avec 0157.mp4).
+            map_key = codestation if codestation else name
+            result[map_key] = {
                 "coords": [lat, lon],
                 "exploitable": exploitable,
                 "codestation": codestation,
