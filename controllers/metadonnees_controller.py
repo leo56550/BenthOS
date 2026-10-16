@@ -4257,7 +4257,8 @@ class MetadonneesController:
                                "No data to export in the table.")
             )
             return None
-        csv_path = os.path.join(output_dir, self._infostation_csv_name())
+        from datetime import datetime as _dt
+        csv_path = os.path.join(output_dir, f"{_dt.now().strftime('%y%m%d')}_historical_infoStation.csv")
         try:
             os.makedirs(output_dir, exist_ok=True)
             with open(csv_path, 'w', newline='', encoding='cp1252', errors='replace') as f:
@@ -4320,7 +4321,22 @@ class MetadonneesController:
         csv_name = self._infostation_csv_name()
         csv_path = os.path.join(target_dir, csv_name)
         os.makedirs(target_dir, exist_ok=True)
-        sorted_paths = self._sort_paths_by_station_time(video_paths)
+
+        # Respecter l'ordre affiché si l'utilisateur a trié par codestation
+        if getattr(self, '_ft_sorted_by_codestation', False) and hasattr(self, '_ft_table'):
+            vp_set = set(video_paths)
+            sorted_paths = []
+            for row in range(self._ft_table.rowCount()):
+                item = self._ft_table.item(row, 0)
+                if item:
+                    vp = item.data(QtCore.Qt.ItemDataRole.UserRole)
+                    if vp and str(vp) in vp_set:
+                        sorted_paths.append(str(vp))
+            # Ajouter les vidéos absentes du tableau (sécurité)
+            seen = set(sorted_paths)
+            sorted_paths += [vp for vp in video_paths if vp not in seen]
+        else:
+            sorted_paths = self._sort_paths_by_station_time(video_paths)
         _total = len(sorted_paths)
 
         try:
