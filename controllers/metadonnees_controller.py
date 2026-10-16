@@ -2694,11 +2694,6 @@ class MetadonneesController:
             elif field_key == "site" and not val:
                 val = self._v(surv, "site")
 
-            elif field_key == "protectionStatus1" and not val:
-                val = self._v(surv, "protectionStatus1")
-
-            elif field_key == "protectionStatus2" and not val:
-                val = self._v(surv, "protectionStatus2")
 
             elif field_key == "timecode_ardoise" and not val:
                 val = _ev_tc(["ardoise", "slate", "tableau blanc", "whiteboard"])
@@ -3002,16 +2997,8 @@ class MetadonneesController:
 
             temp_path = get_temp_json_path(video_path)
 
-            # Base = _temp.json existant (pour préserver ardoise/exploitable saisis en validation)
-            # ou copie fraîche du template si premier génération
-            if os.path.isfile(temp_path):
-                try:
-                    with open(temp_path, 'r', encoding='utf-8') as _f:
-                        jdata = json.load(_f)
-                except Exception:
-                    jdata = _copy.deepcopy(_TEMPLATE_BASE)
-            else:
-                jdata = _copy.deepcopy(_TEMPLATE_BASE)
+            # Toujours partir du template vierge — les JSON existants sont ignorés
+            jdata = _copy.deepcopy(_TEMPLATE_BASE)
 
             for col_i, sec, fk in writable_cols:
                 titem = self._ft_table.item(row, col_i)
@@ -3153,26 +3140,12 @@ class MetadonneesController:
                 continue
 
             temp_path = get_temp_json_path(video_path)
-            raw_path  = get_video_json_path(video_path)
 
-            # Charge ou initialise le temp.json
-            if os.path.isfile(temp_path):
-                try:
-                    with open(temp_path, 'r', encoding='utf-8') as f:
-                        jdata = json.load(f)
-                except Exception:
-                    jdata = {}
-            elif os.path.isfile(raw_path):
-                try:
-                    with open(raw_path, 'r', encoding='utf-8') as f:
-                        jdata = json.load(f)
-                except Exception:
-                    jdata = {}
-            else:
-                jdata = {}
+            # Toujours partir du template vierge — les JSON existants sont ignorés
+            import copy as _copy_csv
+            jdata = _copy_csv.deepcopy(_TEMPLATE_BASE)
 
             # Écrit chaque champ non-vide
-            changed = False
             for sec, fk, col in writable:
                 val = (row_dict.get(col) or '').strip()
                 # Ignorer les formules Excel
@@ -3186,7 +3159,6 @@ class MetadonneesController:
                     block[fk]['value'] = coerced
                 else:
                     block[fk] = {'value': coerced}
-                changed = True
 
             # codeObs : import direct depuis la colonne Codestation, fallback calcul
             direct_code = (row_dict.get('Codestation') or '').strip()
@@ -3198,16 +3170,14 @@ class MetadonneesController:
                     obs_b['codeObs']['value'] = direct_code
                 else:
                     obs_b['codeObs'] = {'value': direct_code}
-                changed = True
 
-            if changed:
-                try:
-                    _fix_section_misplacements(jdata)
-                    with open(temp_path, 'w', encoding='utf-8') as f:
-                        json.dump(jdata, f, indent=4, ensure_ascii=False)
-                    matched += 1
-                except Exception as e:
-                    print(f"[IMPORT CSV] Erreur écriture {temp_path}: {e}")
+            try:
+                _fix_section_misplacements(jdata)
+                with open(temp_path, 'w', encoding='utf-8') as f:
+                    json.dump(jdata, f, indent=4, ensure_ascii=False)
+                matched += 1
+            except Exception as e:
+                print(f"[IMPORT CSV] Erreur écriture {temp_path}: {e}")
 
         # Rafraîchit le tableau
         self._rebuild_ft_table()

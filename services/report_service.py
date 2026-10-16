@@ -261,7 +261,7 @@ def _page_video_cards(pdf: PdfPages, entries: list):
                 ("GPS",        _val(d, 'video_observation', 'gps_position', 'value')),
                 ("Prof. max",  _val(d, 'video_observation', 'max_depth', 'value')),
                 ("Site",       _val(d, 'survey', 'site', 'value')),
-                ("Protection", _val(d, 'survey', 'protectionStatus1', 'value')),
+                ("Protection", _val(d, 'video_observation', 'protectionStatus1', 'value')),
                 ("Caméra",     _val(d, 'system', 'camera', 'value')),
                 ("Exploitable",_val(d, 'video_observation', 'exploitable', 'value')),
             ]
