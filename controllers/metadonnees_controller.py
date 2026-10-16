@@ -1928,17 +1928,35 @@ class MetadonneesController:
                     break
         # Si non trouvé dans video_model, chercher dans _ft_table (données historiques CSV)
         if not found_in_model and hasattr(self, '_ft_table') and self._ft_table:
+            _cobs_col = next(
+                (i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "codeObs"), None
+            )
             _vnum_col = next(
                 (i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "video_number"), None
             )
-            if _vnum_col is not None:
+            target_row = None
+            # Priorité : codestation (clé unique utilisée par la carte)
+            if _cobs_col is not None:
+                for row in range(self._ft_table.rowCount()):
+                    ft_item = self._ft_table.item(row, _cobs_col)
+                    if ft_item and ft_item.text().strip() == video_name:
+                        target_row = row
+                        break
+            # Fallback : nom de fichier
+            if target_row is None and _vnum_col is not None:
                 for row in range(self._ft_table.rowCount()):
                     ft_item = self._ft_table.item(row, _vnum_col)
                     if ft_item and ft_item.text().strip() == video_name:
-                        self._ft_table.setCurrentCell(row, _vnum_col)
-                        self._ft_table.scrollToItem(ft_item)
-                        self._on_ft_table_row_clicked(row, 0)
+                        target_row = row
                         break
+            if target_row is not None:
+                self._ft_table.setCurrentCell(target_row, 0)
+                self._ft_table.scrollTo(
+                    self._ft_table.model().index(target_row, 0),
+                    QtWidgets.QAbstractItemView.ScrollHint.PositionAtCenter,
+                )
+                self._on_ft_current_cell_changed(target_row, 0, -1, 0)
+                self._on_ft_table_row_clicked(target_row, 0)
 
     def on_selection_changed(self, selected, deselected):
         """Charge le JSON de la vidéo sélectionnée et rafraîchit tous les panneaux de données."""
