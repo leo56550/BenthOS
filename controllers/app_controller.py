@@ -448,6 +448,7 @@ class AppController(QtCore.QObject):
     def _on_events_changed(self, *_):
         """Callback déclenché quand des événements sont ajoutés/supprimés/modifiés."""
         self.metadonnees_ctrl.refresh_feuille_terrain()
+        self._refresh_dashboard()
         for ctrl in (self.evenements_ctrl, self.validation_ctrl):
             if hasattr(ctrl, '_refresh_sector_view_if_active'):
                 ctrl._refresh_sector_view_if_active()

@@ -112,6 +112,7 @@ class _StatsWorker(QtCore.QThread):
         total = len(self._paths)
         ardoise = 0
         derushees = 0
+        annotations = 0
         essential_filled = 0
         optional_filled  = 0
         expl_breakdown: dict[str, int] = {}
@@ -144,6 +145,11 @@ class _StatsWorker(QtCore.QThread):
             if _has_landing_and_takeoff(obs):
                 derushees += 1
 
+            debut_val = str((obs.get("timecode_debut") or {}).get("value") or "").strip()
+            end_val   = str((obs.get("timecode_end")   or {}).get("value") or "").strip()
+            if debut_val and end_val:
+                annotations += 1
+
             sections = {"video_observation": obs, "survey": surv, "system": sys_}
             for section, field_key in _META_ESSENTIAL_FIELDS:
                 if _is_filled(sections.get(section, {}).get(field_key)):
@@ -158,6 +164,7 @@ class _StatsWorker(QtCore.QThread):
             "ardoise":           ardoise,
             "expl_breakdown":    expl_breakdown,
             "derushees":         derushees,
+            "annotations":       annotations,
             "essential_filled":  essential_filled,
             "essential_total":   _N_ESSENTIAL * total,
             "optional_filled":   optional_filled,
@@ -599,6 +606,109 @@ class _DonutMetaSplit(_DonutBase):
         p.end()
 
 
+# ── Donut Dérushé : anneaux concentriques ────────────────────────────────────
+# Anneau extérieur (violet)  = Atterrissage / Décollage
+# Anneau intérieur (rose)    = Début annotation / Fin annotation
+
+class _DonutDerushSplit(_DonutBase):
+    _C_LAND  = QtGui.QColor("#a78bfa")   # violet
+    _C_ANNO  = QtGui.QColor("#f0abfc")   # rose/violet
+    _DS_IN   = 74
+    _RW_IN   = 6
+
+    def __init__(self, title: str, parent=None):
+        super().__init__(parent)
+        self._title    = title
+        self._land_val = 0
+        self._anno_val = 0
+        self._total    = 1
+        self._p        = 0.0
+
+    def set_data(self, land: int, anno: int, total: int, delay_ms: int = 0):
+        self._land_val = land
+        self._anno_val = anno
+        self._total    = max(total, 1)
+        self._p        = 0.0
+        self.update()
+        self._start_anim(delay_ms)
+
+    def _step(self):
+        t = min(self._elapsed.elapsed() / _ANIM_DURATION_MS, 1.0)
+        self._p = _ease_out_quart(t)
+        self.update()
+        if t >= 1.0:
+            self._p = 1.0
+            self._timer.stop()
+
+    def _paint_inner_arc(self, p: QtGui.QPainter, rect: QtCore.QRectF,
+                         start_deg: float, span_deg: float, color: QtGui.QColor):
+        if abs(span_deg) < 0.3:
+            return
+        sq, sp = int(start_deg * 16), int(span_deg * 16)
+        gc = QtGui.QColor(color)
+        gc.setAlpha(22)
+        p.setPen(QtGui.QPen(gc, self._RW_IN + 10,
+                            QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.RoundCap))
+        p.drawArc(rect, sq, sp)
+        p.setPen(QtGui.QPen(color, self._RW_IN,
+                            QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.RoundCap))
+        p.drawArc(rect, sq, sp)
+
+    def paintEvent(self, _event):
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QtGui.QPainter.RenderHint.TextAntialiasing)
+
+        w = self.width()
+        cx, top = w // 2, 10
+        cy = top + _DS / 2.0
+
+        rect_out = QtCore.QRectF(cx - _DS / 2, top, _DS, _DS)
+        ds_in    = self._DS_IN
+        rect_in  = QtCore.QRectF(cx - ds_in / 2,
+                                  top + (_DS - ds_in) / 2,
+                                  ds_in, ds_in)
+
+        # Tracks
+        p.setPen(QtGui.QPen(QtGui.QColor("#111f2d"), _RW,
+                            QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.FlatCap))
+        p.drawArc(rect_out, 0, 360 * 16)
+        p.setPen(QtGui.QPen(QtGui.QColor("#111f2d"), self._RW_IN,
+                            QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.FlatCap))
+        p.drawArc(rect_in, 0, 360 * 16)
+
+        land_angle = self._land_val / self._total * 360.0 * self._p
+        anno_angle = self._anno_val / self._total * 360.0 * self._p
+
+        self._paint_arc(p, rect_out, 90.0, -land_angle, self._C_LAND)
+        self._paint_inner_arc(p, rect_in, 90.0, -anno_angle, self._C_ANNO)
+
+        # Centre : % atterrissage/décollage
+        pct_land = int(self._land_val / self._total * 100)
+        pct_anno = int(self._anno_val / self._total * 100)
+
+        p.setFont(QtGui.QFont("Segoe UI", 15, QtGui.QFont.Weight.Bold))
+        p.setPen(self._C_LAND)
+        p.drawText(QtCore.QRectF(cx - ds_in / 2, cy - 20, ds_in, 22),
+                   QtCore.Qt.AlignmentFlag.AlignCenter, f"{pct_land}%")
+
+        y_leg = top + _DS + 6
+        p.setFont(QtGui.QFont("Segoe UI", 7, QtGui.QFont.Weight.Bold))
+
+        p.setPen(self._C_LAND)
+        p.drawText(QtCore.QRectF(0, y_leg, w, 13),
+                   QtCore.Qt.AlignmentFlag.AlignCenter,
+                   f"● Att./Déc.  {pct_land}%")
+
+        p.setPen(self._C_ANNO)
+        p.drawText(QtCore.QRectF(0, y_leg + 14, w, 13),
+                   QtCore.Qt.AlignmentFlag.AlignCenter,
+                   f"● Déb./Fin ann.  {pct_anno}%")
+
+        self._paint_title(p, self._title, w, y_leg + 30)
+        p.end()
+
+
 # ── Spinner ───────────────────────────────────────────────────────────────────
 
 class _Spinner(QtWidgets.QWidget):
@@ -695,7 +805,7 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
         self._card_kept    = _DonutBiColor("Gardées / Jetées")
         self._card_ardoise = _DonutCard("Validation", "#fbbf24")
         self._card_meta    = _DonutMetaSplit("Métadonnées")
-        self._card_derush  = _DonutCard("Dérushées",   "#a78bfa")
+        self._card_derush  = _DonutDerushSplit("Dérushé")
 
         self._card_ardoise.double_clicked.connect(self._show_expl_popup)
         self._card_ardoise.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
@@ -732,7 +842,7 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
             stats["essential_filled"], max(stats["essential_total"], 1),
             stats["optional_filled"],  max(stats["optional_total"],  1),
             delay_ms=320)
-        self._card_derush.set_data(stats["derushees"],  total,                         delay_ms=480)
+        self._card_derush.set_data(stats["derushees"], stats["annotations"], total,    delay_ms=480)
 
         self._stack.setCurrentIndex(1)
 
@@ -746,7 +856,7 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
             self._card_ardoise._title = "Validation"
             self._card_ardoise.setToolTip("Double-click to see breakdown by exploitability status")
             self._card_meta._title    = "Metadata"
-            self._card_derush._title  = "Processed"
+            self._card_derush._title  = "Derush"
             self._title_lbl.setText("Campaign progress")
         else:
             self._card_kept._title    = "Gardées / Jetées"
@@ -754,7 +864,7 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
             self._card_ardoise.setToolTip(
                 "Double-cliquer pour voir la répartition par statut d'exploitabilité")
             self._card_meta._title    = "Métadonnées"
-            self._card_derush._title  = "Dérushées"
+            self._card_derush._title  = "Dérushé"
             self._title_lbl.setText("Avancement de la campagne")
         self._card_meta.update()
         for card in (self._card_kept, self._card_ardoise,

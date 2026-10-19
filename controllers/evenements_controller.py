@@ -2282,51 +2282,92 @@ class EvenementsController:
         self.save_event_to_json(new_evt, deploy_label)
 
     def _saisir_debut_annotation(self):
-        """Capture un événement début annotation à la position courante."""
-        self._saisir_annotation_event(
-            "début annotation", "annotation start",
+        """Capture le début d'annotation à la position courante."""
+        self._capture_annotation_timecode(
+            "timecode_debut",
+            self.translate("Début annotation", "Annotation start"),
             getattr(self, '_btn_debut_annotation', None)
         )
 
     def _saisir_fin_annotation(self):
-        """Capture un événement fin annotation à la position courante."""
-        self._saisir_annotation_event(
-            "fin annotation", "annotation end",
+        """Capture la fin d'annotation à la position courante."""
+        self._capture_annotation_timecode(
+            "timecode_end",
+            self.translate("Fin annotation", "Annotation end"),
             getattr(self, '_btn_fin_annotation', None)
         )
 
-    def _saisir_annotation_event(self, value_fr: str, value_en: str, button=None):
-        """Capture un événement annotation ponctuel et le sauvegarde dans le JSON."""
-        if not hasattr(self, 'event_player') or self.event_player is None:
+    def _capture_annotation_timecode(self, field_key: str, label: str, btn=None):
+        """Capture le timecode courant comme borne d'annotation (timecode_debut / timecode_end).
+
+        Sauvegarde dans video_observation.<field_key> (champ scalaire) et ajoute un marqueur
+        bleu sur la timeline (type timecode_marker), comme Atterrissage/Décollage.
+        """
+        if not self.current_json_path or not os.path.isfile(self.current_json_path):
             return
-        value = value_fr if self.current_language == 'fr' else value_en
-        deploy_label = self._get_label_from_json_key("events_motor")
+        if not hasattr(self, 'event_player') or not self.event_player:
+            return
+        if hasattr(self.event_player, 'timeline'):
+            already = any(e.get("_json_key") == field_key for e in self.event_player.timeline.events)
+            if already:
+                reply = QtWidgets.QMessageBox.question(
+                    self.page,
+                    self.translate("Écraser ?", "Overwrite?"),
+                    self.translate(
+                        f"Un {label} est déjà enregistré. Voulez-vous le remplacer ?",
+                        f"A {label} is already set. Replace it?"
+                    ),
+                    QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+                )
+                if reply != QtWidgets.QMessageBox.StandardButton.Yes:
+                    return
         pos_ms = self.event_player.timeline.get_current_position() if hasattr(self.event_player, 'timeline') else 0
-        time_str = self.event_player.timeline._format_ms(pos_ms) if hasattr(self.event_player, 'timeline') else "00:00:00"
-        new_evt = {
-            "start": pos_ms, "end": pos_ms,
-            "title": f"Pic: {value}",
-            "type": "custom_event",
-            "zone": 0,
-            "single_frame": True,
-            "comment": "",
-            "_json_key": "events_motor",
-            "_event_uid": self._generate_event_uid()
-        }
-        self.event_player.timeline.events.append(new_evt)
-        self.event_player.timeline.update()
-        if hasattr(self, 'tree_captures') and self.tree_captures:
-            clean_cat = deploy_label.split(' ')[0]
-            tree_item = QtWidgets.QTreeWidgetItem([time_str, "-", clean_cat, value, "", ""])
-            tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
-            tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778A2")))
-            self.tree_captures.addTopLevelItem(tree_item)
-            self.add_tree_thumbnail(tree_item, pos_ms)
-        self.save_event_to_json(new_evt, deploy_label)
-        if button is not None:
-            orig_text = button.text()
-            button.setText(f"✓ {time_str}")
-            QtCore.QTimer.singleShot(2000, lambda: button.setText(orig_text))
+        h = int(pos_ms // 3600000)
+        m = int((pos_ms % 3600000) // 60000)
+        s = int((pos_ms % 60000) // 1000)
+        timecode = f"{h:02d}:{m:02d}:{s:02d}"
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            obs = data.setdefault("video_observation", {})
+            obs.setdefault(field_key, {})["value"] = timecode
+            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← video_observation.{field_key} = {timecode!r}")
+            with open(self.current_json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+            if hasattr(self, 'event_player') and getattr(self.event_player, 'timeline', None):
+                tl = self.event_player.timeline
+                tl.events = [e for e in tl.events if e.get("_json_key") != field_key]
+                tl.events.append({
+                    "start": pos_ms, "end": pos_ms,
+                    "title": label,
+                    "type": "timecode_marker",
+                    "zone": 0,
+                    "_json_key": field_key,
+                })
+                tl.update()
+            if hasattr(self, 'tree_captures') and self.tree_captures:
+                for i in range(self.tree_captures.topLevelItemCount() - 1, -1, -1):
+                    it = self.tree_captures.topLevelItem(i)
+                    if it.text(3) == label:
+                        self.tree_captures.takeTopLevelItem(i)
+                txt_tc = self.event_player.timeline._format_ms(pos_ms) \
+                         if hasattr(self.event_player, 'timeline') else timecode
+                tree_item = QtWidgets.QTreeWidgetItem([txt_tc, "-", "Annotation", label, "", ""])
+                tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
+                tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#60a5fa")))
+                self.tree_captures.addTopLevelItem(tree_item)
+                self.add_tree_thumbnail(tree_item, pos_ms)
+            if btn is not None:
+                orig_text = btn.text()
+                btn.setText(f"✓ {timecode}")
+                QtCore.QTimer.singleShot(2000, lambda b=btn, t=orig_text: b.setText(t))
+                s_dep = self._ZONE_STYLES[0]
+                self._apply_evt_btn_style(btn, s_dep, "selected")
+                QtCore.QTimer.singleShot(600, lambda b=btn, sd=s_dep: self._apply_evt_btn_style(b, sd, "normal"))
+            if self._on_events_changed:
+                self._on_events_changed()
+        except Exception as e:
+            print(f"[EVENTS] Erreur capture annotation {field_key} : {e}")
 
     # --- Video selection ---
 
@@ -2515,10 +2556,12 @@ class EvenementsController:
                                     tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778a2")))
                                 self.tree_captures.addTopLevelItem(tree_item)
                                 self.add_tree_thumbnail(tree_item, start_ms)
-                # --- Marqueurs timecode_landing / timecode_takeoff ---
+                # --- Marqueurs timecode scalaires (atterrissage/décollage + annotation) ---
                 _TC_MARKERS = {
-                    "timecode_landing":  self.translate("Atterrissage", "Landing"),
-                    "timecode_takeoff":  self.translate("Décollage",    "Takeoff"),
+                    "timecode_landing":  self.translate("Atterrissage",    "Landing"),
+                    "timecode_takeoff":  self.translate("Décollage",       "Takeoff"),
+                    "timecode_debut":    self.translate("Début annotation", "Annotation start"),
+                    "timecode_end":      self.translate("Fin annotation",   "Annotation end"),
                 }
                 for tc_key, tc_label in _TC_MARKERS.items():
                     tc_val = (video_obs.get(tc_key) or {}).get("value")
@@ -2655,6 +2698,8 @@ class EvenementsController:
             if self.current_video_path:
                 self.charger_evenements_du_json()
                 self._refresh_timecode_markers_on_timeline()
+            if self._on_events_changed:
+                self._on_events_changed()
 
         self._batch_worker.result.connect(_on_result)
         self._batch_worker.start()
@@ -3146,8 +3191,10 @@ class EvenementsController:
         video_obs = data.get("video_observation", {})
         tl = self.event_player.timeline
         _TC_MARKERS = {
-            "timecode_landing": self.translate("Atterrissage", "Landing"),
-            "timecode_takeoff": self.translate("Décollage",    "Takeoff"),
+            "timecode_landing": self.translate("Atterrissage",    "Landing"),
+            "timecode_takeoff": self.translate("Décollage",       "Takeoff"),
+            "timecode_debut":   self.translate("Début annotation", "Annotation start"),
+            "timecode_end":     self.translate("Fin annotation",   "Annotation end"),
         }
         for tc_key, tc_label in _TC_MARKERS.items():
             tc_val = (video_obs.get(tc_key) or {}).get("value")
@@ -3379,7 +3426,7 @@ class EvenementsController:
             return
         # Cas spécial : marqueurs timecode_landing / timecode_takeoff → remettre à null
         json_key = event_dict.get("_json_key", "")
-        if json_key in ("timecode_landing", "timecode_takeoff"):
+        if json_key in ("timecode_landing", "timecode_takeoff", "timecode_debut", "timecode_end"):
             try:
                 with open(self.current_json_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
@@ -4029,7 +4076,11 @@ class EvenementsController:
             return None
 
     def _get_annotation_segment_bounds(self):
-        """Lit les frames début/fin annotation du JSON et retourne (start_ms, end_ms), ou None."""
+        """Lit les bornes début/fin annotation du JSON et retourne (start_ms, end_ms), ou None.
+
+        Lit en priorité les champs scalaires timecode_debut / timecode_end (nouveaux boutons),
+        puis repli sur les items events_motor pour la rétrocompatibilité.
+        """
         if not self.current_video_path or not os.path.exists(self.current_video_path):
             return None
         json_path = self.current_json_path or resolve_video_json_path(self._working_dir, self.current_video_path)
@@ -4038,9 +4089,17 @@ class EvenementsController:
         try:
             with open(json_path, 'r', encoding='utf-8') as f:
                 json_data = json.load(f)
-            events_motor = self._read_events_motor(json_data.get('video_observation', {}))
-            if not events_motor:
-                return None
+            obs = json_data.get('video_observation', {})
+            # Priorité : champs scalaires
+            start_ms = self._timecode_str_to_ms((obs.get("timecode_debut") or {}).get("value"))
+            end_ms   = self._timecode_str_to_ms((obs.get("timecode_end")   or {}).get("value"))
+            if start_ms is not None and end_ms is not None:
+                return start_ms, end_ms
+            # Repli : events_motor list (ancien format)
+            cap = cv2.VideoCapture(self.current_video_path)
+            video_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+            cap.release()
+            events_motor = self._read_events_motor(obs)
             start_frame = end_frame = None
             for item in events_motor:
                 if not isinstance(item, dict):
@@ -4055,11 +4114,8 @@ class EvenementsController:
                     end_frame = fn
             if start_frame is None or end_frame is None:
                 return None
-            cap = cv2.VideoCapture(self.current_video_path)
-            video_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-            cap.release()
             start_ms = ((float(int(start_frame)) - 1.0) / float(video_fps)) * 1000.0
-            end_ms = ((float(int(end_frame)) - 1.0) / float(video_fps)) * 1000.0
+            end_ms   = ((float(int(end_frame))   - 1.0) / float(video_fps)) * 1000.0
             return start_ms, end_ms
         except Exception as e:
             print(f"[EXPORT] Annotation bounds exception: {e}")
@@ -4111,6 +4167,15 @@ class EvenementsController:
             with open(json_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             obs = data.get('video_observation', {})
+            # Priorité : champs scalaires
+            start_ms = self._timecode_str_to_ms((obs.get("timecode_debut") or {}).get("value"))
+            end_ms   = self._timecode_str_to_ms((obs.get("timecode_end")   or {}).get("value"))
+            if start_ms is not None and end_ms is not None:
+                return start_ms, end_ms
+            # Repli : events_motor list (ancien format)
+            cap = cv2.VideoCapture(video_path)
+            fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+            cap.release()
             start_frame = end_frame = None
             for item in self._read_events_motor(obs):
                 if not isinstance(item, dict):
@@ -4125,11 +4190,8 @@ class EvenementsController:
                     end_frame = fn
             if start_frame is None or end_frame is None:
                 return None
-            cap = cv2.VideoCapture(video_path)
-            fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-            cap.release()
             start_ms = ((float(int(start_frame)) - 1.0) / fps) * 1000.0
-            end_ms = ((float(int(end_frame)) - 1.0) / fps) * 1000.0
+            end_ms   = ((float(int(end_frame))   - 1.0) / fps) * 1000.0
             return start_ms, end_ms
         except Exception:
             return None
