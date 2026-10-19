@@ -15,7 +15,7 @@ from services.campaign_service import (
     get_video_gps_coords, year_2d_from_date,
     get_working_video_dir, get_infostation_path,
     resolve_video_json_path, get_working_video_json_path,
-    get_temp_json_path,
+    get_temp_json_path, get_campaign_output_dir,
 )
 from views.dialogs.weather_dialog import WeatherWebDialog, WeatherWebMultiDialog
 from models.video_model import VideoFilterProxyModel
@@ -4302,19 +4302,45 @@ class MetadonneesController:
         return f"{_dt.now().strftime('%y%m%d')}_infoStation.csv"
 
     def _export_infostation_action(self):
-        """Point d'entrée utilisateur : demande la destination, vérifie les métadonnées, génère."""
-        start_dir = self._working_dir or ""
+        """Point d'entrée utilisateur : génère le CSV infostation.
 
-        output_dir = QtWidgets.QFileDialog.getExistingDirectory(
-            self.widget,
-            self.translate("Choisir le répertoire de sortie", "Choose output directory"),
-            start_dir,
-        )
-        if not output_dir:
+        En campagne journalière (_campaign_folder défini) : export automatique dans
+        BenthOS_sorties sans ouvrir d'explorateur.
+        Sinon (données historiques) : demande le répertoire de sortie.
+        """
+        # ── Campagne journalière : dossier de sortie automatique ────────────
+        if self._campaign_folder and self._working_dir:
+            output_dir = get_campaign_output_dir(self._campaign_folder)
+            os.makedirs(output_dir, exist_ok=True)
+
+            video_paths = self._collect_video_paths()
+            if not video_paths:
+                return
+
+            issues = self._run_consistency_check(video_paths)
+            if issues:
+                if not self._show_consistency_dialog(issues):
+                    return
+
+            self.generate_infostation_csv(output_dir=output_dir)
+            csv_path = os.path.join(output_dir, self._infostation_csv_name())
+            QtWidgets.QMessageBox.information(
+                self.widget,
+                self.translate("Export terminé", "Export complete"),
+                self.translate(f"CSV Infostation généré :\n{csv_path}",
+                               f"Infostation CSV generated:\n{csv_path}")
+            )
             return
 
-        # Données historiques sans campagne chargée : exporter le tableau affiché directement
+        # ── Données historiques sans campagne chargée ────────────────────────
         if not self._working_dir:
+            output_dir = QtWidgets.QFileDialog.getExistingDirectory(
+                self.widget,
+                self.translate("Choisir le répertoire de sortie", "Choose output directory"),
+                self._working_dir or "",
+            )
+            if not output_dir:
+                return
             csv_path = self._export_ft_table_as_csv(output_dir)
             if csv_path:
                 QtWidgets.QMessageBox.information(
@@ -4323,6 +4349,15 @@ class MetadonneesController:
                     self.translate(f"CSV Infostation généré :\n{csv_path}",
                                    f"Infostation CSV generated:\n{csv_path}")
                 )
+            return
+
+        # ── Fallback : _working_dir défini mais pas _campaign_folder ─────────
+        output_dir = QtWidgets.QFileDialog.getExistingDirectory(
+            self.widget,
+            self.translate("Choisir le répertoire de sortie", "Choose output directory"),
+            self._working_dir,
+        )
+        if not output_dir:
             return
 
         video_paths = self._collect_video_paths()
