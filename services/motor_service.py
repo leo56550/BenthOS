@@ -40,6 +40,23 @@ def _find_nearest_pts(pts: list, target_ms: float) -> float:
     return pts[lo]
 
 
+_SYSTEM_EVENT_NAMES = ("systemEvent.csv", "Events.csv")
+
+
+def find_system_event_csv(folder: str) -> str:
+    """Retourne le chemin du CSV système présent dans folder.
+
+    Cherche d'abord 'systemEvent.csv' (nom courant), puis 'Events.csv' (ancien nom).
+    Retourne le chemin du premier trouvé, ou le chemin systemEvent.csv par défaut si aucun
+    n'existe (pour garder le comportement os.path.exists()==False des appelants).
+    """
+    for name in _SYSTEM_EVENT_NAMES:
+        p = os.path.join(folder, name)
+        if os.path.isfile(p):
+            return p
+    return os.path.join(folder, _SYSTEM_EVENT_NAMES[0])
+
+
 def get_motor_stable_timestamps(csv_path: str, delay: float = 6.0, start_track_id: int = 6,
                                  txt_path: str = None) -> list:
     """Calcule les timestamps stables depuis un fichier systemEvent.csv.
@@ -174,7 +191,7 @@ def persist_motor_events_from_csv(video_path: str, json_path: str, fps: float = 
     Retourne le nombre de rotations écrites (0 si rien fait).
     """
     video_dir = os.path.dirname(video_path)
-    csv_path = os.path.join(video_dir, "systemEvent.csv")
+    csv_path = find_system_event_csv(video_dir)
     if not os.path.isfile(csv_path) or not os.path.isfile(json_path):
         return 0
 

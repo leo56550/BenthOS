@@ -3,7 +3,7 @@ import os
 from PyQt6 import QtWidgets, QtCore, QtGui
 
 from services.video_service import check_stereo_status
-from services.motor_service import get_motor_stable_timestamps
+from services.motor_service import get_motor_stable_timestamps, find_system_event_csv
 from views.widgets.embedded_player import EmbeddedVideoPlayer
 
 
@@ -36,7 +36,7 @@ class QuickVideoDialog(QtWidgets.QDialog):
             self.player.load_dynamic_metadata(csv_path)
 
         motor_events = []
-        system_csv = os.path.join(os.path.dirname(video_path), "systemEvent.csv")
+        system_csv = find_system_event_csv(os.path.dirname(video_path))
         if os.path.exists(system_csv):
             try:
                 for entry in get_motor_stable_timestamps(system_csv, delay=6.0):

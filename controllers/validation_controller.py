@@ -3,7 +3,7 @@ import json
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from services.motor_service import get_motor_stable_timestamps
+from services.motor_service import get_motor_stable_timestamps, find_system_event_csv
 from services.video_service import check_stereo_status
 from services.campaign_service import get_video_json_path, resolve_video_json_path, compute_codestation
 from services.sound_service import get_sound_service
@@ -642,7 +642,7 @@ class ValidationController:
         if self._on_video_focused:
             self._on_video_focused(item.text())
 
-        csv_system = os.path.join(video_dir, "systemEvent.csv")
+        csv_system = find_system_event_csv(video_dir)
         detected_events = []
         if self.current_json_path and os.path.isfile(self.current_json_path):
             try:
@@ -776,7 +776,7 @@ class ValidationController:
             if getattr(self, '_sector_dirty', True):
                 csv_system = ""
                 if self.current_video_path:
-                    csv_system = os.path.join(os.path.dirname(self.current_video_path), "systemEvent.csv")
+                    csv_system = find_system_event_csv(os.path.dirname(self.current_video_path))
                 self._load_sector_view(self.current_video_path, csv_system, self.current_json_path,
                                        skip_csv_fallback=False)
                 self._sector_dirty = False
@@ -808,7 +808,7 @@ class ValidationController:
         if not self.current_video_path:
             self._sector_dirty = True
             return
-        csv_system = os.path.join(os.path.dirname(self.current_video_path), "systemEvent.csv")
+        csv_system = find_system_event_csv(os.path.dirname(self.current_video_path))
         has_json   = self._json_has_rotation_events()
         has_csv    = os.path.exists(csv_system)
         has_events = has_csv or has_json

@@ -19,7 +19,7 @@ from services.campaign_service import (
     get_temp_json_path, compute_codestation,
 )
 from services.migration_service import initialise_temp_json_if_needed, update_temp_json_paths
-from services.motor_service import get_motor_stable_timestamps
+from services.motor_service import get_motor_stable_timestamps, find_system_event_csv
 from services.image_service import extract_frame_at_time
 from services.thumbnail_service import ThumbnailWorkerMulti, THUMB_W, THUMB_H
 from services.sound_service import get_sound_service
@@ -54,7 +54,7 @@ def _get_station_time(video_path: str, cache: dict) -> str:
         except Exception:
             pass
 
-    csv_path = os.path.join(folder, "systemEvent.csv")
+    csv_path = find_system_event_csv(folder)
     if os.path.exists(csv_path):
         for enc in ("utf-8", "cp1252"):
             try:
@@ -791,7 +791,7 @@ class QualifController:
             self.selected_video_name = video_name
 
         video_dir = os.path.dirname(video_path)
-        csv_system = os.path.join(video_dir, "systemEvent.csv")
+        csv_system = find_system_event_csv(video_dir)
         self.current_json_path = resolve_video_json_path(self._working_dir, video_path)
         if os.path.exists(csv_system) or self.current_json_path:
             self.update_camera_views(video_path, csv_system, self.current_json_path)
@@ -1624,7 +1624,7 @@ class QualifController:
         self.selected_video_name = video_name
 
         video_dir = os.path.dirname(video_path)
-        csv_system = os.path.join(video_dir, "systemEvent.csv")
+        csv_system = find_system_event_csv(video_dir)
         self.current_json_path = resolve_video_json_path(self._working_dir, video_path)
         if os.path.exists(csv_system) or self.current_json_path:
             self.update_camera_views(video_path, csv_system, self.current_json_path)

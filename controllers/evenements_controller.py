@@ -7,7 +7,7 @@ import uuid
 import cv2
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from services.motor_service import get_motor_stable_timestamps
+from services.motor_service import get_motor_stable_timestamps, find_system_event_csv
 from services.campaign_service import (
     get_video_json_path, get_campaign_output_dir,
     resolve_video_json_path, build_video_output_name,
@@ -2617,7 +2617,7 @@ class EvenementsController:
         if hasattr(self, '_sector_view_active'):
             if self._sector_view_active:
                 self._toggle_sector_view()
-            csv_system = os.path.join(video_dir, "systemEvent.csv")
+            csv_system = find_system_event_csv(video_dir)
             has_system = os.path.exists(csv_system) or self._json_has_rotation_events()
             self.btn_toggle_sector_view.setEnabled(has_system)
             if has_system:
@@ -2721,7 +2721,7 @@ class EvenementsController:
             if getattr(self, '_sector_dirty', True):
                 csv_system = ""
                 if self.current_video_path:
-                    csv_system = os.path.join(os.path.dirname(self.current_video_path), "systemEvent.csv")
+                    csv_system = find_system_event_csv(os.path.dirname(self.current_video_path))
                 self._load_sector_view(self.current_video_path, csv_system, self.current_json_path,
                                        skip_csv_fallback=False)
                 self._sector_dirty = False
@@ -2747,7 +2747,7 @@ class EvenementsController:
             return
         csv_system = ""
         if self.current_video_path:
-            csv_system = os.path.join(os.path.dirname(self.current_video_path), "systemEvent.csv")
+            csv_system = find_system_event_csv(os.path.dirname(self.current_video_path))
         has_json   = self._json_has_rotation_events()
         has_csv    = os.path.exists(csv_system)
         has_events = has_csv or has_json
