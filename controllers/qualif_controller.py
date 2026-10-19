@@ -1990,6 +1990,20 @@ class QualifController:
                     if (filterGroup) {{ mk._kosmosStatus = filterGroup; }}
                     applyStatusFiltersJS();
                 }}
+                // Ctrl maintenu : glisser-déposer temporaire des marqueurs
+                function _setAllDraggable(enabled) {{
+                    for (var k in allMarkers) {{
+                        if (enabled) {{ allMarkers[k].dragging.enable(); }}
+                        else         {{ allMarkers[k].dragging.disable(); }}
+                    }}
+                }}
+                document.addEventListener('keydown', function(e) {{
+                    if (e.key === 'Control') {{ _setAllDraggable(true); }}
+                }});
+                document.addEventListener('keyup', function(e) {{
+                    if (e.key === 'Control') {{ _setAllDraggable(false); }}
+                }});
+                window.addEventListener('blur', function() {{ _setAllDraggable(false); }});
             </script>"""
             m.get_root().html.add_child(folium.Element(main_script))
             js_map_linkage = f"""
@@ -2308,6 +2322,18 @@ class QualifController:
         }})('{js_name}', 10);
         """
         self.map_dialog.map_view.page().runJavaScript(script)
+
+    def update_single_marker_latlng_js(self, video_name: str, lat: float, lon: float):
+        """Déplace le marqueur via JS setLatLng sans reconstruire la carte entière."""
+        if not getattr(self, 'map_initialized', False) or not hasattr(self, 'map_dialog'):
+            return
+        if not self.map_dialog.isVisible():
+            return
+        js_name = video_name.replace("\\", "\\\\").replace("'", "\\'")
+        self.map_dialog.map_view.page().runJavaScript(
+            f"if(typeof allMarkers!=='undefined'&&allMarkers['{js_name}'])"
+            f"{{allMarkers['{js_name}'].setLatLng([{lat},{lon}]);}}"
+        )
 
     def select_video_by_name(self, video_name: str):
         """Sélectionne programmatiquement une vidéo par son nom (appelé depuis la carte ou un autre controller)."""

@@ -389,14 +389,30 @@ class AppController(QtCore.QObject):
         self._sync_all_to_working_dir()
 
     def _on_metadata_saved(self, video_path: str = None):
-        """Reconstruit la minimap et rafraîchit l'indicateur de complétion + le n° de point
-        de la vidéo modifiée, sans attendre un clic pour que la page Validation le reflète."""
-        if self.qualif_ctrl.map_dialog.isVisible():
-            self.qualif_ctrl.map_initialized = False
-            self.qualif_ctrl.update_minimap(self.qualif_ctrl.selected_video_name)
-        else:
-            self.qualif_ctrl.map_initialized = False
+        """Rafraîchit l'indicateur de complétion, le n° de point et la position du marqueur
+        carte sans reconstruire toute la carte (un setLatLng JS suffit)."""
+        import json as _json, math as _math
+        from services.campaign_service import get_temp_json_path as _gtp
         vp = video_path or self.metadonnees_ctrl.current_video_path
+        # Mise à jour légère du marqueur carte si la carte est ouverte
+        if vp and getattr(self.qualif_ctrl, 'map_initialized', False) \
+                and self.qualif_ctrl.map_dialog.isVisible():
+            try:
+                jp = _gtp(str(vp))
+                if os.path.isfile(jp):
+                    with open(jp, 'r', encoding='utf-8') as _f:
+                        _d = _json.load(_f)
+                    _obs = _d.get('video_observation', {})
+                    _lat = (_obs.get('latitude') or {}).get('value')
+                    _lon = (_obs.get('longitude') or {}).get('value')
+                    if _lat is not None and _lon is not None:
+                        _lf = float(str(_lat).replace(',', '.'))
+                        _lo = float(str(_lon).replace(',', '.'))
+                        if not (_math.isnan(_lf) or _math.isnan(_lo)):
+                            _vname = os.path.basename(str(vp))
+                            self.qualif_ctrl.update_single_marker_latlng_js(_vname, _lf, _lo)
+            except Exception:
+                pass
         if vp:
             self.qualif_ctrl.refresh_completion_color_for_video(vp)
             self._refresh_point_name_for_video(vp)
