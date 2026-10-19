@@ -7,6 +7,7 @@ from datetime import datetime
 import pandas as pd
 
 from services.migration_service import _build_base_template
+from services.motor_service import find_video_csv
 
 
 def year_2d_from_date(date_v: str) -> str:
@@ -111,7 +112,7 @@ def get_video_gps_coords(video_path: str) -> tuple:
         except Exception as e:
             print(f"Erreur lecture GPS depuis _temp.json : {e}")
 
-    gps_csv_path = video_path.replace(".mp4", ".csv")
+    gps_csv_path = find_video_csv(video_path)
     if os.path.exists(gps_csv_path):
         try:
             df = pd.read_csv(gps_csv_path, sep=None, engine='python')

@@ -3,7 +3,7 @@ import os
 from PyQt6 import QtWidgets, QtCore, QtGui
 
 from services.video_service import check_stereo_status
-from services.motor_service import get_motor_stable_timestamps, find_system_event_csv
+from services.motor_service import get_motor_stable_timestamps, find_system_event_csv, find_video_csv
 from views.widgets.embedded_player import EmbeddedVideoPlayer
 
 
@@ -31,7 +31,7 @@ class QuickVideoDialog(QtWidgets.QDialog):
 
         is_stereo, video_to_load = check_stereo_status(video_path)
 
-        csv_path = video_path.replace(".mp4", ".csv")
+        csv_path = find_video_csv(video_path)
         if os.path.exists(csv_path):
             self.player.load_dynamic_metadata(csv_path)
 

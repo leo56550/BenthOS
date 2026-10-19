@@ -7,7 +7,7 @@ import uuid
 import cv2
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from services.motor_service import get_motor_stable_timestamps, find_system_event_csv
+from services.motor_service import get_motor_stable_timestamps, find_system_event_csv, find_video_csv
 from services.campaign_service import (
     get_video_json_path, get_campaign_output_dir,
     resolve_video_json_path, build_video_output_name,
@@ -141,7 +141,7 @@ class _BatchLandingWorker(QtCore.QThread):
                 except Exception:
                     pass
 
-            csv_path = video_path.replace(".mp4", ".csv")
+            csv_path = find_video_csv(video_path)
             if not os.path.isfile(csv_path):
                 skipped += 1
                 continue
@@ -2606,7 +2606,7 @@ class EvenementsController:
 
         if hasattr(self, 'event_player') and self.event_player:
             self.event_player.load_video_and_events(video_to_load, timeline_events, is_stereo=is_stereo)
-            csv_telemetry = self.current_video_path.replace(".mp4", ".csv")
+            csv_telemetry = find_video_csv(self.current_video_path)
             if os.path.exists(csv_telemetry):
                 self.event_player.load_dynamic_metadata(csv_telemetry)
             else:

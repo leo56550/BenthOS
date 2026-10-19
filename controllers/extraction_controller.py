@@ -9,6 +9,7 @@ from services.video_service import check_stereo_status
 from services.export_service import VideoSegmentationWorker
 from services.sound_service import get_sound_service
 from services.campaign_service import get_campaign_output_dir, get_working_video_dir, get_temp_json_path
+from services.motor_service import find_video_csv
 from views.widgets.embedded_player import EmbeddedVideoPlayer
 from views.widgets.video_bar_delegate import VideoBarDelegate
 from views.dialogs.capture_dialog import CaptureDialog
@@ -322,7 +323,7 @@ class ExtractionController:
             if hasattr(self.video_player, 'load_video_and_events'):
                 self.video_player.load_video_and_events(video_payload, timeline_events, is_stereo=is_stereo)
 
-            csv_telemetry = video_path.replace(".mp4", ".csv")
+            csv_telemetry = find_video_csv(video_path)
             if os.path.exists(csv_telemetry):
                 self.video_player.load_dynamic_metadata(csv_telemetry)
             else:

@@ -41,6 +41,8 @@ def _find_nearest_pts(pts: list, target_ms: float) -> float:
 
 
 _SYSTEM_EVENT_NAMES = ("systemEvent.csv", "Events.csv")
+_LEGACY_CAM_CSV     = "00_CamParam.csv"
+_LEGACY_TIMESTAMP   = "00_TimeStamp.txt"
 
 
 def find_system_event_csv(folder: str) -> str:
@@ -55,6 +57,38 @@ def find_system_event_csv(folder: str) -> str:
         if os.path.isfile(p):
             return p
     return os.path.join(folder, _SYSTEM_EVENT_NAMES[0])
+
+
+def find_video_csv(video_path: str) -> str:
+    """Retourne le chemin du CSV télémétrie associé à video_path.
+
+    Cherche d'abord '{stem}.csv' (nom courant), puis '00_CamParam.csv' (ancien nom).
+    Retourne le chemin du premier trouvé, ou le chemin stem.csv par défaut si aucun
+    n'existe (pour garder le comportement os.path.exists()==False des appelants).
+    """
+    stem_csv = os.path.splitext(video_path)[0] + ".csv"
+    if os.path.isfile(stem_csv):
+        return stem_csv
+    legacy = os.path.join(os.path.dirname(video_path), _LEGACY_CAM_CSV)
+    if os.path.isfile(legacy):
+        return legacy
+    return stem_csv
+
+
+def find_video_txt(video_path: str) -> str:
+    """Retourne le chemin du fichier TXT de timestamps de frames associé à video_path.
+
+    Cherche d'abord '{stem}.txt' (nom courant), puis '00_TimeStamp.txt' (ancien nom).
+    Retourne le chemin du premier trouvé, ou le chemin stem.txt par défaut si aucun
+    n'existe.
+    """
+    stem_txt = os.path.splitext(video_path)[0] + ".txt"
+    if os.path.isfile(stem_txt):
+        return stem_txt
+    legacy = os.path.join(os.path.dirname(video_path), _LEGACY_TIMESTAMP)
+    if os.path.isfile(legacy):
+        return legacy
+    return stem_txt
 
 
 def get_motor_stable_timestamps(csv_path: str, delay: float = 6.0, start_track_id: int = 6,
@@ -215,8 +249,7 @@ def persist_motor_events_from_csv(video_path: str, json_path: str, fps: float = 
         return 0  # entrées CSV auto déjà présentes → saut sans aucun calcul
 
     # ── Calcul uniquement si nécessaire ──────────────────────────────────────
-    stem = os.path.splitext(os.path.basename(video_path))[0]
-    txt_path = os.path.join(video_dir, stem + ".txt")
+    txt_path = find_video_txt(video_path)
     txt_path = txt_path if os.path.isfile(txt_path) else None
 
     try:

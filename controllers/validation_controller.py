@@ -3,7 +3,7 @@ import json
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from services.motor_service import get_motor_stable_timestamps, find_system_event_csv
+from services.motor_service import get_motor_stable_timestamps, find_system_event_csv, find_video_csv
 from services.video_service import check_stereo_status
 from services.campaign_service import get_video_json_path, resolve_video_json_path, compute_codestation
 from services.sound_service import get_sound_service
@@ -713,7 +713,7 @@ class ValidationController:
         self.player.load_video_and_events(video_to_load, detected_events, is_stereo=is_stereo,
                                           start_position_ms=_aruco_start_ms)
 
-        csv_telemetry = selected_video_path.replace(".mp4", ".csv")
+        csv_telemetry = find_video_csv(selected_video_path)
         if os.path.exists(csv_telemetry):
             self.player.load_dynamic_metadata(csv_telemetry)
         else:
