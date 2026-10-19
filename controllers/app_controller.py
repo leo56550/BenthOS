@@ -196,6 +196,9 @@ class AppController(QtCore.QObject):
         bridge.videoSelected.connect(self.metadonnees_ctrl.select_video_by_name)
         bridge.videoSelected.connect(self.extraction_ctrl.select_video_by_name)
 
+        # Carte : déplacement de marqueur sans _temp.json (mode données historiques)
+        self.qualif_ctrl._on_coords_updated = self._on_map_marker_coords_updated
+
         # Wire navigation actions
         window.actionAcceuil.triggered.connect(lambda: self.switch_page(window.page_accueil))
         window.actionQualification.triggered.connect(lambda: self.switch_page(window.page_qualification))
@@ -416,6 +419,12 @@ class AppController(QtCore.QObject):
         if vp:
             self.qualif_ctrl.refresh_completion_color_for_video(vp)
             self._refresh_point_name_for_video(vp)
+
+    def _on_map_marker_coords_updated(self, video_name: str, lat: float, lon: float):
+        """Appelé quand un marqueur est déplacé sans _temp.json disponible (mode historique).
+
+        Met à jour directement les cellules lat/lon du tableau infostation."""
+        self.metadonnees_ctrl.update_ft_coords_by_name(video_name, lat, lon)
 
     def _refresh_point_name_for_video(self, video_path: str):
         """Recalcule le n° de point (UserRole+3) et le repropage sur le modèle vidéo partagé.

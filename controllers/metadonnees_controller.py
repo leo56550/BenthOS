@@ -4207,6 +4207,68 @@ class MetadonneesController:
             }
         return result
 
+    def update_ft_coords_by_name(self, map_key: str, lat: float, lon: float):
+        """Met à jour directement les cellules lat/lon pour la ligne dont la clé carte == map_key.
+
+        Appelé en mode données historiques quand le marqueur est déplacé sur la carte sans
+        qu'un _temp.json soit disponible (video_model vide). La clé carte correspond à
+        codestation si renseigné, sinon au video_number, comme dans collect_ft_table_coords.
+        Si un _temp.json existe pour la ligne, ses coordonnées sont mises à jour en même temps.
+        """
+        if not hasattr(self, '_ft_table') or not self._ft_table:
+            return
+        lat_col  = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "latitude"),     None)
+        lon_col  = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "longitude"),    None)
+        vnum_col = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "video_number"), None)
+        cobs_col = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "codeObs"),      None)
+        if lat_col is None or lon_col is None:
+            return
+
+        for row in range(self._ft_table.rowCount()):
+            name = ""
+            if vnum_col is not None:
+                ni = self._ft_table.item(row, vnum_col)
+                name = ni.text().strip() if ni else ""
+            if not name:
+                name = f"Ligne {row + 1}"
+            codestation = ""
+            if cobs_col is not None:
+                ci = self._ft_table.item(row, cobs_col)
+                codestation = ci.text().strip() if ci else ""
+            row_key = codestation if codestation else name
+            if row_key != map_key:
+                continue
+
+            self._ft_table.blockSignals(True)
+            lat_item = self._ft_table.item(row, lat_col)
+            lon_item = self._ft_table.item(row, lon_col)
+            if lat_item:
+                lat_item.setText(str(round(lat, 6)))
+            if lon_item:
+                lon_item.setText(str(round(lon, 6)))
+            self._ft_table.blockSignals(False)
+
+            # Mise à jour du _temp.json si disponible
+            item0 = self._ft_table.item(row, 0)
+            if item0:
+                video_path = item0.data(QtCore.Qt.ItemDataRole.UserRole)
+                if video_path:
+                    json_path = get_temp_json_path(str(video_path))
+                    if os.path.isfile(json_path):
+                        try:
+                            with open(json_path, 'r', encoding='utf-8') as f:
+                                data = json.load(f)
+                            obs = data.setdefault("video_observation", {})
+                            obs.setdefault("latitude", {})["value"]  = round(lat, 6)
+                            obs.setdefault("longitude", {})["value"] = round(lon, 6)
+                            print(f"[TEMP_JSON] {os.path.basename(json_path)} ← latitude/"
+                                  f"longitude = ({lat:.6f}, {lon:.6f}) [déplacement carte historique]")
+                            with open(json_path, 'w', encoding='utf-8') as f:
+                                json.dump(data, f, indent=4, ensure_ascii=False)
+                        except Exception as e:
+                            print(f"[MAP] Erreur écriture JSON historique : {e}")
+            break
+
     def _sort_by_codestation(self):
         """Toggle : trie par codestation croissant, re-clic remet l'ordre d'origine."""
         if not hasattr(self, '_ft_table') or self._ft_table is None:

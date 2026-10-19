@@ -160,6 +160,7 @@ class QualifController:
         self.parent = parent
         self._on_before_delete = on_before_delete
         self._on_qualification_changed = on_qualification_changed
+        self._on_coords_updated = None  # callback(video_name, lat, lon) — déplacement carte sans _temp.json
         self.on_qualification_resumed = None  # callback → appelé quand GARDER/JETER après qualif terminée
         self.current_language = 'en'
         self._undo_stack: list[dict] = []   # pile undo JETER/GARDER
@@ -2239,18 +2240,28 @@ class QualifController:
     def _on_marker_moved(self, video_name: str, lat: float, lon: float):
         """Écrit la nouvelle position (marqueur déplacé à la main sur la carte) dans le
         _temp.json de la vidéo correspondante, et rafraîchit les vues qui affichent ces
-        champs (tableau infostation de la page Métadonnées, notamment)."""
+        champs (tableau infostation de la page Métadonnées, notamment).
+
+        En mode données historiques (video_model vide), délègue la mise à jour directe
+        des cellules du tableau au callback _on_coords_updated."""
         video_path = None
         for row in range(self.video_model.rowCount()):
             item = self.video_model.item(row, 0)
             if item and item.text() == video_name:
                 video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
                 break
+
         if not video_path:
+            # Mode historique : pas de vidéo dans le modèle — déléguer au callback
+            if self._on_coords_updated:
+                self._on_coords_updated(video_name, lat, lon)
             return
 
         json_path = get_temp_json_path(str(video_path))
         if not os.path.isfile(json_path):
+            # Pas de _temp.json : mise à jour directe du tableau via callback
+            if self._on_coords_updated:
+                self._on_coords_updated(video_name, lat, lon)
             return
         try:
             with open(json_path, 'r', encoding='utf-8') as f:
@@ -2264,6 +2275,8 @@ class QualifController:
                 json.dump(data, f, indent=4, ensure_ascii=False)
         except Exception as e:
             print(f"[MAP] Erreur écriture coordonnées déplacées : {e}")
+            if self._on_coords_updated:
+                self._on_coords_updated(video_name, lat, lon)
             return
 
         if self._on_qualification_changed:
