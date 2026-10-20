@@ -2665,8 +2665,9 @@ class MetadonneesController:
                         except ValueError:
                             _vid_stem_num = _vid_stem_local
                         val   = f"{_camp}\\{_sys}\\{_vid_stem_num}"
+                import re as _re_bs
                 if for_csv and val:
-                    val = val.replace('\\', '\\\\')
+                    val = _re_bs.sub(r'\\+', r'\\\\', val)
 
             elif field_key == "video_file_name" and not val:
                 val = stem
@@ -2825,6 +2826,10 @@ class MetadonneesController:
                     import re as _re_csv
                     m = _re_csv.search(r'"([^"]*)"[;,]\s*"([^"]*)"', val)
                     val = m.group(2) if m else ''
+                # Normaliser les backslashes de video_path à exactement \\ (idempotent)
+                if val and _fk == "video_path":
+                    import re as _re_bs
+                    val = _re_bs.sub(r'\\+', r'\\\\', val)
                 # Normaliser date et heure au format cible (YYYYMMDD / HH:MM)
                 if val and _sec and _fk in ("date", "time"):
                     coerced = _coerce_field_value(_sec, _fk, val)
@@ -4465,7 +4470,8 @@ class MetadonneesController:
                         item = self._ft_table.item(row, col)
                         val = item.text() if item else ""
                         if col == _vpath_col and val:
-                            val = val.replace('\\', '\\\\')
+                            import re as _re_bs
+                            val = _re_bs.sub(r'\\+', r'\\\\', val)
                         row_data.append(val)
                     writer.writerow(row_data)
         except Exception as e:
