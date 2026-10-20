@@ -1126,22 +1126,33 @@ class MetadonneesController:
         """
         if not hasattr(self, '_ft_table') or self._ft_table is None:
             return
+        import time as _t
+        _t0 = _t.perf_counter()
+        n = self._ft_table.rowCount()
+        print(f"[PERF] _refresh_table_cells_from_jsons démarrage : {n} lignes")
         self._ft_table.blockSignals(True)
-        for row in range(self._ft_table.rowCount()):
-            first_item = self._ft_table.item(row, 0)
-            if not first_item:
-                continue
-            video_path = first_item.data(QtCore.Qt.ItemDataRole.UserRole)
-            if not video_path:
-                continue
-            row_data = self._build_infostation_row(str(video_path))
-            for col_i in range(len(_FT_TABLE_COLS)):
-                cell = self._ft_table.item(row, col_i)
-                if cell is None:
+        self._ft_table.setUpdatesEnabled(False)
+        try:
+            for row in range(n):
+                first_item = self._ft_table.item(row, 0)
+                if not first_item:
                     continue
-                val = str(row_data[col_i] if col_i < len(row_data) else "")
-                cell.setText(val)
-        self._ft_table.blockSignals(False)
+                video_path = first_item.data(QtCore.Qt.ItemDataRole.UserRole)
+                if not video_path:
+                    continue
+                row_data = self._build_infostation_row(str(video_path))
+                for col_i in range(len(_FT_TABLE_COLS)):
+                    cell = self._ft_table.item(row, col_i)
+                    if cell is None:
+                        continue
+                    val = str(row_data[col_i] if col_i < len(row_data) else "")
+                    cell.setText(val)
+                if row % 50 == 0 and row > 0:
+                    QtWidgets.QApplication.processEvents()
+        finally:
+            self._ft_table.blockSignals(False)
+            self._ft_table.setUpdatesEnabled(True)
+        print(f"[PERF] _refresh_table_cells_from_jsons : {n} lignes en {_t.perf_counter()-_t0:.2f}s")
         self._apply_ft_table_system_colors()
         self._apply_ft_table_json_bold()
         if hasattr(self, '_filter_bar'):
@@ -1154,23 +1165,32 @@ class MetadonneesController:
         systeme_col = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "type_system"), None)
         if systeme_col is None:
             return
+        import time as _t
+        _t0 = _t.perf_counter()
+        n = self._ft_table.rowCount()
         _system_color_map: dict[str, str] = {}
         self._ft_table.blockSignals(True)
+        self._ft_table.setUpdatesEnabled(False)
         try:
-            for row in range(self._ft_table.rowCount()):
+            for row in range(n):
                 sys_item = self._ft_table.item(row, systeme_col)
                 system_val = sys_item.text().strip() if sys_item else ""
                 if system_val and system_val not in _system_color_map:
                     idx = len(_system_color_map) % len(self._SYSTEM_COLORS)
                     _system_color_map[system_val] = self._SYSTEM_COLORS[idx]
                 row_bg = QtGui.QColor(_system_color_map.get(system_val, self._SYSTEM_COLORS[0]))
+                brush = QtGui.QBrush(row_bg)
                 for col in range(self._ft_table.columnCount()):
                     cell = self._ft_table.item(row, col)
                     if cell:
-                        cell.setBackground(QtGui.QBrush(row_bg))
+                        cell.setBackground(brush)
                         cell.setData(self._FT_BASE_BG_ROLE, QtGui.QColor(row_bg))
+                if row % 100 == 0 and row > 0:
+                    QtWidgets.QApplication.processEvents()
         finally:
             self._ft_table.blockSignals(False)
+            self._ft_table.setUpdatesEnabled(True)
+        print(f"[PERF] _apply_ft_table_system_colors : {n} lignes en {_t.perf_counter()-_t0:.2f}s")
 
     def _apply_ft_table_json_bold(self):
         """Marque en gras les lignes dont le _temp.json existe, stocke le flag sur item 0.
@@ -1189,9 +1209,15 @@ class MetadonneesController:
         systeme_col = next(
             (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "type_system"), None)
 
+        import time as _t
+        _t0 = _t.perf_counter()
+        n_rows = self._ft_table.rowCount()
+        print(f"[PERF] _apply_ft_table_json_bold démarrage : {n_rows} lignes")
+
         self._ft_table.blockSignals(True)
+        self._ft_table.setUpdatesEnabled(False)
         try:
-            for row in range(self._ft_table.rowCount()):
+            for row in range(n_rows):
                 item0 = self._ft_table.item(row, 0)
                 has_json = False
                 temp_json_path = None
@@ -1271,8 +1297,13 @@ class MetadonneesController:
                     if f.bold() != has_json:
                         f.setBold(has_json)
                         cell.setFont(f)
+
+                if row % 50 == 0 and row > 0:
+                    QtWidgets.QApplication.processEvents()
         finally:
             self._ft_table.blockSignals(False)
+            self._ft_table.setUpdatesEnabled(True)
+        print(f"[PERF] _apply_ft_table_json_bold : {n_rows} lignes en {_t.perf_counter()-_t0:.2f}s")
         # Ré-appliquer les couleurs système (au cas où Systeme a été complété)
         self._apply_ft_table_system_colors()
         # Ré-appliquer le filtre actif si besoin
@@ -2754,17 +2785,29 @@ class MetadonneesController:
         import time as _time
         t0 = _time.perf_counter()
         print(f"[IMPORT HISTORIQUE] Lecture fichier : {os.path.basename(file_path)}")
+
+        # Curseur d'attente pendant la lecture (potentiellement longue pour les XLSX)
+        QtWidgets.QApplication.setOverrideCursor(
+            QtCore.Qt.CursorShape.WaitCursor)
+        QtWidgets.QApplication.processEvents()
+
         # ── Lecture du fichier ────────────────────────────────────────────
         try:
             ext = os.path.splitext(file_path)[1].lower()
             if ext == '.xlsx':
                 import openpyxl as _opxl
-                wb = _opxl.load_workbook(file_path, data_only=True)
+                # read_only=True : lecture streaming, évite de charger toute la mise en forme
+                wb = _opxl.load_workbook(file_path, data_only=True, read_only=True)
                 ws = wb.active
-                headers = [str(c.value or '').strip() for c in next(ws.iter_rows(min_row=1, max_row=1))]
+                rows_iter = ws.iter_rows(values_only=True)
+                header_row = next(rows_iter, None)
+                headers = [str(v or '').strip() for v in (header_row or [])]
                 rows = []
-                for ws_row in ws.iter_rows(min_row=2, values_only=True):
-                    rows.append({headers[i]: (str(v) if v is not None else '') for i, v in enumerate(ws_row)})
+                for ws_row in rows_iter:
+                    rows.append({headers[i]: (str(v) if v is not None else '')
+                                 for i, v in enumerate(ws_row) if i < len(headers)})
+                wb.close()
+                print(f"[IMPORT HISTORIQUE] XLSX lu ({len(rows)} lignes) en {_time.perf_counter()-t0:.2f}s")
             else:
                 _encodings = ['utf-8-sig', 'cp1252', 'latin-1']
                 _enc_used = 'utf-8-sig'
@@ -2783,12 +2826,15 @@ class MetadonneesController:
                     for r in reader:
                         rows.append({k.strip(): (v or '').strip() for k, v in r.items()})
         except Exception as e:
+            QtWidgets.QApplication.restoreOverrideCursor()
             QtWidgets.QMessageBox.warning(
                 self.widget,
                 self.translate("Erreur", "Error"),
                 self.translate(f"Impossible de lire le fichier :\n{e}", f"Cannot read file:\n{e}"),
             )
             return
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
 
         # ── Remplissage du tableau ────────────────────────────────────────
         # Désactiver le filtre JSON pour ne pas masquer les lignes sans _temp.json
@@ -2812,7 +2858,9 @@ class MetadonneesController:
         def _norm(s: str) -> str:
             return _ud.normalize('NFD', s).encode('ascii', 'ignore').decode().strip().lower()
 
-        for row_dict in rows:
+        _re_csv = __import__('re')
+        _re_bs  = __import__('re')
+        for _ri, row_dict in enumerate(rows):
             # Ignorer les lignes entièrement vides
             if not any(v for v in row_dict.values()):
                 continue
@@ -2823,12 +2871,10 @@ class MetadonneesController:
                 val = (norm_row.get(_norm(col_label)) or '').strip()
                 # Nettoyer les formules Excel (=LIEN_HYPERTEXTE...)
                 if val.startswith('='):
-                    import re as _re_csv
                     m = _re_csv.search(r'"([^"]*)"[;,]\s*"([^"]*)"', val)
                     val = m.group(2) if m else ''
                 # Normaliser les backslashes de video_path à exactement \\ (idempotent)
                 if val and _fk == "video_path":
-                    import re as _re_bs
                     val = _re_bs.sub(r'\\+', r'\\\\', val)
                 # Normaliser date et heure au format cible (YYYYMMDD / HH:MM)
                 if val and _sec and _fk in ("date", "time"):
@@ -2840,6 +2886,8 @@ class MetadonneesController:
                          QtCore.Qt.ItemFlag.ItemIsEnabled)
                 cell.setFlags(_base | QtCore.Qt.ItemFlag.ItemIsEditable)
                 self._ft_table.setItem(trow, col_i, cell)
+            if _ri % 100 == 0 and _ri > 0:
+                QtWidgets.QApplication.processEvents()
 
         self._ft_table.blockSignals(False)
         self._ft_table.setUpdatesEnabled(True)
@@ -2923,22 +2971,31 @@ class MetadonneesController:
         return index
 
     def count_existing_temp_jsons(self, folder_path: str) -> int:
-        """Compte les _temp.json déjà présents pour les vidéos du tableau dans folder_path."""
+        """Compte les _temp.json déjà présents en un seul os.walk (évite N scans récursifs)."""
         if not hasattr(self, '_ft_table') or self._ft_table is None:
             return 0
+        # 1. Collecter les stems de vidéos attendus depuis le tableau
         vnum_col = next(
             (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "video_number"), None
         )
-        vpath_col = next(
-            (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "video_path"), None
-        )
         if vnum_col is None:
             return 0
-        count = 0
+        expected_stems: set[str] = set()
         for row in range(self._ft_table.rowCount()):
-            vp = self._resolve_video_path_from_row(row, folder_path, vpath_col, vnum_col)
-            if vp and os.path.isfile(get_temp_json_path(vp)):
-                count += 1
+            it = self._ft_table.item(row, vnum_col)
+            val = it.text().strip() if it else ""
+            if val:
+                expected_stems.add(os.path.splitext(val)[0].lower())
+        if not expected_stems:
+            return 0
+        # 2. Un seul os.walk pour trouver tous les _temp.json
+        count = 0
+        for dirpath, _, filenames in os.walk(folder_path):
+            for fn in filenames:
+                if fn.endswith("_temp.json"):
+                    stem = fn[: -len("_temp.json")].lower()
+                    if stem in expected_stems:
+                        count += 1
         return count
 
     def generate_temp_from_table(self, folder_path: str,

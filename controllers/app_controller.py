@@ -223,6 +223,10 @@ class AppController(QtCore.QObject):
             window.btn_load_history.customContextMenuRequested.connect(
                 self._show_load_history_context_menu)
 
+        if hasattr(window, 'btn_synthese_infostation'):
+            window.btn_synthese_infostation.clicked.connect(
+                self._generate_synthese_infostation)
+
         if hasattr(window, 'btn_generate_temp'):
             window.btn_generate_temp.setVisible(False)
             if hasattr(window, '_act_generate_temp'):
@@ -453,6 +457,251 @@ class AppController(QtCore.QObject):
         from views.dialogs.quick_video_dialog import QuickVideoDialog
         dlg = QuickVideoDialog(path, parent=self.window, language=getattr(self.window, 'current_language', 'fr'))
         dlg.show()
+
+    def _generate_synthese_infostation(self):
+        """Parcourt récursivement un dossier, lit tous les _temp.json et génère synthèse_infoStation.csv."""
+        import os as _os
+        import csv as _csv
+        from datetime import datetime as _dt
+        from PyQt6.QtWidgets import QFileDialog, QProgressDialog, QMessageBox, QApplication
+        from PyQt6.QtCore import Qt
+        from controllers.metadonnees_controller import _INFOSTATION_COLUMNS
+
+        # 1. Choisir le dossier racine à scanner
+        root_dir = QFileDialog.getExistingDirectory(
+            self.window,
+            self.translate("Choisir le dossier racine à analyser", "Choose root folder to scan"),
+            "",
+        )
+        if not root_dir:
+            return
+
+        # 2. Scanner récursivement tous les *_temp.json
+        temp_jsons = []
+        for dirpath, _, filenames in _os.walk(root_dir):
+            for fn in sorted(filenames):
+                if fn.endswith("_temp.json"):
+                    temp_jsons.append(_os.path.join(dirpath, fn))
+
+        if not temp_jsons:
+            QMessageBox.warning(
+                self.window,
+                self.translate("Aucun fichier trouvé", "No file found"),
+                self.translate(
+                    f"Aucun _temp.json trouvé dans :\n{root_dir}",
+                    f"No _temp.json found in:\n{root_dir}",
+                ),
+            )
+            return
+
+        # 3. Dériver le chemin vidéo depuis chaque _temp.json
+        video_paths = []
+        for jp in temp_jsons:
+            stem = _os.path.basename(jp)[: -len("_temp.json")]
+            video_paths.append(_os.path.join(_os.path.dirname(jp), stem + ".mp4"))
+
+        # 4. Lire zone + année depuis chaque _temp.json pour le filtre
+        import json as _json, re as _re
+        meta_by_path: dict[str, dict] = {}
+        for jp, vp in zip(temp_jsons, video_paths):
+            zone, year = "", ""
+            try:
+                with open(jp, "r", encoding="utf-8") as _f:
+                    _d = _json.load(_f)
+                zone = str((_d.get("survey", {}).get("zone") or {}).get("value") or "").strip()
+                date_raw = str((_d.get("survey", {}).get("date") or {}).get("value") or "").strip()
+                m = _re.search(r"(20\d{2})", date_raw) or _re.search(r"(?<!\d)(20\d{2})(?!\d)", jp)
+                year = m.group(1) if m else ""
+            except Exception:
+                pass
+            meta_by_path[vp] = {"zone": zone, "year": year}
+
+        all_zones = sorted({v["zone"] for v in meta_by_path.values() if v["zone"]})
+        all_years = sorted({v["year"] for v in meta_by_path.values() if v["year"]})
+
+        # 5. Dialog de filtrage par zone et année
+        if all_zones or all_years:
+            filter_dlg = QtWidgets.QDialog(self.window)
+            filter_dlg.setWindowTitle(
+                self.translate("Filtrer la synthèse", "Filter synthesis"))
+            filter_dlg.setMinimumWidth(420)
+            filter_dlg.setStyleSheet("""
+                QDialog { background-color: #111820; }
+                QLabel  { color: #b0c8d8; font-size: 12px;
+                          font-family: 'Segoe UI', sans-serif; }
+                QGroupBox { color: #7dd8f8; font-size: 12px; font-weight: bold;
+                            border: 1px solid #1e3448; border-radius: 4px;
+                            margin-top: 6px; padding-top: 8px;
+                            font-family: 'Segoe UI', sans-serif; }
+                QGroupBox::title { subcontrol-origin: margin; left: 8px; }
+                QCheckBox { color: #b0c8d8; font-size: 11px;
+                            font-family: 'Segoe UI', sans-serif; }
+                QCheckBox::indicator:checked { background-color: #2778a2; }
+                QPushButton {
+                    background-color: #20415D; color: #F2BFB4;
+                    border: 1px solid #2778A2; border-radius: 4px;
+                    padding: 6px 14px; font-size: 12px;
+                    font-family: 'Segoe UI', sans-serif;
+                }
+                QPushButton:hover { background-color: #2778A2; }
+            """)
+            flay = QtWidgets.QVBoxLayout(filter_dlg)
+            flay.setContentsMargins(18, 14, 18, 14)
+            flay.setSpacing(12)
+
+            lbl_info = QtWidgets.QLabel(
+                self.translate(
+                    f"{len(temp_jsons)} observation(s) trouvée(s) — choisissez les filtres :",
+                    f"{len(temp_jsons)} observation(s) found — choose filters:",
+                )
+            )
+            flay.addWidget(lbl_info)
+
+            zone_checks: dict[str, QtWidgets.QCheckBox] = {}
+            if all_zones:
+                grp_zone = QtWidgets.QGroupBox(self.translate("Zones", "Zones"))
+                gz = QtWidgets.QVBoxLayout(grp_zone)
+                gz.setSpacing(4)
+                for z in all_zones:
+                    cb = QtWidgets.QCheckBox(z)
+                    cb.setChecked(True)
+                    zone_checks[z] = cb
+                    gz.addWidget(cb)
+                flay.addWidget(grp_zone)
+
+            year_checks: dict[str, QtWidgets.QCheckBox] = {}
+            if all_years:
+                grp_year = QtWidgets.QGroupBox(self.translate("Années", "Years"))
+                gy = QtWidgets.QVBoxLayout(grp_year)
+                gy.setSpacing(4)
+                for y in all_years:
+                    cb = QtWidgets.QCheckBox(y)
+                    cb.setChecked(True)
+                    year_checks[y] = cb
+                    gy.addWidget(cb)
+                flay.addWidget(grp_year)
+
+            btn_row = QtWidgets.QHBoxLayout()
+            btn_row.addStretch()
+            btn_ok = QtWidgets.QPushButton(
+                self.translate("Générer", "Generate"))
+            btn_cancel = QtWidgets.QPushButton(
+                self.translate("Annuler", "Cancel"))
+            btn_ok.clicked.connect(filter_dlg.accept)
+            btn_cancel.clicked.connect(filter_dlg.reject)
+            btn_row.addWidget(btn_ok)
+            btn_row.addWidget(btn_cancel)
+            flay.addLayout(btn_row)
+
+            if filter_dlg.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+                return
+
+            # Appliquer les filtres
+            sel_zones = {z for z, cb in zone_checks.items() if cb.isChecked()}
+            sel_years = {y for y, cb in year_checks.items() if cb.isChecked()}
+            video_paths = [
+                vp for vp in video_paths
+                if (not sel_zones or meta_by_path[vp]["zone"] in sel_zones or not meta_by_path[vp]["zone"])
+                and (not sel_years or meta_by_path[vp]["year"] in sel_years or not meta_by_path[vp]["year"])
+            ]
+            if not video_paths:
+                QMessageBox.warning(
+                    self.window,
+                    self.translate("Aucune donnée", "No data"),
+                    self.translate(
+                        "Aucune observation ne correspond aux filtres sélectionnés.",
+                        "No observation matches the selected filters.",
+                    ),
+                )
+                return
+
+        # 6. Trier par heure de station (réutilise la méthode existante)
+        video_paths = self.metadonnees_ctrl._sort_paths_by_station_time(video_paths)
+
+        # 7. Choisir le répertoire de sortie
+        out_dir = QFileDialog.getExistingDirectory(
+            self.window,
+            self.translate("Choisir le répertoire de sortie", "Choose output directory"),
+            root_dir,
+        )
+        if not out_dir:
+            return
+
+        # 6. Écrire le CSV
+        date_str = _dt.now().strftime("%Y%m%d")
+        csv_path = _os.path.join(out_dir, f"{date_str}_synthese_infostation.csv")
+        total = len(video_paths)
+
+        progress = QProgressDialog(
+            self.translate("Génération de la synthèse…", "Generating synthesis…"),
+            self.translate("Annuler", "Cancel"),
+            0, total, self.window,
+        )
+        progress.setWindowTitle(
+            self.translate("Synthèse infoStation", "infoStation Synthesis"))
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+        QApplication.processEvents()
+
+        errors: list[str] = []
+        written = 0
+        try:
+            _os.makedirs(out_dir, exist_ok=True)
+            # Collecter toutes les lignes pour pouvoir trier par codestation
+            rows: list[list[str]] = []
+            for i, vp in enumerate(video_paths):
+                if progress.wasCanceled():
+                    break
+                progress.setValue(i)
+                if i % 10 == 0:
+                    QApplication.processEvents()
+                try:
+                    row_data = self.metadonnees_ctrl._build_infostation_row(
+                        vp, for_csv=True)
+                    rows.append(
+                        [str(v).replace("\n", " | ").replace("\r", "")
+                         for v in row_data])
+                    written += 1
+                except Exception as e:
+                    errors.append(_os.path.basename(vp))
+                    print(f"[SYNTHESE] {_os.path.basename(vp)}: {e}")
+
+            # Trier par codestation (colonne 0), insensible à la casse
+            rows.sort(key=lambda r: r[0].lower() if r else "")
+
+            with open(csv_path, "w", newline="", encoding="cp1252", errors="replace") as f:
+                writer = _csv.writer(f, delimiter=";", quoting=_csv.QUOTE_MINIMAL)
+                writer.writerow(_INFOSTATION_COLUMNS)
+                for row in rows:
+                    writer.writerow(row)
+        except Exception as e:
+            QMessageBox.critical(
+                self.window,
+                self.translate("Erreur", "Error"),
+                self.translate(f"Impossible d'écrire le fichier :\n{e}",
+                               f"Cannot write file:\n{e}"),
+            )
+            return
+        finally:
+            progress.setValue(total)
+
+        msg = self.translate(
+            f"Synthèse générée — {written} observation(s) :\n{csv_path}",
+            f"Synthesis generated — {written} observation(s):\n{csv_path}",
+        )
+        if errors:
+            sample = "\n".join(errors[:10])
+            suffix = f"\n…et {len(errors) - 10} autres" if len(errors) > 10 else ""
+            msg += "\n\n" + self.translate(
+                f"Erreurs ({len(errors)}) :\n{sample}{suffix}",
+                f"Errors ({len(errors)}):\n{sample}{suffix}",
+            )
+        QMessageBox.information(
+            self.window,
+            self.translate("Synthèse terminée", "Synthesis complete"),
+            msg,
+        )
 
     def _open_notes(self):
         """Ouvre le bloc-notes de session pour la campagne courante."""

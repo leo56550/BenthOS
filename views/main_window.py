@@ -266,8 +266,21 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self.btn_generate_temp.setVisible(False)  # visible seulement après chargement infoStation
 
+        self.btn_synthese_infostation = QtWidgets.QToolButton()
+        self.btn_synthese_infostation.setText("Synthèse infoStation")
+        self.btn_synthese_infostation.setToolTip(
+            "Générer la synthèse infoStation consolidée depuis un dossier de _temp.json")
+        self.btn_synthese_infostation.setObjectName("btn_synthese_infostation")
+        self.btn_synthese_infostation.setStyleSheet(
+            "QToolButton { background-color: #0e4a5e; color: #7dd8f8; font-weight: bold;"
+            " font-size: 12px; border: 1px solid #1a7a9e; border-radius: 4px; padding: 4px 12px; }"
+            " QToolButton:hover { background-color: #1a6a8e; color: #ffffff; }"
+            " QToolButton:pressed { background-color: #0a3a4e; }"
+        )
+
         self.action_toolbar.addWidget(buttons_scroll)
         self.action_toolbar.addWidget(self.btn_load_history)
+        self.action_toolbar.addWidget(self.btn_synthese_infostation)
         # Stocker l'action wrapper pour pouvoir show/hide correctement dans la toolbar
         self._act_generate_temp = self.action_toolbar.addWidget(self.btn_generate_temp)
         self._act_generate_temp.setVisible(False)

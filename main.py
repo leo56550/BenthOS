@@ -10,7 +10,7 @@ class _FilteredStdout:
     Bufférise jusqu'au '\\n' pour traiter des lignes complètes — print() appelle
     write(content) puis write('\\n') séparément, donc filtrer sur write seul
     supprimerait les newlines et bloquerait l'affichage."""
-    _KEEP = ("[SEEK]", "[ARUCO]")
+    _KEEP = ("[SEEK]", "[ARUCO]", "[PERF]", "[IMPORT HISTORIQUE]", "[SYNTHESE]", "[MAP]", "[KOSMOS]")
 
     def __init__(self, wrapped):
         self._w = wrapped

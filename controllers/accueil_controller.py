@@ -52,7 +52,7 @@ class AccueilController:
         self.set_language(self.current_language)
 
     def _add_secondary_buttons(self, recent_callback, open_video_callback):
-        """Insère 'Campagnes récentes' et 'Ouvrir vidéo' juste après btn_ouvrir_campagne."""
+        """Insère les boutons secondaires juste après btn_ouvrir_campagne."""
         if self.btn_open is None:
             return
         frame = self.widget.findChild(QtWidgets.QFrame, "frame")
@@ -70,7 +70,7 @@ class AccueilController:
         if btn_idx == -1:
             return
 
-        # Créer les boutons secondaires
+        # Boutons secondaires
         self.btn_recent = QtWidgets.QPushButton("Campagnes récentes")
         self.btn_recent.setObjectName("btn_recent_campaigns_accueil")
         self.btn_recent.setStyleSheet(_BTN_STYLE_SECONDARY)
@@ -85,7 +85,7 @@ class AccueilController:
         if open_video_callback:
             self.btn_video.clicked.connect(open_video_callback)
 
-        # Insérer après btn_ouvrir_campagne (indices btn_idx+1, btn_idx+2)
+        # Insertion : btn_recent, btn_video
         vbox.insertWidget(btn_idx + 1, self.btn_recent, 0,
                           QtCore.Qt.AlignmentFlag.AlignHCenter)
         vbox.insertWidget(btn_idx + 2, self.btn_video, 0,
