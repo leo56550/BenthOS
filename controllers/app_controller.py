@@ -633,7 +633,9 @@ class AppController(QtCore.QObject):
         total = len(video_paths)
 
         progress = QProgressDialog(
-            self.translate("Génération de la synthèse…", "Generating synthesis…"),
+            self.translate(
+                f"Génération de la synthèse ({total} observations)…",
+                f"Generating synthesis ({total} observations)…"),
             self.translate("Annuler", "Cancel"),
             0, total, self.window,
         )
@@ -641,6 +643,42 @@ class AppController(QtCore.QObject):
             self.translate("Synthèse infoStation", "infoStation Synthesis"))
         progress.setWindowModality(Qt.WindowModality.WindowModal)
         progress.setMinimumDuration(0)
+        progress.setMinimumWidth(420)
+        progress.setStyleSheet("""
+            QProgressDialog {
+                background-color: #111820;
+                color: #b0c8d8;
+            }
+            QLabel {
+                color: #b0c8d8;
+                font-family: 'Segoe UI', sans-serif;
+                font-size: 12px;
+                padding: 4px 0px;
+            }
+            QProgressBar {
+                background-color: #1a2e40;
+                border: 1px solid #1e3448;
+                border-radius: 4px;
+                height: 18px;
+                text-align: center;
+                color: #ffffff;
+                font-size: 11px;
+            }
+            QProgressBar::chunk {
+                background-color: #2778a2;
+                border-radius: 3px;
+            }
+            QPushButton {
+                background-color: #20415D;
+                color: #F2BFB4;
+                border: 1px solid #2778A2;
+                border-radius: 4px;
+                padding: 5px 14px;
+                font-size: 11px;
+                font-family: 'Segoe UI', sans-serif;
+            }
+            QPushButton:hover { background-color: #2778A2; }
+        """)
         progress.setValue(0)
         QApplication.processEvents()
 
