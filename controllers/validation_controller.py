@@ -701,17 +701,20 @@ class ValidationController:
             pass
 
         # Calcul de la position de départ (ArUco) avant le chargement
-        _aruco_start_ms = 0
+        _aruco_start_fn = 0
+        _aruco_corners = None
         if self._get_aruco_result:
             _ar = self._get_aruco_result(selected_video_path)
             if _ar:
-                _aruco_start_ms = _ar.get("frame_ms", 0)
-                print(f"[SEEK] Clic vidéo → QRcode détecté frame {_ar.get('frame_number', '?')} ({_aruco_start_ms} ms)")
+                _aruco_start_fn = _ar.get("frame_number", 0)
+                _aruco_corners = _ar.get("corners")
+                print(f"[SEEK] Clic vidéo → QRcode détecté frame {_aruco_start_fn} ({_ar.get('frame_ms', '?')} ms)")
             else:
                 print(f"[SEEK] Clic vidéo → pas de QRcode détecté")
 
         self.player.load_video_and_events(video_to_load, detected_events, is_stereo=is_stereo,
-                                          start_position_ms=_aruco_start_ms)
+                                          start_frame_number=_aruco_start_fn,
+                                          aruco_corners=_aruco_corners)
 
         csv_telemetry = find_video_csv(selected_video_path)
         if os.path.exists(csv_telemetry):
@@ -744,23 +747,44 @@ class ValidationController:
         self._sector_dirty = False
 
         # ── Badge ArUco ──────────────────────────────────────────────────────
-        if self._get_aruco_result and hasattr(self, '_aruco_badge'):
-            aruco = self._get_aruco_result(selected_video_path)
-            if aruco:
-                _ms = aruco.get("frame_ms", 0)
-                _frame_num = aruco.get("frame_number", 0)
-                self._aruco_badge.setText(f"✓ QRcode détecté : frame {_frame_num}")
-                self._aruco_badge.setStyleSheet(
-                    "QLabel { color: #7fff7f; background: #0d2a0d; border: 1px solid #3a7a3a;"
-                    " border-radius: 4px; font-size: 11px; }"
-                )
+        self._refresh_aruco_badge(selected_video_path)
+
+    def _refresh_aruco_badge(self, video_path: str | None = None):
+        """Met à jour le badge ArUco pour video_path (ou la vidéo courante si None)."""
+        if not self._get_aruco_result or not hasattr(self, '_aruco_badge'):
+            return
+        vp = video_path or self.current_video_path
+        if not vp:
+            return
+        aruco = self._get_aruco_result(vp)
+        if aruco:
+            _frame_num = aruco.get("frame_number", 0)
+            _ms        = aruco.get("frame_ms", 0)
+            _score     = aruco.get("score", 0)
+            # Barre visuelle (5 blocs) + couleur selon confiance
+            _filled    = max(0, min(5, round(_score / 20)))
+            _bar       = "■" * _filled + "□" * (5 - _filled)
+            _pct       = f"{_score}%"
+            if _score >= 70:
+                _fg, _bg, _bd = "#7fff7f", "#0d2a0d", "#3a7a3a"   # vert : bonne confiance
+            elif _score >= 45:
+                _fg, _bg, _bd = "#ffd080", "#2a1a00", "#7a5a00"   # orange : confiance moyenne
             else:
-                self._aruco_badge.setText("✗ QRcode non détecté")
-                self._aruco_badge.setStyleSheet(
-                    "QLabel { color: #888; background: #1a2a3a; border: 1px solid #3a5060;"
-                    " border-radius: 4px; font-size: 11px; }"
-                )
-            self._aruco_badge.setVisible(True)
+                _fg, _bg, _bd = "#ff9060", "#2a0d00", "#7a3000"   # rouge : faible confiance
+            self._aruco_badge.setText(
+                f"✓ QRcode : frame {_frame_num} ({_ms} ms)  {_bar} {_pct}"
+            )
+            self._aruco_badge.setStyleSheet(
+                f"QLabel {{ color: {_fg}; background: {_bg}; border: 1px solid {_bd};"
+                " border-radius: 4px; font-size: 11px; }}"
+            )
+        else:
+            self._aruco_badge.setText("✗ QRcode non détecté")
+            self._aruco_badge.setStyleSheet(
+                "QLabel { color: #888; background: #1a2a3a; border: 1px solid #3a5060;"
+                " border-radius: 4px; font-size: 11px; }"
+            )
+        self._aruco_badge.setVisible(True)
 
     def _toggle_sector_view(self):
         """Alterne entre le lecteur vidéo et la vue des secteurs (photos de rotation moteur)."""

@@ -1114,7 +1114,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
 
     def load_video_and_events(self, video_data, events: list, is_stereo: bool = False,
-                              start_position_ms: int = 0):
+                              start_position_ms: int = 0, start_frame_number: int = 0,
+                              aruco_corners: list | None = None):
         """Charge une vidéo (mono ou stéréo), configure la timeline et démarre la lecture."""
         if self._fs_window is not None:
             self._exit_fullscreen()
@@ -1128,7 +1129,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
         has_video = False
 
-        _seek_pos = start_position_ms
+        _seek_pos = start_position_ms  # ms pour le player Qt
+        _seek_fn = start_frame_number   # frame number pour l'extraction OpenCV (plus fiable sur H.264)
 
         if is_stereo and isinstance(video_data, list) and len(video_data) >= 2:
             path_l, path_r = video_data[0], video_data[1]
@@ -1181,28 +1183,42 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             # _on_playback_state_changed(Playing) qui efface l'overlay (setCurrentIndex(0)).
             # On stocke l'image et on l'affiche seulement APRÈS la pause finale.
             _qr_img: QtGui.QImage | None = None
-            if _seek_pos > 0 and self.current_video_path:
-                print(f"[SEEK] Extraction OpenCV frame à {_seek_pos}ms depuis {os.path.basename(self.current_video_path)}")
+            if _seek_fn > 0 and self.current_video_path:
+                print(f"[SEEK] Extraction OpenCV frame #{_seek_fn} depuis {os.path.basename(self.current_video_path)}")
                 _cv = cv2.VideoCapture(self.current_video_path)
                 if _cv.isOpened():
-                    _cv.set(cv2.CAP_PROP_POS_MSEC, float(_seek_pos))
+                    _fps_cv = _cv.get(cv2.CAP_PROP_FPS) or 25.0
+                    # Seek par frame number — plus fiable que POS_MSEC sur H.264
+                    _cv.set(cv2.CAP_PROP_POS_FRAMES, float(_seek_fn))
                     _shown = None
                     _iterations = 0
-                    for _ in range(300):
-                        _pre_ms = int(_cv.get(cv2.CAP_PROP_POS_MSEC))
+                    for _ in range(30):
+                        _cur_fn = int(_cv.get(cv2.CAP_PROP_POS_FRAMES))
                         _ok, _fr = _cv.read()
                         _iterations += 1
                         if not _ok:
                             print(f"[SEEK] cap.read() échoué après {_iterations} itérations")
                             break
                         _shown = _fr
-                        if _pre_ms >= _seek_pos:
-                            print(f"[SEEK] Frame trouvée en {_iterations} itérations, pre_ms={_pre_ms}ms")
+                        if _cur_fn >= _seek_fn:
+                            print(f"[SEEK] Frame trouvée en {_iterations} itérations, fn={_cur_fn}")
                             break
                     else:
-                        print(f"[SEEK] Limite 300 itérations atteinte, prise de la dernière frame")
+                        print(f"[SEEK] Limite 30 itérations atteinte, prise de la dernière frame")
+                    # Calculer _seek_pos (ms) depuis la frame pour le player Qt
+                    if _seek_pos == 0:
+                        _seek_pos = int(_seek_fn / _fps_cv * 1000)
                     _cv.release()
                     if _shown is not None:
+                        # Dessiner la bounding box depuis les coins stockés lors du scan.
+                        # On n'essaie PAS de re-détecter dans la frame affichée : les paramètres
+                        # permissifs + CLAHE trouveraient un faux marqueur sur les vêtements/équipements.
+                        if aruco_corners and len(aruco_corners) == 4:
+                            pts = np.array(aruco_corners, dtype=np.int32).reshape((-1, 1, 2))
+                            cv2.polylines(_shown, [pts], isClosed=True,
+                                          color=(0, 255, 0), thickness=3)
+                            for cx, cy in aruco_corners:
+                                cv2.circle(_shown, (int(cx), int(cy)), 6, (0, 200, 255), -1)
                         _rgb = cv2.cvtColor(_shown, cv2.COLOR_BGR2RGB)
                         _h, _w = _rgb.shape[:2]
                         _qr_img = QtGui.QImage(
@@ -1213,8 +1229,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                         print(f"[SEEK] _qr_img=None, _shown est None")
                 else:
                     print(f"[SEEK] Impossible d'ouvrir la vidéo via OpenCV")
-            else:
-                print(f"[SEEK] _seek_pos={_seek_pos}, current_video_path={self.current_video_path!r} — pas d'extraction")
+            elif _seek_pos == 0:
+                print(f"[SEEK] Pas de frame ArUco — ouverture à frame 0")
 
             def _show_qr_overlay():
                 """Affiche l'overlay OpenCV — appelé après pause_all() pour ne pas être écrasé."""

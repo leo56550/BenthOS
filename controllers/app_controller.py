@@ -136,6 +136,7 @@ class AppController(QtCore.QObject):
             on_qualification_changed=self._on_qualification_changed,
         )
         self._aruco_results: dict = {}
+        self._aruco_scan_done: bool = True  # True = pas de campagne chargée, scan désactivé
         self.validation_ctrl = ValidationController(
             window.page_validation, self.qualif_ctrl.video_model,
             on_video_focused=self._focus_map,
@@ -1261,11 +1262,116 @@ class AppController(QtCore.QObject):
                 else:
                     self.lock_navigation(True)
 
-            # Étape 4 — Détection ArUco (désactivée)
+            # La détection ArUco sera lancée lors du premier accès à la page Validation,
+            # après que l'utilisateur ait eu la chance de qualifier/rejeter les vidéos.
             self._aruco_results.clear()
+            self._aruco_scan_done = False
 
         finally:
             _overlay.stop()
+
+    def _run_aruco_scan_sync(self, step_cb=None):
+        """Détecte les ArUco de manière synchrone dans l'overlay d'ouverture.
+        Ne scanne que les vidéos sans codestation dans leur _temp.json.
+        step_cb(msg, value, maximum) — même signature que l'overlay _step."""
+        import json as _json
+        from services.campaign_service import get_temp_json_path as _gtp, compute_codestation
+        from services.aruco_service import detect_aruco_in_video
+
+        model = self.qualif_ctrl.video_model
+        if model.rowCount() == 0:
+            return
+
+        # Collecter les vidéos sans codestation calculable
+        all_videos: list[str] = []
+        for row in range(model.rowCount()):
+            item = model.item(row, 0)
+            if not item:
+                continue
+            vp = item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if vp:
+                all_videos.append(str(vp))
+
+        videos_to_scan: list[str] = []
+        for vp in all_videos:
+            jp = _gtp(vp)
+            has_code = False
+            if os.path.isfile(jp):
+                try:
+                    with open(jp, "r", encoding="utf-8") as f:
+                        jd = _json.load(f)
+                    obs_block = jd.get("video_observation", {})
+                    stored = (obs_block.get("codeObs") or {}).get("value")
+                    if stored and str(stored).strip():
+                        has_code = True
+                    else:
+                        # Calcule et persiste si les champs source sont renseignés
+                        code = compute_codestation(jd.get("survey", {}), obs_block)
+                        if code and code.strip():
+                            has_code = True
+                            code_obs = obs_block.get("codeObs", {})
+                            code_obs["value"] = code
+                            obs_block["codeObs"] = code_obs
+                            jd["video_observation"] = obs_block
+                            with open(jp, "w", encoding="utf-8") as fw:
+                                _json.dump(jd, fw, indent=4, ensure_ascii=False)
+                except Exception as _e:
+                    print(f"[ARUCO] ERREUR filtre {os.path.basename(vp)}: {_e}")
+            if not has_code:
+                videos_to_scan.append(vp)
+
+        print(f"[ARUCO] Analyse : {len(all_videos)} vidéos, "
+              f"{len(all_videos) - len(videos_to_scan)} déjà traitées, "
+              f"{len(videos_to_scan)} à scanner.")
+
+        total_all = len(all_videos)
+        to_scan = len(videos_to_scan)
+        already = total_all - to_scan
+
+        if not videos_to_scan:
+            print(f"[ARUCO] Toutes les vidéos ({total_all}) déjà traitées — scan ignoré.")
+            if step_cb:
+                step_cb(
+                    self.translate(
+                        f"QRcode : {total_all}/{total_all} vidéos déjà traitées",
+                        f"QRcode : {total_all}/{total_all} videos already processed"),
+                    total_all, total_all)
+            return
+
+        print(f"[ARUCO] Tentatives de scan sur {to_scan}/{total_all} vidéo(s) "
+              f"({already} déjà traitées)…")
+
+        found = 0
+        for i, vp in enumerate(videos_to_scan):
+            name = os.path.basename(vp)
+            if step_cb:
+                step_cb(
+                    self.translate(
+                        f"Scan QRcode : tentative {i + 1}/{to_scan} — {name}",
+                        f"QRcode scan: attempt {i + 1}/{to_scan} — {name}"),
+                    i, to_scan)
+            QtWidgets.QApplication.processEvents()
+
+            result = detect_aruco_in_video(vp)
+            if result:
+                self._aruco_results[vp] = result
+                found += 1
+
+        total_found = found + already
+        print(f"[ARUCO] Scan terminé : {total_found}/{total_all} QRcode(s) disponibles "
+              f"({found} nouveau(x) détecté(s)).")
+        # Mettre à jour le delegate de la page Validation pour afficher les scores dans la liste
+        _vd = getattr(getattr(self, "validation_ctrl", None), "_bar_delegate", None)
+        if _vd and hasattr(_vd, "set_aruco_results"):
+            _vd.set_aruco_results(self._aruco_results)
+        if step_cb:
+            step_cb(
+                self.translate(
+                    f"QRcode : {total_found}/{total_all} détectés "
+                    f"({to_scan} tentative(s))",
+                    f"QRcode : {total_found}/{total_all} detected "
+                    f"({to_scan} attempt(s))"),
+                to_scan, to_scan)
 
     def _detect_campaign_mode(self):
         """Détermine le mode et les systèmes de la campagne en scannant toutes les vidéos."""
@@ -1396,6 +1502,19 @@ class AppController(QtCore.QObject):
 
         w.stackedWidget.setCurrentWidget(page)
         w.update_nav_highlight(page)
+
+        if page == w.page_validation and not getattr(self, '_aruco_scan_done', True):
+            self._aruco_scan_done = True
+            _ov = _CampaignLoadingOverlay(self.window)
+            _ov.set_message(self.translate("Détection QRcode…", "QRcode detection…"))
+            _ov.start()
+            try:
+                self._run_aruco_scan_sync(
+                    lambda msg, v, n: (_ov.step(msg, v, n),
+                                       QtWidgets.QApplication.processEvents()))
+            finally:
+                _ov.stop()
+
         self._focus_page_player(page)
         self._refresh_generate_temp_visibility(page)
 
