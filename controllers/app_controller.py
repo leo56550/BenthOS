@@ -751,10 +751,11 @@ class AppController(QtCore.QObject):
         dlg.show()
 
     def _on_qualification_changed(self):
-        """Appelé quand l'exploitabilité d'une vidéo change — rafraîchit la barre de statut."""
+        """Appelé quand l'exploitabilité ou les propriétés campagne changent."""
         self.refresh_status_bar()
         self._refresh_dashboard()
         self.metadonnees_ctrl.refresh_feuille_terrain()
+        self.metadonnees_ctrl._rebuild_ft_table()
         self.qualif_ctrl.refresh_map_marker_colors()
         self.evenements_ctrl.proxy_model.invalidateFilter()
 

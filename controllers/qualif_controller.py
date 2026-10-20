@@ -1391,6 +1391,8 @@ class QualifController:
         widget = self.campaign_fields.get(key)
         if widget:
             self.synchronize_campaign_field(key, widget.text())
+            if self._on_qualification_changed:
+                self._on_qualification_changed()
 
     def save_all_campaign_fields(self):
         """Sauvegarde tous les champs de campagne dans les _temp.json de toutes les vidéos."""
