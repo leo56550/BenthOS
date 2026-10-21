@@ -136,12 +136,13 @@ class AppController(QtCore.QObject):
             on_qualification_changed=self._on_qualification_changed,
         )
         self._aruco_results: dict = {}
-        self._aruco_scan_done: bool = True  # True = pas de campagne chargée, scan désactivé
         self.validation_ctrl = ValidationController(
             window.page_validation, self.qualif_ctrl.video_model,
             on_video_focused=self._focus_map,
             on_qualification_changed=self._on_qualification_changed,
             get_aruco_result=self._aruco_results.get,
+            on_detect_aruco=self._aruco_detect_single,
+            on_detect_aruco_all=self._aruco_detect_all,
         )
         self.evenements_ctrl = EvenementsController(
             window.page_evenements, self.qualif_ctrl.video_model,
@@ -1263,13 +1264,46 @@ class AppController(QtCore.QObject):
                 else:
                     self.lock_navigation(True)
 
-            # La détection ArUco sera lancée lors du premier accès à la page Validation,
-            # après que l'utilisateur ait eu la chance de qualifier/rejeter les vidéos.
             self._aruco_results.clear()
-            self._aruco_scan_done = False
 
         finally:
             _overlay.stop()
+
+    def _aruco_detect_single(self, video_path: str):
+        """Détecte l'ardoise sur une seule vidéo (clic droit → Détecter Ardoise)."""
+        from services.aruco_service import detect_aruco_in_video
+        name = os.path.basename(video_path)
+        _ov = _CampaignLoadingOverlay(self.window)
+        _ov.set_message(self.translate(f"Détection QRcode — {name}…",
+                                        f"QRcode detection — {name}…"))
+        _ov.start()
+        try:
+            result = detect_aruco_in_video(video_path)
+            self._aruco_results[video_path] = result
+        finally:
+            _ov.stop()
+        _vd = getattr(self.validation_ctrl, "_bar_delegate", None)
+        if _vd and hasattr(_vd, "set_aruco_results"):
+            _vd.set_aruco_results(self._aruco_results)
+        if result:
+            from services.aruco_service import generate_slate_review_video
+            _rev = generate_slate_review_video({video_path: result})
+            if _rev:
+                import subprocess
+                subprocess.Popen(["explorer", "/select,", os.path.normpath(_rev)])
+
+    def _aruco_detect_all(self):
+        """Détecte les ardoises sur toutes les vidéos (clic droit → Détecter toutes)."""
+        _ov = _CampaignLoadingOverlay(self.window)
+        _ov.set_message(self.translate("Détection QRcode…", "QRcode detection…"))
+        _ov.start()
+        try:
+            self._aruco_results.clear()
+            self._run_aruco_scan_sync(
+                lambda msg, v, n: (_ov.step(msg, v, n),
+                                   QtWidgets.QApplication.processEvents()))
+        finally:
+            _ov.stop()
 
     def _run_aruco_scan_sync(self, step_cb=None):
         """Détecte les ArUco de manière synchrone dans l'overlay d'ouverture.
@@ -1365,6 +1399,16 @@ class AppController(QtCore.QObject):
         _vd = getattr(getattr(self, "validation_ctrl", None), "_bar_delegate", None)
         if _vd and hasattr(_vd, "set_aruco_results"):
             _vd.set_aruco_results(self._aruco_results)
+
+        # Générer la vidéo de revue des ardoises détectées
+        if self._aruco_results:
+            from services.aruco_service import generate_slate_review_video
+            _rev = generate_slate_review_video(self._aruco_results)
+            if _rev:
+                print(f"[ARUCO] Vidéo de revue disponible : {_rev}")
+                import subprocess
+                subprocess.Popen(["explorer", "/select,", os.path.normpath(_rev)])
+
         if step_cb:
             step_cb(
                 self.translate(
@@ -1503,18 +1547,6 @@ class AppController(QtCore.QObject):
 
         w.stackedWidget.setCurrentWidget(page)
         w.update_nav_highlight(page)
-
-        if page == w.page_validation and not getattr(self, '_aruco_scan_done', True):
-            self._aruco_scan_done = True
-            _ov = _CampaignLoadingOverlay(self.window)
-            _ov.set_message(self.translate("Détection QRcode…", "QRcode detection…"))
-            _ov.start()
-            try:
-                self._run_aruco_scan_sync(
-                    lambda msg, v, n: (_ov.step(msg, v, n),
-                                       QtWidgets.QApplication.processEvents()))
-            finally:
-                _ov.stop()
 
         self._focus_page_player(page)
         self._refresh_generate_temp_visibility(page)

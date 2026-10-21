@@ -79,13 +79,15 @@ class ValidationController:
 
     def __init__(self, page_widget: QtWidgets.QWidget, shared_model: QtGui.QStandardItemModel,
                  on_video_focused=None, on_qualification_changed=None,
-                 get_aruco_result=None):
+                 get_aruco_result=None, on_detect_aruco=None, on_detect_aruco_all=None):
         """Initialise le player embarqué, l'arbre vidéo et le combo exploitabilité."""
         self.page = page_widget
         self.video_model = shared_model
         self._on_video_focused = on_video_focused
         self._on_qualification_changed = on_qualification_changed
         self._get_aruco_result = get_aruco_result
+        self._on_detect_aruco = on_detect_aruco
+        self._on_detect_aruco_all = on_detect_aruco_all
         self.current_language = 'en'
         self.current_json_path = None
         self.current_video_path = None
@@ -123,6 +125,9 @@ class ValidationController:
             self.video_tree.setColumnWidth(3, 0)
             self.video_tree.setColumnHidden(3, True)
             self.video_tree.clicked.connect(self.on_video_selected)
+            self.video_tree.setContextMenuPolicy(
+                QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+            self.video_tree.customContextMenuRequested.connect(self._show_video_context_menu)
             self._bar_delegate = VideoBarDelegate(self.video_tree, highlight_short_light=True)
             self._bar_delegate.show_point_number = True
             self._bar_delegate.show_exploitable_status = True
@@ -609,6 +614,45 @@ class ValidationController:
         """Clic (ou double-clic) sur un événement : positionne le lecteur au début de l'événement."""
         if event_dict is not None and hasattr(self, 'player') and self.player is not None:
             self.player.player.setPosition(int(event_dict.get("start", 0)))
+
+    def _show_video_context_menu(self, pos: QtCore.QPoint):
+        """Menu contextuel clic droit sur la liste vidéo."""
+        index = self.video_tree.indexAt(pos)
+        video_path = None
+        if index.isValid():
+            src = self.proxy_model.mapToSource(index)
+            item = self.video_model.item(src.row(), 0)
+            if item:
+                video_path = str(item.data(QtCore.Qt.ItemDataRole.UserRole) or "")
+
+        menu = QtWidgets.QMenu(self.video_tree)
+        menu.setStyleSheet("""
+            QMenu { background-color: #111820; color: #d0e8f8;
+                    border: 1px solid #2778a2; font-size: 12px; }
+            QMenu::item { padding: 5px 20px; }
+            QMenu::item:selected { background-color: #1e3a55; }
+            QMenu::item:disabled { color: #506070; }
+            QMenu::separator { height: 1px; background: #1e3448; margin: 3px 0; }
+        """)
+
+        lbl = "fr" if getattr(self, "current_language", "fr") == "fr" else "en"
+        act_single = menu.addAction(
+            "🔍  Détecter Ardoise" if lbl == "fr" else "🔍  Detect Slate")
+        act_single.setEnabled(bool(video_path) and self._on_detect_aruco is not None)
+
+        menu.addSeparator()
+
+        act_all = menu.addAction(
+            "🔍  Détecter ardoise — toutes les vidéos"
+            if lbl == "fr" else "🔍  Detect slate — all videos")
+        act_all.setEnabled(self._on_detect_aruco_all is not None)
+
+        chosen = menu.exec(self.video_tree.viewport().mapToGlobal(pos))
+
+        if chosen == act_single and video_path and self._on_detect_aruco:
+            self._on_detect_aruco(video_path)
+        elif chosen == act_all and self._on_detect_aruco_all:
+            self._on_detect_aruco_all()
 
     def on_video_selected(self, index: QtCore.QModelIndex):
         """Charge la vidéo sélectionnée, les événements moteur et la télémétrie CSV."""

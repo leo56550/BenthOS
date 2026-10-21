@@ -1,8 +1,11 @@
 import os
 import logging
 import math
+import tempfile
+import datetime
 
 import cv2
+import numpy as np
 from PyQt6.QtCore import QThread, pyqtSignal
 
 _LOG = logging.getLogger(__name__)
@@ -271,3 +274,105 @@ class ArucoWorker(QThread):
 
         self.scan_complete.emit(found, total)
         print(f"[ARUCO] Scan terminé : {found}/{total} vidéo(s) avec marker ArUco")
+
+
+def generate_slate_review_video(aruco_results: dict,
+                                 window_frames: int = 50,
+                                 output_fps: int = 10) -> str | None:
+    """Génère une vidéo de revue contenant ~window_frames frames autour de chaque
+    détection d'ardoise, avec bounding box et nom de vidéo incrustés.
+
+    Retourne le chemin du fichier généré, ou None en cas d'échec.
+    """
+    if not aruco_results:
+        print("[ARUCO] generate_slate_review_video : aucun résultat à compiler.")
+        return None
+
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_path = os.path.join(tempfile.gettempdir(), f"kosmos_aruco_review_{ts}.mp4")
+
+    writer = None
+    out_w, out_h = 1280, 720
+    half = window_frames // 2
+
+    sorted_results = sorted(aruco_results.items(), key=lambda kv: os.path.basename(kv[0]))
+    total = len(sorted_results)
+    written_clips = 0
+
+    for vp, result in sorted_results:
+        name       = os.path.basename(vp)
+        frame_num  = result.get("frame_number", 0)
+        corners    = result.get("corners")
+        score      = result.get("score", 0)
+
+        cap = cv2.VideoCapture(vp)
+        if not cap.isOpened():
+            print(f"[ARUCO] review : impossible d'ouvrir {name}")
+            continue
+
+        src_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        src_w   = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        src_h   = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+        # Initialiser le VideoWriter sur la première vidéo
+        if writer is None:
+            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+            writer = cv2.VideoWriter(out_path, fourcc, output_fps, (out_w, out_h))
+            if not writer.isOpened():
+                print(f"[ARUCO] review : impossible de créer {out_path}")
+                cap.release()
+                return None
+
+        start = max(0, frame_num - half)
+        end   = frame_num + half
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start)
+
+        frames_written = 0
+        fn = start
+        while fn <= end:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            # Redimensionner en 1280×720
+            frame = cv2.resize(frame, (out_w, out_h), interpolation=cv2.INTER_AREA)
+
+            # Bounding box (si disponible)
+            if corners and len(corners) == 4:
+                sx = out_w / src_w
+                sy = out_h / src_h
+                pts = np.array(
+                    [[int(c[0] * sx), int(c[1] * sy)] for c in corners],
+                    dtype=np.int32,
+                ).reshape((-1, 1, 2))
+                cv2.polylines(frame, [pts], isClosed=True, color=(0, 255, 0), thickness=3)
+                for c in corners:
+                    cv2.circle(frame, (int(c[0] * sx), int(c[1] * sy)), 6, (0, 200, 255), -1)
+
+            # Overlay : nom vidéo + score + frame
+            is_detection_frame = (fn == frame_num)
+            bg_color  = (0, 180, 0) if is_detection_frame else (30, 30, 30)
+            txt_color = (255, 255, 255)
+            label = f"{name}  frame {fn}  score={score}/100"
+            (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
+            cv2.rectangle(frame, (8, 8), (14 + tw, 14 + th + 4), bg_color, -1)
+            cv2.putText(frame, label, (11, 11 + th),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, txt_color, 1, cv2.LINE_AA)
+
+            writer.write(frame)
+            frames_written += 1
+            fn += 1
+
+        cap.release()
+        written_clips += 1
+        print(f"[ARUCO] review : {name} → {frames_written} frames ({start}–{fn-1})")
+
+    if writer:
+        writer.release()
+
+    if written_clips == 0:
+        print("[ARUCO] review : aucun clip extrait.")
+        return None
+
+    print(f"[ARUCO] Vidéo de revue ({total} ardoises) : {out_path}")
+    return out_path
