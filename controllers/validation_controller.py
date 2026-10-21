@@ -79,7 +79,8 @@ class ValidationController:
 
     def __init__(self, page_widget: QtWidgets.QWidget, shared_model: QtGui.QStandardItemModel,
                  on_video_focused=None, on_qualification_changed=None,
-                 get_aruco_result=None, on_detect_aruco=None, on_detect_aruco_all=None):
+                 get_aruco_result=None, on_detect_aruco=None, on_detect_aruco_all=None,
+                 on_detect_aruco_missing=None):
         """Initialise le player embarqué, l'arbre vidéo et le combo exploitabilité."""
         self.page = page_widget
         self.video_model = shared_model
@@ -88,6 +89,7 @@ class ValidationController:
         self._get_aruco_result = get_aruco_result
         self._on_detect_aruco = on_detect_aruco
         self._on_detect_aruco_all = on_detect_aruco_all
+        self._on_detect_aruco_missing = on_detect_aruco_missing
         self.current_language = 'en'
         self.current_json_path = None
         self.current_video_path = None
@@ -610,6 +612,26 @@ class ValidationController:
                     self.on_video_selected(proxy_index)
                 break
 
+    def reload_video_by_path(self, video_path: str):
+        """Recharge la vidéo identifiée par son chemin — équivalent d'un clic dans la liste."""
+        if not self.video_tree or not self.video_model:
+            return
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if item and item.data(QtCore.Qt.ItemDataRole.UserRole) == video_path:
+                source_index = self.video_model.indexFromItem(item)
+                proxy_index = self.proxy_model.mapFromSource(source_index)
+                if not proxy_index.isValid():
+                    return
+                self.video_tree.selectionModel().setCurrentIndex(
+                    proxy_index,
+                    QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect |
+                    QtCore.QItemSelectionModel.SelectionFlag.Rows,
+                )
+                self.video_tree.scrollTo(proxy_index)
+                self.on_video_selected(proxy_index)
+                return
+
     def _seek_to_timeline_event(self, event_dict):
         """Clic (ou double-clic) sur un événement : positionne le lecteur au début de l'événement."""
         if event_dict is not None and hasattr(self, 'player') and self.player is not None:
@@ -647,12 +669,19 @@ class ValidationController:
             if lbl == "fr" else "🔍  Detect slate — all videos")
         act_all.setEnabled(self._on_detect_aruco_all is not None)
 
+        act_missing = menu.addAction(
+            "🔍  Détecter toutes les ardoises sans codestations"
+            if lbl == "fr" else "🔍  Detect slates — videos without codestation")
+        act_missing.setEnabled(self._on_detect_aruco_missing is not None)
+
         chosen = menu.exec(self.video_tree.viewport().mapToGlobal(pos))
 
         if chosen == act_single and video_path and self._on_detect_aruco:
             self._on_detect_aruco(video_path)
         elif chosen == act_all and self._on_detect_aruco_all:
             self._on_detect_aruco_all()
+        elif chosen == act_missing and self._on_detect_aruco_missing:
+            self._on_detect_aruco_missing()
 
     def on_video_selected(self, index: QtCore.QModelIndex):
         """Charge la vidéo sélectionnée, les événements moteur et la télémétrie CSV."""

@@ -143,6 +143,7 @@ class AppController(QtCore.QObject):
             get_aruco_result=self._aruco_results.get,
             on_detect_aruco=self._aruco_detect_single,
             on_detect_aruco_all=self._aruco_detect_all,
+            on_detect_aruco_missing=self._aruco_detect_missing,
         )
         self.evenements_ctrl = EvenementsController(
             window.page_evenements, self.qualif_ctrl.video_model,
@@ -1285,12 +1286,9 @@ class AppController(QtCore.QObject):
         _vd = getattr(self.validation_ctrl, "_bar_delegate", None)
         if _vd and hasattr(_vd, "set_aruco_results"):
             _vd.set_aruco_results(self._aruco_results)
-        if result:
-            from services.aruco_service import generate_slate_review_video
-            _rev = generate_slate_review_video({video_path: result})
-            if _rev:
-                import subprocess
-                subprocess.Popen(["explorer", "/select,", os.path.normpath(_rev)])
+
+        # Recharger la vidéo pour positionner le player sur la frame ardoise détectée
+        self.validation_ctrl.reload_video_by_path(video_path)
 
     def _aruco_detect_all(self):
         """Détecte les ardoises sur toutes les vidéos (clic droit → Détecter toutes)."""
@@ -1305,9 +1303,24 @@ class AppController(QtCore.QObject):
         finally:
             _ov.stop()
 
-    def _run_aruco_scan_sync(self, step_cb=None):
+    def _aruco_detect_missing(self):
+        """Détecte les ardoises uniquement sur les vidéos sans codestation (conserve les résultats existants)."""
+        _ov = _CampaignLoadingOverlay(self.window)
+        _ov.set_message(self.translate("Détection QRcode (sans codestations)…",
+                                        "QRcode detection (missing codestations)…"))
+        _ov.start()
+        try:
+            self._run_aruco_scan_sync(
+                lambda msg, v, n: (_ov.step(msg, v, n),
+                                   QtWidgets.QApplication.processEvents()),
+                skip_already_scanned=True)
+        finally:
+            _ov.stop()
+
+    def _run_aruco_scan_sync(self, step_cb=None, skip_already_scanned: bool = False):
         """Détecte les ArUco de manière synchrone dans l'overlay d'ouverture.
         Ne scanne que les vidéos sans codestation dans leur _temp.json.
+        skip_already_scanned=True : ignore aussi les vidéos déjà dans _aruco_results.
         step_cb(msg, value, maximum) — même signature que l'overlay _step."""
         import json as _json
         from services.campaign_service import get_temp_json_path as _gtp, compute_codestation
@@ -1353,6 +1366,8 @@ class AppController(QtCore.QObject):
                 except Exception as _e:
                     print(f"[ARUCO] ERREUR filtre {os.path.basename(vp)}: {_e}")
             if not has_code:
+                if skip_already_scanned and vp in self._aruco_results:
+                    continue
                 videos_to_scan.append(vp)
 
         print(f"[ARUCO] Analyse : {len(all_videos)} vidéos, "
@@ -1399,15 +1414,6 @@ class AppController(QtCore.QObject):
         _vd = getattr(getattr(self, "validation_ctrl", None), "_bar_delegate", None)
         if _vd and hasattr(_vd, "set_aruco_results"):
             _vd.set_aruco_results(self._aruco_results)
-
-        # Générer la vidéo de revue des ardoises détectées
-        if self._aruco_results:
-            from services.aruco_service import generate_slate_review_video
-            _rev = generate_slate_review_video(self._aruco_results)
-            if _rev:
-                print(f"[ARUCO] Vidéo de revue disponible : {_rev}")
-                import subprocess
-                subprocess.Popen(["explorer", "/select,", os.path.normpath(_rev)])
 
         if step_cb:
             step_cb(

@@ -1284,6 +1284,37 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
         self.timeline.update()
 
+    def seek_to_ms(self, target_ms: int):
+        """Seek le player vers target_ms et met en pause — même logique 2-phases que load_video_and_events."""
+        if target_ms <= 0:
+            return
+        _state = [0]
+
+        def _on_pos(pos):
+            if _state[0] == 0 and pos > 0:
+                _state[0] = 1
+                self.player.setPosition(target_ms)
+            elif _state[0] == 1 and pos >= target_ms - 80:
+                _state[0] = 2
+                try:
+                    self.player.positionChanged.disconnect(_on_pos)
+                except Exception:
+                    pass
+                self.pause_all()
+
+        def _safety():
+            if _state[0] < 2:
+                _state[0] = 2
+                try:
+                    self.player.positionChanged.disconnect(_on_pos)
+                except Exception:
+                    pass
+                self.pause_all()
+
+        self.player.positionChanged.connect(_on_pos)
+        QtCore.QTimer.singleShot(2000, _safety)
+        self.play_all()
+
     def _on_cam_L_toggled(self, checked: bool):
         """Bascule sur la caméra gauche — exclusif avec la droite (une seule vue affichée)."""
         if not checked:
