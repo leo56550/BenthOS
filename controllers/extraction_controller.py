@@ -194,6 +194,15 @@ class ExtractionController:
         json_path = get_temp_json_path(self.current_video_path)
         if json_path and os.path.exists(json_path):
             try:
+                fps = 25.0
+                try:
+                    cap = cv2.VideoCapture(self.current_video_path)
+                    _f = cap.get(cv2.CAP_PROP_FPS)
+                    if _f > 0:
+                        fps = _f
+                    cap.release()
+                except Exception:
+                    pass
                 with open(json_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 video_obs = data.get("video_observation", {})
@@ -202,7 +211,7 @@ class ExtractionController:
                     if not isinstance(val, dict):
                         continue
                     start_ms = int(val.get("start_ms", 0)) or int(
-                        ((val.get("frame_number", 0) - 1) / 25.0) * 1000
+                        ((val.get("frame_number", 0) - 1) / fps) * 1000
                     )
                     value = val.get("description_fr", "Rotation moteur")
                     event_dict = {
@@ -224,7 +233,6 @@ class ExtractionController:
                         frame_start = val.get("frame_number_start", 0)
                         frame_end = val.get("frame_number_end", 0)
                         value = val.get("value", "")
-                        fps = 25.0
                         start_ms = int(((frame_start - 1) / fps) * 1000) if frame_start and fps else 0
                         end_ms = int(((frame_end - 1) / fps) * 1000) if frame_end and fps else 0
                         is_pic = (json_key == "events_interesting_images" or start_ms == end_ms)
@@ -275,6 +283,15 @@ class ExtractionController:
             timeline_events = []
             if self.current_json_path and os.path.exists(self.current_json_path):
                 try:
+                    fps = 25.0
+                    try:
+                        cap = cv2.VideoCapture(video_path)
+                        _f = cap.get(cv2.CAP_PROP_FPS)
+                        if _f > 0:
+                            fps = _f
+                        cap.release()
+                    except Exception:
+                        pass
                     with open(self.current_json_path, 'r', encoding='utf-8') as f:
                         data = json.load(f)
                     video_obs = data.get("video_observation", {})
@@ -283,7 +300,7 @@ class ExtractionController:
                         if not isinstance(val, dict):
                             continue
                         start_ms = int(val.get("start_ms", 0)) or int(
-                            ((val.get("frame_number", 0) - 1) / 25.0) * 1000
+                            ((val.get("frame_number", 0) - 1) / fps) * 1000
                         )
                         value = val.get("description_fr", "Rotation moteur")
                         event_dict = {
@@ -305,7 +322,6 @@ class ExtractionController:
                             frame_start = val.get("frame_number_start", 0)
                             frame_end = val.get("frame_number_end", 0)
                             value = val.get("value", "")
-                            fps = 25.0
                             start_ms = int(((frame_start - 1) / fps) * 1000) if frame_start and fps else 0
                             end_ms = int(((frame_end - 1) / fps) * 1000) if frame_end and fps else 0
                             is_pic = (json_key == "events_interesting_images" or start_ms == end_ms)
@@ -705,6 +721,8 @@ class ExtractionController:
         start_ms = event.get("start", 0)
         end_ms = event.get("end", start_ms)
         fps = getattr(self.video_player, "video_fps", None) or 25.0
+        if fps <= 0:
+            fps = 25.0
         try:
             with open(json_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
