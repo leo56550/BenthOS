@@ -589,12 +589,13 @@ class ExtractionController:
         """Réactive le panneau export et ajoute le segment aux livrables."""
         get_sound_service().play("export_complete")
         self.group_export.setEnabled(True)
-        # Le worker génère le nom automatiquement — on le retrouve dans le message
-        # ou on le reconstruit depuis le chemin réel dans segments/
-        segments_dir = os.path.join(os.path.dirname(self.current_video_path), "segments")
-        base = os.path.splitext(os.path.basename(self.current_video_path))[0]
-        path = os.path.join(segments_dir, f"{base}_segment_{self.start_ms}_{self.end_ms}.mp4")
-        self.add_to_deliverables_tree(path)
+        # Le chemin réel est la première ligne se terminant par .mp4 dans le message
+        path = next(
+            (line.strip() for line in message.split('\n') if line.strip().lower().endswith('.mp4')),
+            ""
+        )
+        if path and os.path.exists(path):
+            self.add_to_deliverables_tree(path)
         self.lbl_export_status.setText(self.translate("Export terminé.", "Export complete."))
 
     def on_export_progress(self, progress):
