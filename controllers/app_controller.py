@@ -1272,6 +1272,10 @@ class AppController(QtCore.QObject):
 
     def _aruco_detect_single(self, video_path: str):
         """Détecte l'ardoise sur une seule vidéo (clic droit → Détecter Ardoise)."""
+        import re as _re
+        if _re.search(r'_\d+\.mp4$', os.path.basename(video_path), _re.IGNORECASE):
+            print(f"[ARUCO] Segment ignoré (ardoise dans le primaire) : {os.path.basename(video_path)}")
+            return
         from services.aruco_service import detect_aruco_in_video
         name = os.path.basename(video_path)
         _ov = _CampaignLoadingOverlay(self.window)
@@ -1290,8 +1294,18 @@ class AppController(QtCore.QObject):
         # Recharger la vidéo pour positionner le player sur la frame ardoise détectée
         self.validation_ctrl.reload_video_by_path(video_path)
 
+    def _stop_validation_player(self):
+        """Arrête le player de la page validation s'il est en lecture."""
+        try:
+            _p = self.validation_ctrl.player
+            if _p is not None:
+                _p.pause_all()
+        except Exception:
+            pass
+
     def _aruco_detect_all(self):
         """Détecte les ardoises sur toutes les vidéos (clic droit → Détecter toutes)."""
+        self._stop_validation_player()
         _ov = _CampaignLoadingOverlay(self.window)
         _ov.set_message(self.translate("Détection QRcode…", "QRcode detection…"))
         _ov.start()
@@ -1305,6 +1319,7 @@ class AppController(QtCore.QObject):
 
     def _aruco_detect_missing(self):
         """Détecte les ardoises uniquement sur les vidéos sans codestation (conserve les résultats existants)."""
+        self._stop_validation_player()
         _ov = _CampaignLoadingOverlay(self.window)
         _ov.set_message(self.translate("Détection QRcode (sans codestations)…",
                                         "QRcode detection (missing codestations)…"))
@@ -1340,8 +1355,12 @@ class AppController(QtCore.QObject):
             if vp:
                 all_videos.append(str(vp))
 
+        import re as _re
         videos_to_scan: list[str] = []
         for vp in all_videos:
+            # Ignorer les segments séquentiels (_01, _02...) : l'ardoise est dans le primaire
+            if _re.search(r'_\d+\.mp4$', os.path.basename(vp), _re.IGNORECASE):
+                continue
             jp = _gtp(vp)
             has_code = False
             if os.path.isfile(jp):

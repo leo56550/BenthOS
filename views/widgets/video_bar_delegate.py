@@ -316,43 +316,6 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
         else:
             info_w = 0
 
-        # Badge ArUco (coin haut-droit) — score de confiance de détection
-        _aruco_key = str(vp)
-        if _aruco_key in self._aruco_results:
-            _ar = self._aruco_results[_aruco_key]
-            if _ar:
-                _score = _ar.get("score", 0)
-                _filled = max(0, min(5, round(_score / 20)))
-                _ar_text = f"▣ {'■' * _filled}{'□' * (5 - _filled)} {_score}%"
-                if _score >= 70:
-                    _ar_color = QtGui.QColor("#7fff7f")
-                elif _score >= 45:
-                    _ar_color = QtGui.QColor("#ffd080")
-                else:
-                    _ar_color = QtGui.QColor("#ff9060")
-            else:
-                _ar_text = "▣ ✗"
-                _ar_color = QtGui.QColor("#606060")
-            _ar_font = QtGui.QFont(painter.font())
-            _ar_font.setBold(False)
-            _ar_font.setPointSize(8)
-            _ar_fm = QtGui.QFontMetrics(_ar_font)
-            _ar_w = _ar_fm.horizontalAdvance(_ar_text)
-            _ar_rect = QtCore.QRect(
-                rect.right() - _ar_w - 4,
-                rect.top() + 2,
-                _ar_w, half_h - 4,
-            )
-            painter.setFont(_ar_font)
-            painter.setPen(_ar_color)
-            painter.drawText(
-                _ar_rect,
-                QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter,
-                _ar_text,
-            )
-            # Réduire text_w pour ne pas chevaucher le badge ArUco
-            text_w = min(text_w, _ar_rect.left() - text_left - 4)
-
         # Numéro de point + code station + statut d'exploitabilité — plus grand, couleurs distinctes
         trailing = []
         if point_number:

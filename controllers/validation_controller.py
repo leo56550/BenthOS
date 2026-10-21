@@ -657,10 +657,14 @@ class ValidationController:
             QMenu::separator { height: 1px; background: #1e3448; margin: 3px 0; }
         """)
 
+        import re as _re
         lbl = "fr" if getattr(self, "current_language", "fr") == "fr" else "en"
+        _is_segment = bool(video_path and _re.search(
+            r'_\d+\.mp4$', os.path.basename(video_path), _re.IGNORECASE))
         act_single = menu.addAction(
             "🔍  Détecter Ardoise" if lbl == "fr" else "🔍  Detect Slate")
-        act_single.setEnabled(bool(video_path) and self._on_detect_aruco is not None)
+        act_single.setEnabled(
+            bool(video_path) and not _is_segment and self._on_detect_aruco is not None)
 
         menu.addSeparator()
 
