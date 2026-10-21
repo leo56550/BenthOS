@@ -39,20 +39,36 @@ def _get_station_time(video_path: str, cache: dict) -> str:
         return cache[video_path]
     result = _STATION_TIME_SORT_MISSING
 
-    json_path = get_temp_json_path(video_path)
-    if os.path.isfile(json_path):
+    def _read_time_from_json(path: str) -> str:
+        """Lit video_observation.time.value depuis un JSON, retourne 'HH:MM' ou ''."""
         try:
-            with open(json_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            t_val = str((data.get("video_observation", {}).get("time") or {}).get("value") or "").strip()
-            if t_val:
-                parts = t_val.replace("h", ":").replace("H", ":").split(":")
-                if len(parts) >= 2:
-                    result = f"{int(parts[0]):02d}:{int(parts[1]):02d}"
-                    cache[video_path] = result
-                    return result
+            with open(path, "r", encoding="utf-8", errors="replace") as _f:
+                _d = json.load(_f)
+            _v = str((_d.get("video_observation", {}).get("time") or {}).get("value") or "").strip()
+            if _v:
+                _p = _v.replace("h", ":").replace("H", ":").split(":")
+                if len(_p) >= 2:
+                    return f"{int(_p[0]):02d}:{int(_p[1]):02d}"
         except Exception:
             pass
+        return ""
+
+    # 1. _temp.json (priorité maximale — données KOSMOS IHM)
+    json_path = get_temp_json_path(video_path)
+    if os.path.isfile(json_path):
+        t = _read_time_from_json(json_path)
+        if t:
+            cache[video_path] = t
+            return t
+
+    # 2. JSON source acquisition (<stem>.json sans _temp) — fallback pour les segments
+    stem = os.path.splitext(os.path.basename(video_path))[0]
+    src_json = os.path.join(folder, f"{stem}.json")
+    if os.path.isfile(src_json):
+        t = _read_time_from_json(src_json)
+        if t:
+            cache[video_path] = t
+            return t
 
     csv_path = find_system_event_csv(folder)
     if os.path.exists(csv_path):
