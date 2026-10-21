@@ -647,7 +647,7 @@ class VideoTimeline(QtWidgets.QWidget):
                     self.eventSelected.emit(evt)
 
                 if ctrl:
-                    # Ctrl+click: always move the event, never resize
+                    # Ctrl+click: déplacer l'événement
                     evt["_pre_drag_start"] = evt["start"]
                     evt["_pre_drag_end"] = evt["end"]
                     self.active_move_event = evt
@@ -655,8 +655,22 @@ class VideoTimeline(QtWidgets.QWidget):
                     self.drag_start_event_start = evt["start"]
                     self.drag_start_event_end = evt["end"]
                     return
+                elif evt.get("zone", -1) != 2 and not evt.get("single_frame", False):
+                    # Clic sur le bord gauche/droit → redimensionner
+                    if abs(pos_x - rect.left()) <= self.resize_margin:
+                        self.active_resize_event = evt
+                        self.resize_edge = "left"
+                        return
+                    elif abs(pos_x - rect.right()) <= self.resize_margin:
+                        self.active_resize_event = evt
+                        self.resize_edge = "right"
+                        return
+                    else:
+                        # Clic au centre → déplacer le curseur lecture
+                        self.is_dragging = True
+                        self.calculate_and_emit_position(pos_x)
+                        return
                 else:
-                    # Normal click on event: only move the video cursor
                     self.is_dragging = True
                     self.calculate_and_emit_position(pos_x)
                     return
@@ -808,8 +822,15 @@ class VideoTimeline(QtWidgets.QWidget):
                 return
 
     def wheelEvent(self, event):
+        if event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier:
+            delta = event.angleDelta().y()
+            factor = 1.25 if delta > 0 else 0.8
+            new_zoom = max(1.0, min(20.0, self.zoom_factor * factor))
+            self.set_zoom(new_zoom)
+            self.zoomChanged.emit(new_zoom)
+            event.accept()
+            return
         event.ignore()
-
         self.timeChanged.emit(self.current_pos)
         self.update()
 

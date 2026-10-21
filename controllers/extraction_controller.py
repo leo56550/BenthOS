@@ -91,6 +91,8 @@ class ExtractionController:
         self.video_player.timeline.markersChanged.connect(self.on_timeline_markers_moved)
         self.video_player.timeline.eventSelected.connect(self._seek_on_event_select)
         self.video_player.timeline.eventDoubleClicked.connect(self.on_event_double_clicked)
+        self.video_player.timeline.eventResized.connect(self._on_event_resized_or_moved)
+        self.video_player.timeline.eventMoved.connect(self._on_event_resized_or_moved)
         self.video_player.timeline.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.video_player.timeline.customContextMenuRequested.connect(self.on_timeline_context_menu)
 
@@ -690,6 +692,41 @@ class ExtractionController:
             self.video_player.timeline.start_marker_ms = self.start_ms
             self.video_player.timeline.end_marker_ms = self.end_ms
             self.video_player.timeline.update()
+
+    def _on_event_resized_or_moved(self, event: dict):
+        """Sauvegarde un événement redimensionné ou déplacé dans le JSON."""
+        json_path = self.current_json_path
+        if not json_path or not os.path.exists(json_path):
+            return
+        json_key = event.get("_json_key")
+        event_uid = event.get("_event_uid")
+        if not json_key or not event_uid:
+            return
+        start_ms = event.get("start", 0)
+        end_ms = event.get("end", start_ms)
+        fps = getattr(self.video_player, "video_fps", None) or 25.0
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            video_obs = data.get("video_observation", {})
+            if json_key == "events_motor":
+                for val in (video_obs.get("events_motor") or []):
+                    if val.get("event_id") == event_uid:
+                        val["start_ms"] = start_ms
+                        val["frame_number"] = int(start_ms / 1000.0 * fps) + 1
+                        break
+            elif json_key in ("events_animal", "events_interesting_images"):
+                raw = video_obs.get(json_key)
+                if isinstance(raw, list) and raw:
+                    for val in (raw[0].get("values", []) if isinstance(raw[0], dict) else []):
+                        if val.get("event_id") == event_uid:
+                            val["frame_number_start"] = int(start_ms / 1000.0 * fps) + 1
+                            val["frame_number_end"] = int(end_ms / 1000.0 * fps) + 1
+                            break
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"[EXTRACTION] save event error: {e}")
 
     def on_timeline_markers_moved(self, start_ms, end_ms):
         """Reçoit les marqueurs déplacés depuis la timeline et met à jour les champs texte."""
