@@ -78,7 +78,7 @@ class EventModel:
     # ------------------------------------------------------------------
 
     def load_from_json(self, json_path: str, category: str = "events_deployment"):
-        """Charge les événements depuis un template.json."""
+        """Charge les événements depuis un infoStationTemplate.json."""
         self._json_path = json_path
         self._events = []
 
@@ -134,7 +134,7 @@ class EventModel:
         self._write_events_to_json()
 
     def _write_events_to_json(self):
-        """Réécrit tous les événements dans le template.json."""
+        """Réécrit tous les événements dans le infoStationTemplate.json."""
         if not self._json_path or not os.path.isfile(self._json_path):
             return
 

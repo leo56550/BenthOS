@@ -12,7 +12,7 @@ from services.motor_service import find_video_csv
 
 def year_2d_from_date(date_v: str) -> str:
     """Extrait les 2 derniers chiffres de l'année depuis une date stockée en YYYYMMDD
-    (8 chiffres, format actuel de template.json) ou, par rétrocompatibilité, en YYMMDD
+    (8 chiffres, format actuel de infoStationTemplate.json) ou, par rétrocompatibilité, en YYMMDD
     (6 chiffres, ancien format) : la position de l'année dans la chaîne diffère selon
     la longueur, donc une simple découpe positionnelle fixe ne suffit pas."""
     digits = re.sub(r"[^0-9]", "", date_v or "")
@@ -133,7 +133,7 @@ def get_video_json_path(video_path: str) -> str:
     """Return the JSON path for a given video: same folder, same stem, .json extension.
 
     After campaign opening, the IHM only interacts with <stem>.json.
-    template.json is the source used to initialise <stem>.json on first open.
+    infoStationTemplate.json is the source used to initialise <stem>.json on first open.
     """
     folder = os.path.dirname(os.path.normpath(video_path))
     stem = os.path.splitext(os.path.basename(video_path))[0]
@@ -143,20 +143,20 @@ def get_video_json_path(video_path: str) -> str:
 def _find_first_json_in_folder(folder: str) -> str | None:
     """Return the first non-backup, non-template .json file found in *folder*, or None.
 
-    template.json is the seed file; once the IHM initialises the video-named JSON
+    infoStationTemplate.json is the seed file; once the IHM initialises the video-named JSON
     it becomes stale — always prefer the video-named copy.
     """
     try:
         candidates = sorted(
             fname for fname in os.listdir(folder)
             if fname.endswith(".json")
-            and fname != "template.json"
+            and fname != "infoStationTemplate.json"
         )
         if candidates:
             return os.path.join(folder, candidates[0])
-        # Fallback: no video-named JSON yet → accept template.json
-        if os.path.isfile(os.path.join(folder, "template.json")):
-            return os.path.join(folder, "template.json")
+        # Fallback: no video-named JSON yet → accept infoStationTemplate.json
+        if os.path.isfile(os.path.join(folder, "infoStationTemplate.json")):
+            return os.path.join(folder, "infoStationTemplate.json")
     except OSError:
         pass
     return None
@@ -454,10 +454,10 @@ def get_video_output_dir(campaign_folder: str, video_path: str) -> str:
 
 
 def extract_date_from_template(folder_path: str) -> str:
-    """Extrait la date d'enquête depuis le template.json d'un dossier.
+    """Extrait la date d'enquête depuis le infoStationTemplate.json d'un dossier.
 
     Args:
-        folder_path: Dossier contenant un éventuel template.json.
+        folder_path: Dossier contenant un éventuel infoStationTemplate.json.
 
     Returns:
         La valeur de survey.date.value, ou '--' si absente.

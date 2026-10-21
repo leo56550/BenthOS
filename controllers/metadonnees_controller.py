@@ -20,8 +20,8 @@ from services.campaign_service import (
 from views.dialogs.weather_dialog import WeatherWebDialog, WeatherWebMultiDialog
 from models.video_model import VideoFilterProxyModel
 
-# ── Chargement dynamique du schéma depuis template.json ─────────────────
-_TEMPLATE_JSON_PATH = os.path.join(os.path.dirname(__file__), '..', 'template.json')
+# ── Chargement dynamique du schéma depuis infoStationTemplate.json ─────────────────
+_TEMPLATE_JSON_PATH = os.path.join(os.path.dirname(__file__), '..', 'infoStationTemplate.json')
 
 # Champs calculés automatiquement (non éditables dans le tableau)
 _COMPUTED_FIELDS = {"codeObs", "video_path", "video_number"}
@@ -58,7 +58,7 @@ _CAMPAIGN_HEADER_KEYS = {
 
 
 def _load_infostation_schema() -> list[tuple]:
-    """Lit template.json et retourne la liste ordonnée des champs infoStation_visibility=oui.
+    """Lit infoStationTemplate.json et retourne la liste ordonnée des champs infoStation_visibility=oui.
 
     Retourne : [(section, field_key, name_fr, read_only), ...]
     section order: survey → video_observation → system
@@ -67,7 +67,7 @@ def _load_infostation_schema() -> list[tuple]:
         with open(_TEMPLATE_JSON_PATH, 'r', encoding='utf-8') as f:
             template = json.load(f)
     except Exception as e:
-        print(f"[SCHEMA] Impossible de lire template.json : {e}")
+        print(f"[SCHEMA] Impossible de lire infoStationTemplate.json : {e}")
         return []
 
     result = []
@@ -85,7 +85,7 @@ def _load_infostation_schema() -> list[tuple]:
 
 
 def _load_field_types() -> dict:
-    """Lit template.json et retourne {(section, field_key): {"type": ..., "authorized_values": [...]}}.
+    """Lit infoStationTemplate.json et retourne {(section, field_key): {"type": ..., "authorized_values": [...]}}.
 
     "type" vient tel quel du template ("str", "int", "float"...) — sert à borner la saisie
     dans le tableau Infostation aux valeurs permises par le schéma.
@@ -94,7 +94,7 @@ def _load_field_types() -> dict:
         with open(_TEMPLATE_JSON_PATH, 'r', encoding='utf-8') as f:
             template = json.load(f)
     except Exception as e:
-        print(f"[SCHEMA] Impossible de lire template.json : {e}")
+        print(f"[SCHEMA] Impossible de lire infoStationTemplate.json : {e}")
         return {}
 
     result = {}
@@ -121,12 +121,12 @@ _FIELD_TYPES: dict = _load_field_types()
 # Schéma complet (section, field_key, name_fr, read_only) pour tous les champs infoStation
 _INFOSTATION_SCHEMA: list[tuple] = _load_infostation_schema()
 
-# Contenu brut de template.json — sert de base pour générer les _temp.json
+# Contenu brut de infoStationTemplate.json — sert de base pour générer les _temp.json
 try:
     with open(_TEMPLATE_JSON_PATH, 'r', encoding='utf-8') as _f:
         _TEMPLATE_BASE: dict = json.load(_f)
 except Exception as _e:
-    print(f"[SCHEMA] Erreur chargement template.json base : {_e}")
+    print(f"[SCHEMA] Erreur chargement infoStationTemplate.json base : {_e}")
     _TEMPLATE_BASE: dict = {}
 
 # Types par (section, field_key) extraits du template — pour coercer les valeurs au bon type
@@ -415,7 +415,7 @@ class _FillSelectionDelegate(QtWidgets.QStyledItemDelegate):
     dans l'une d'elles, Ctrl+Entrée au lieu d'Entrée). Le remplissage incrémental (183, 184,
     185...) se fait lui via le bouton "Incrémenter ↓" de la barre d'outils (voir
     _increment_fill_selection), plus simple à découvrir qu'un raccourci clavier. Borne aussi
-    la saisie au type déclaré dans template.json pour chaque colonne (int/float acceptent
+    la saisie au type déclaré dans infoStationTemplate.json pour chaque colonne (int/float acceptent
     uniquement des nombres, str reste libre)."""
 
     def createEditor(self, parent, option, index):
@@ -430,7 +430,7 @@ class _FillSelectionDelegate(QtWidgets.QStyledItemDelegate):
 
     @staticmethod
     def _apply_type_validator(editor: QtWidgets.QLineEdit, col: int):
-        """Restreint la saisie au type déclaré dans template.json pour cette colonne."""
+        """Restreint la saisie au type déclaré dans infoStationTemplate.json pour cette colonne."""
         if not (0 <= col < len(_FT_TABLE_COLS)):
             return
         _label, section, field_key, _read_only = _FT_TABLE_COLS[col]
@@ -2438,7 +2438,11 @@ class MetadonneesController:
             for ev in (obs.get("events_deployment", [{}]) or [{}])[0].get("values", []):
                 if any(kw in (ev.get("value") or "").lower()
                        for kw in ["ardoise", "slate", "tableau blanc", "whiteboard"]):
-                    self._json_data["video_observation"]["timecode_ardoise"]["value"] = _tc_str(ev)
+                    fn = ev.get("frame_number_start")
+                    if fn is not None:
+                        tc_blk = self._json_data["video_observation"]["timecode_ardoise"]
+                        tc_blk["frame"] = int(fn)
+                        tc_blk["value"] = ev.get("time_code_start") or ""
                     break
 
         # ── Timecode début (atterrissage) ────────────────────────────────
@@ -3016,7 +3020,7 @@ class MetadonneesController:
         failures: list[tuple[str, str]] = []
 
         if not _TEMPLATE_BASE:
-            return 0, 0, [("—", "template.json introuvable ou vide")]
+            return 0, 0, [("—", "infoStationTemplate.json introuvable ou vide")]
 
         # Index des colonnes
         video_name_col = next(
@@ -4966,38 +4970,53 @@ class MetadonneesController:
 
         obs = jdata.get("video_observation", {})
         slate_frame = None
-        slate_timecode = None
 
-        tc_ardoise = obs.get("timecode_ardoise", {})
-        slate_timecode = tc_ardoise.get("value") if isinstance(tc_ardoise, dict) else tc_ardoise
+        ta_block = obs.get("timecode_ardoise", {})
+        if isinstance(ta_block, dict):
+            fn = ta_block.get("frame")
+            if fn is not None:
+                slate_frame = int(fn)
+            elif ta_block.get("value"):
+                # Rétrocompat : ancienne valeur timecode string → convertir en frame
+                try:
+                    cap_tmp = cv2.VideoCapture(self.current_video_path)
+                    fps = cap_tmp.get(cv2.CAP_PROP_FPS) or 25.0
+                    cap_tmp.release()
+                    parts = [int(p) for p in str(ta_block["value"]).replace(',', ':').split(':')]
+                    if len(parts) == 2:
+                        secs = parts[0] * 60 + parts[1]
+                    elif len(parts) == 3:
+                        secs = parts[0] * 3600 + parts[1] * 60 + parts[2]
+                    else:
+                        secs = 0
+                    slate_frame = int(secs * fps)
+                except Exception:
+                    pass
 
-        if not slate_timecode:
+        if slate_frame is None:
+            # Fallback : chercher dans les événements
             for key in ["events_deployment", "events_interesting_images", "events_animal"]:
                 if key in obs and isinstance(obs[key], list) and obs[key]:
                     for evt in obs[key][0].get("values", []):
                         if any(kw in str(evt.get("value", "")).lower()
                                for kw in ["whiteboard", "slate", "tableau blanc", "ardoise"]):
-                            slate_frame = evt.get("frame_number_start")
-                            slate_timecode = evt.get("time_code_start")
+                            fn = evt.get("frame_number_start")
+                            if fn is not None:
+                                slate_frame = int(fn)
+                            else:
+                                tc = evt.get("time_code_start", "")
+                                try:
+                                    cap_tmp = cv2.VideoCapture(self.current_video_path)
+                                    fps = cap_tmp.get(cv2.CAP_PROP_FPS) or 25.0
+                                    cap_tmp.release()
+                                    parts = [int(p) for p in tc.replace(',', ':').split(':')]
+                                    secs = parts[0]*3600+parts[1]*60+parts[2] if len(parts)==3 else parts[0]*60+parts[1]
+                                    slate_frame = int(secs * fps)
+                                except Exception:
+                                    pass
                             break
-                if slate_frame is not None or slate_timecode:
+                if slate_frame is not None:
                     break
-
-        if slate_frame is None and slate_timecode:
-            try:
-                cap_tmp = cv2.VideoCapture(self.current_video_path)
-                fps = cap_tmp.get(cv2.CAP_PROP_FPS) or 25.0
-                cap_tmp.release()
-                parts = [int(p) for p in slate_timecode.replace(',', ':').split(':')]
-                if len(parts) == 2:
-                    secs = parts[0] * 60 + parts[1]
-                elif len(parts) == 3:
-                    secs = parts[0] * 3600 + parts[1] * 60 + parts[2]
-                else:
-                    secs = 0
-                slate_frame = int(secs * fps)
-            except Exception:
-                pass
 
         return slate_frame
 

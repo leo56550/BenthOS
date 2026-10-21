@@ -1315,7 +1315,7 @@ class QualifController:
         self.campaign_fields.clear()
 
         # Charge le template pour avoir la liste complète et ordonnée des champs survey
-        _template_path = os.path.join(os.path.dirname(__file__), '..', 'template.json')
+        _template_path = os.path.join(os.path.dirname(__file__), '..', 'infoStationTemplate.json')
         template_survey: dict = {}
         try:
             with open(_template_path, 'r', encoding='utf-8') as _tf:

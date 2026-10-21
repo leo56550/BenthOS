@@ -1,4 +1,4 @@
-"""Converts legacy template.json (v3-style flat dicts) to the current rich-field format."""
+"""Converts legacy infoStationTemplate.json (v3-style flat dicts) to the current rich-field format."""
 
 import json
 import os
@@ -14,8 +14,8 @@ def is_legacy_format(data: dict) -> bool:
 
 
 def _build_base_template() -> dict:
-    """Lit template.json (source unique de vérité) et le retourne comme base pour les vidéos."""
-    template_path = os.path.join(os.path.dirname(__file__), "..", "template.json")
+    """Lit infoStationTemplate.json (source unique de vérité) et le retourne comme base pour les vidéos."""
+    template_path = os.path.join(os.path.dirname(__file__), "..", "infoStationTemplate.json")
     with open(template_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -107,10 +107,10 @@ def migrate_legacy_to_new(old_data: dict) -> dict:
 
 
 def initialise_video_json_if_needed(video_path: str) -> bool:
-    """Copy template.json → <stem>.json if the stem JSON doesn't exist yet.
+    """Copy infoStationTemplate.json → <stem>.json if the stem JSON doesn't exist yet.
 
     Called once per video at campaign opening.  After this call,
-    get_video_json_path(video_path) is guaranteed to exist (if template.json was present).
+    get_video_json_path(video_path) is guaranteed to exist (if infoStationTemplate.json was present).
     Returns True if a copy was made.
     """
     folder = os.path.dirname(os.path.normpath(video_path))
@@ -120,13 +120,13 @@ def initialise_video_json_if_needed(video_path: str) -> bool:
     if os.path.isfile(target):
         return False  # already initialised
 
-    template = os.path.join(folder, "template.json")
+    template = os.path.join(folder, "infoStationTemplate.json")
     if not os.path.isfile(template):
         return False  # nothing to copy
 
     try:
         shutil.copy2(template, target)
-        print(f"[INIT] {stem}.json créé depuis template.json")
+        print(f"[INIT] {stem}.json créé depuis infoStationTemplate.json")
         # Forcer exploitable à "?" — la valeur héritée du template peut être "oui"
         with open(target, 'r', encoding='utf-8') as f:
             data = json.load(f)
@@ -167,7 +167,7 @@ def _merge_raw_block(temp_block: dict, raw_block: dict, legacy_key_map: dict | N
                       only_if_empty: bool = False, exclude_keys: set | None = None) -> list:
     """Copie les valeurs non vides de raw_block dans temp_block pour les clés communes.
 
-    Le JSON brut <stem>.json est aujourd'hui au même format riche que template.json,
+    Le JSON brut <stem>.json est aujourd'hui au même format riche que infoStationTemplate.json,
     donc pour la plupart des champs (dont tout le bloc "survey") la clé est identique
     des deux côtés — une simple correspondance directe suffit. legacy_key_map ne sert
     que de repli pour d'anciens JSON "system" à plat avec des noms de clés différents.
@@ -212,7 +212,7 @@ def _nullify_values(node) -> None:
 def initialise_temp_json_if_needed(video_path: str) -> bool:
     """Crée <stem>_temp.json dans le dossier brut si absent.
 
-    Basé sur le template.json de l'application (dossier racine du projet),
+    Basé sur le infoStationTemplate.json de l'application (dossier racine du projet),
     toutes les valeurs 'value' sont mises à null — l'IHM les complète progressivement.
     Ne touche jamais à <stem>.json (données d'acquisition brutes).
     Retourne True si le fichier a été créé.
@@ -223,10 +223,10 @@ def initialise_temp_json_if_needed(video_path: str) -> bool:
     if os.path.isfile(temp_path):
         return False  # déjà initialisé
 
-    # template.json de l'application (dossier racine, pas du dossier vidéo)
-    app_template = os.path.join(os.path.dirname(__file__), "..", "template.json")
+    # infoStationTemplate.json de l'application (dossier racine, pas du dossier vidéo)
+    app_template = os.path.join(os.path.dirname(__file__), "..", "infoStationTemplate.json")
     if not os.path.isfile(app_template):
-        print(f"[INIT] template.json introuvable : {app_template}")
+        print(f"[INIT] infoStationTemplate.json introuvable : {app_template}")
         return False
 
     try:

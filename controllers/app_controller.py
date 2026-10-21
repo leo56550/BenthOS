@@ -6,46 +6,73 @@ class _CampaignLoadingOverlay(QtWidgets.QWidget):
     """Overlay plein-écran affiché pendant le chargement d'une campagne."""
 
     _SPINNER = ["◜ ", " ◝", " ◞", "◟ "]
+    _BAR_STYLE = (
+        "QProgressBar { background: #1a3a4a; border: none; border-radius: 2px; }"
+        "QProgressBar::chunk { background: #5bb8f5; border-radius: 2px; }"
+    )
+    _BAR_TOTAL_STYLE = (
+        "QProgressBar { background: #1a3a4a; border: none; border-radius: 2px; }"
+        "QProgressBar::chunk { background: #3a9a6a; border-radius: 2px; }"
+    )
 
     def __init__(self, parent: QtWidgets.QWidget):
-        super().__init__(parent)
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
-        self.resize(parent.size())
+        # Fenêtre top-level frameless — pas de parent Qt → contourne le rendu natif de QVideoWidget
+        super().__init__(
+            None,
+            QtCore.Qt.WindowType.FramelessWindowHint | QtCore.Qt.WindowType.Tool,
+        )
+        self._anchor = parent   # référence pour positionner et redimensionner
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, True)
+
+        _lbl_css = "color: #d0e8f8; font-size: 12px; font-weight: bold; background: transparent; border: none;"
+        _sub_css = "color: #7fb8e0; font-size: 11px; background: transparent; border: none;"
 
         # Carte centrale
         self._card = QtWidgets.QFrame(self)
-        self._card.setFixedSize(340, 130)
+        self._card.setFixedSize(360, 175)
         self._card.setStyleSheet(
             "QFrame { background-color: #0d1e2e; border: 1px solid #2778a2;"
             " border-radius: 12px; }"
         )
         card_layout = QtWidgets.QVBoxLayout(self._card)
-        card_layout.setContentsMargins(24, 18, 24, 16)
-        card_layout.setSpacing(10)
+        card_layout.setContentsMargins(24, 16, 24, 16)
+        card_layout.setSpacing(6)
 
         self._lbl_icon = QtWidgets.QLabel(self._SPINNER[0])
         self._lbl_icon.setStyleSheet(
-            "color: #5bb8f5; font-size: 28px; background: transparent; border: none;")
+            "color: #5bb8f5; font-size: 24px; background: transparent; border: none;")
         self._lbl_icon.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         card_layout.addWidget(self._lbl_icon)
 
         self._lbl_msg = QtWidgets.QLabel("")
-        self._lbl_msg.setStyleSheet(
-            "color: #d0e8f8; font-size: 12px; font-weight: bold;"
-            " background: transparent; border: none;")
+        self._lbl_msg.setStyleSheet(_lbl_css)
         self._lbl_msg.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self._lbl_msg.setWordWrap(True)
         card_layout.addWidget(self._lbl_msg)
 
+        # Barre 1 — progression dans la vidéo courante (bleu)
         self._bar = QtWidgets.QProgressBar()
         self._bar.setRange(0, 0)
         self._bar.setFixedHeight(5)
         self._bar.setTextVisible(False)
-        self._bar.setStyleSheet(
-            "QProgressBar { background: #1a3a4a; border: none; border-radius: 2px; }"
-            "QProgressBar::chunk { background: #5bb8f5; border-radius: 2px; }"
-        )
+        self._bar.setStyleSheet(self._BAR_STYLE)
         card_layout.addWidget(self._bar)
+
+        # Barre 2 — progression totale vidéos (vert), masquée par défaut
+        self._lbl_total = QtWidgets.QLabel("")
+        self._lbl_total.setStyleSheet(_sub_css)
+        self._lbl_total.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self._lbl_total.hide()
+        card_layout.addWidget(self._lbl_total)
+
+        self._bar_total = QtWidgets.QProgressBar()
+        self._bar_total.setRange(0, 0)
+        self._bar_total.setFixedHeight(5)
+        self._bar_total.setTextVisible(False)
+        self._bar_total.setStyleSheet(self._BAR_TOTAL_STYLE)
+        self._bar_total.hide()
+        card_layout.addWidget(self._bar_total)
 
         self._fi = 0
         self._timer = QtCore.QTimer(self)
@@ -56,9 +83,8 @@ class _CampaignLoadingOverlay(QtWidgets.QWidget):
         p = QtGui.QPainter(self)
         p.fillRect(self.rect(), QtGui.QColor(8, 16, 26, 215))
         p.end()
-        # Recentrer la carte si la fenêtre a été redimensionnée
         self._card.move(
-            (self.width() - self._card.width()) // 2,
+            (self.width()  - self._card.width())  // 2,
             (self.height() - self._card.height()) // 2,
         )
 
@@ -66,13 +92,25 @@ class _CampaignLoadingOverlay(QtWidgets.QWidget):
         self._lbl_msg.setText(msg)
 
     def set_progress(self, value: int, maximum: int):
-        """Passe la barre en mode déterminé et met à jour la valeur."""
+        """Barre 1 (vidéo courante) — mode déterminé."""
         if maximum != self._bar.maximum():
             self._bar.setRange(0, maximum)
         self._bar.setValue(value)
 
+    def set_total_progress(self, value: int, maximum: int, label: str = ""):
+        """Barre 2 (progression totale) — affiche la barre verte et met à jour."""
+        if not self._bar_total.isVisible():
+            self._lbl_total.show()
+            self._bar_total.show()
+            self.update()  # force repaint pour re-centrer la carte
+        if label:
+            self._lbl_total.setText(label)
+        if maximum != self._bar_total.maximum():
+            self._bar_total.setRange(0, maximum)
+        self._bar_total.setValue(value)
+
     def step(self, msg: str, value: int, maximum: int):
-        """Met à jour message + progression en un seul appel."""
+        """Met à jour message + barre 1 en un seul appel."""
         self.set_message(msg)
         self.set_progress(value, maximum)
 
@@ -81,7 +119,9 @@ class _CampaignLoadingOverlay(QtWidgets.QWidget):
         self._lbl_icon.setText(self._SPINNER[self._fi])
 
     def start(self):
-        self.resize(self.parent().size())
+        # Positionner sur la fenêtre principale en coordonnées globales
+        tl = self._anchor.mapToGlobal(QtCore.QPoint(0, 0))
+        self.setGeometry(tl.x(), tl.y(), self._anchor.width(), self._anchor.height())
         self._timer.start()
         self.show()
         self.raise_()
@@ -89,8 +129,7 @@ class _CampaignLoadingOverlay(QtWidgets.QWidget):
 
     def stop(self):
         self._timer.stop()
-        self.hide()
-        self.deleteLater()
+        self.close()
 
 from services.campaign_service import (get_campaign_json_data, get_video_json_path,
                                        get_working_video_json_path)
@@ -1282,17 +1321,36 @@ class AppController(QtCore.QObject):
         _ov.set_message(self.translate(f"Détection QRcode — {name}…",
                                         f"QRcode detection — {name}…"))
         _ov.start()
-        try:
-            result = detect_aruco_in_video(video_path)
-            self._aruco_results[video_path] = result
-        finally:
-            _ov.stop()
-        _vd = getattr(self.validation_ctrl, "_bar_delegate", None)
-        if _vd and hasattr(_vd, "set_aruco_results"):
-            _vd.set_aruco_results(self._aruco_results)
 
-        # Recharger la vidéo pour positionner le player sur la frame ardoise détectée
-        self.validation_ctrl.reload_video_by_path(video_path)
+        class _Worker(QtCore.QThread):
+            done     = QtCore.pyqtSignal(object)
+            progress = QtCore.pyqtSignal(int)
+
+            def __init__(self, vp, parent=None):
+                super().__init__(parent)
+                self._vp = vp
+
+            def run(self):
+                result = detect_aruco_in_video(self._vp,
+                                               progress_cb=lambda p: self.progress.emit(p))
+                self.done.emit(result)
+
+        worker = _Worker(video_path, self.window)
+
+        def _on_done(result):
+            self._aruco_results[video_path] = result
+            _ov.stop()
+            _vd = getattr(self.validation_ctrl, "_bar_delegate", None)
+            if _vd and hasattr(_vd, "set_aruco_results"):
+                _vd.set_aruco_results(self._aruco_results)
+            self.validation_ctrl.reload_video_by_path(video_path)
+
+        def _on_progress(pct):
+            _ov.set_progress(pct, 100)
+
+        worker.done.connect(_on_done)
+        worker.progress.connect(_on_progress)
+        worker.start()
 
     def _stop_validation_player(self):
         """Arrête le player de la page validation s'il est en lecture."""
@@ -1305,34 +1363,62 @@ class AppController(QtCore.QObject):
 
     def _aruco_detect_all(self):
         """Détecte les ardoises sur toutes les vidéos (clic droit → Détecter toutes)."""
+        import time as _time
         self._stop_validation_player()
         _ov = _CampaignLoadingOverlay(self.window)
         _ov.set_message(self.translate("Détection QRcode…", "QRcode detection…"))
         _ov.start()
+        _last = [0.0]
+
+        def _frame_cb(pct):
+            now = _time.time()
+            if now - _last[0] >= 0.05:
+                _last[0] = now
+                _ov.set_progress(pct, 100)
+                QtWidgets.QApplication.processEvents()
+
         try:
             self._aruco_results.clear()
             self._run_aruco_scan_sync(
-                lambda msg, v, n: (_ov.step(msg, v, n),
-                                   QtWidgets.QApplication.processEvents()))
+                lambda msg, v, n: (
+                    _ov.set_message(msg),
+                    _ov.set_total_progress(v, n,
+                        self.translate(f"Vidéo {v} / {n}", f"Video {v} / {n}")),
+                    QtWidgets.QApplication.processEvents()),
+                frame_cb=_frame_cb)
         finally:
             _ov.stop()
 
     def _aruco_detect_missing(self):
         """Détecte les ardoises uniquement sur les vidéos sans codestation (conserve les résultats existants)."""
+        import time as _time
         self._stop_validation_player()
         _ov = _CampaignLoadingOverlay(self.window)
         _ov.set_message(self.translate("Détection QRcode (sans codestations)…",
                                         "QRcode detection (missing codestations)…"))
         _ov.start()
+        _last = [0.0]
+
+        def _frame_cb(pct):
+            now = _time.time()
+            if now - _last[0] >= 0.05:
+                _last[0] = now
+                _ov.set_progress(pct, 100)
+                QtWidgets.QApplication.processEvents()
+
         try:
             self._run_aruco_scan_sync(
-                lambda msg, v, n: (_ov.step(msg, v, n),
-                                   QtWidgets.QApplication.processEvents()),
+                lambda msg, v, n: (
+                    _ov.set_message(msg),
+                    _ov.set_total_progress(v, n,
+                        self.translate(f"Vidéo {v} / {n}", f"Video {v} / {n}")),
+                    QtWidgets.QApplication.processEvents()),
+                frame_cb=_frame_cb,
                 skip_already_scanned=True)
         finally:
             _ov.stop()
 
-    def _run_aruco_scan_sync(self, step_cb=None, skip_already_scanned: bool = False):
+    def _run_aruco_scan_sync(self, step_cb=None, frame_cb=None, skip_already_scanned: bool = False):
         """Détecte les ArUco de manière synchrone dans l'overlay d'ouverture.
         Ne scanne que les vidéos sans codestation dans leur _temp.json.
         skip_already_scanned=True : ignore aussi les vidéos déjà dans _aruco_results.
@@ -1418,10 +1504,10 @@ class AppController(QtCore.QObject):
                     self.translate(
                         f"Scan QRcode : tentative {i + 1}/{to_scan} — {name}",
                         f"QRcode scan: attempt {i + 1}/{to_scan} — {name}"),
-                    i, to_scan)
+                    i + 1, to_scan)
             QtWidgets.QApplication.processEvents()
 
-            result = detect_aruco_in_video(vp)
+            result = detect_aruco_in_video(vp, progress_cb=frame_cb)
             if result:
                 self._aruco_results[vp] = result
                 found += 1

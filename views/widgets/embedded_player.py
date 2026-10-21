@@ -985,6 +985,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.player.setPosition(target)
         if self.is_stereo:
             self.player_R.setPosition(target)
+        if self.left_display.currentIndex() == 1:
+            QtCore.QTimer.singleShot(80, lambda: self._step_frame_overlay(target))
 
     def _goto_start(self):
         """Retourne au tout début de la vidéo."""
@@ -1238,6 +1240,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                 self.update_frame_label(_seek_pos)
                 self.timeline.set_current_position(_seek_pos)
                 self.center_scroll_on_cursor(_seek_pos)
+                # Donner le focus au player pour que les raccourcis clavier fonctionnent
+                self.setFocus()
 
             print(f"[SEEK] Appel play_all()")
             self.play_all()
@@ -1487,7 +1491,34 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         if self.is_stereo:
             self.player_R.setPosition(target)
         if self.left_display.currentIndex() == 1:
-            QtCore.QTimer.singleShot(50, self._refresh_corrections)
+            # Qt ne rafraîchit pas QVideoWidget en pause → toujours extraire via OpenCV
+            QtCore.QTimer.singleShot(50, lambda: self._step_frame_overlay(target))
+
+    def _step_frame_overlay(self, target_ms: int):
+        """Affiche la frame à target_ms dans l'overlay OpenCV (step frame en mode correction/ArUco)."""
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            return
+        if not self.current_video_path or not os.path.exists(self.current_video_path):
+            return
+        cap = cv2.VideoCapture(self.current_video_path)
+        cap.set(cv2.CAP_PROP_POS_MSEC, float(target_ms))
+        ret, frame = cap.read()
+        cap.release()
+        if not ret:
+            return
+        self._last_raw_frame = frame
+        if self._has_active_corrections():
+            frame = self._apply_corrections(frame)
+        h, w = frame.shape[:2]
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        img = QtGui.QImage(rgb.data, w, h, 3 * w,
+                           QtGui.QImage.Format.Format_RGB888).copy()
+        self.correction_overlay.set_image(img)
+        self.left_display.setCurrentIndex(1)
+        self.update_top_time_label(target_ms, self.player.duration())
+        self.update_frame_label(target_ms)
+        self.timeline.set_current_position(target_ms)
+        self.center_scroll_on_cursor(target_ms)
 
     def resizeEvent(self, ev):
         super().resizeEvent(ev)

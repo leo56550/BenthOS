@@ -744,14 +744,14 @@ class ValidationController:
         # Reset ardoise buttons, puis applique l'état réel depuis le JSON
         self.player.btn_ardoise.setText(self.translate("SAISIR ARDOISE", "RECORD SLATE"))
         self.player.btn_ardoise.setEnabled(True)
-        _has_ardoise = False   # True si timecode_ardoise ou point_name déjà saisi
+        _has_ardoise = False   # True si timecode_ardoise.frame ou point_name déjà saisi
         _has_codestation = False  # True si codestation calculable → bascule auto vers secteurs
         try:
             with open(self.current_json_path, 'r', encoding='utf-8') as _f:
                 _jdata = json.load(_f)
             _vob = _jdata.get("video_observation", {})
             _sv = _jdata.get("survey", {})
-            _tc = (_vob.get("timecode_ardoise") or {}).get("value")
+            _tc = (_vob.get("timecode_ardoise") or {}).get("frame")
             _pn = (_vob.get("point_name") or {}).get("value") if isinstance(_vob.get("point_name"), dict) else None
             if _tc or _pn:
                 _has_ardoise = True
@@ -1392,6 +1392,8 @@ class ValidationController:
 
         pos_ms = self.player.timeline.get_current_position() if hasattr(self.player, 'timeline') else 0
         time_str = self.player.timeline._format_ms(pos_ms) if hasattr(self.player, 'timeline') else "00:00:00"
+        _fps = getattr(self.player, 'video_fps', 0.0) or 25.0
+        frame_num = int(pos_ms / 1000.0 * _fps)
 
         # Lecture du JSON pour pré-remplir le code station
         try:
@@ -1403,8 +1405,8 @@ class ValidationController:
 
         vob_tmp = data.get("video_observation", {})
 
-        # Mode modification si timecode_ardoise déjà rempli
-        _is_modify = bool((vob_tmp.get("timecode_ardoise") or {}).get("value"))
+        # Mode modification si timecode_ardoise.frame déjà rempli
+        _is_modify = bool((vob_tmp.get("timecode_ardoise") or {}).get("frame"))
 
         def _get_val(block):
             """Extrait .value d'un bloc JSON qui peut être un dict, None ou une valeur brute."""
@@ -1475,12 +1477,12 @@ class ValidationController:
         try:
             obs = data.setdefault("video_observation", {})
 
-            # Timecode ardoise → champ dédié
-            # setdefault ne remplace pas None existant — on utilise isinstance pour préserver les métadonnées
+            # timecode_ardoise : frame = numéro de frame (int), value = timecode affichage (str)
             if isinstance(obs.get("timecode_ardoise"), dict):
+                obs["timecode_ardoise"]["frame"] = frame_num
                 obs["timecode_ardoise"]["value"] = time_str
             else:
-                obs["timecode_ardoise"] = {"value": time_str}
+                obs["timecode_ardoise"] = {"frame": frame_num, "value": time_str}
 
             # N° du point → 4 chiffres zero-padded (calculé dans la boucle de saisie)
             if station_num:

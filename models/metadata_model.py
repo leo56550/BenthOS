@@ -31,7 +31,7 @@ class MetadataModel:
     # ------------------------------------------------------------------
 
     def load(self, json_path: str):
-        """Charge toutes les métadonnées depuis un template.json."""
+        """Charge toutes les métadonnées depuis un infoStationTemplate.json."""
         if not os.path.isfile(json_path):
             print(f"[MetadataModel] JSON introuvable : {json_path}")
             return False
