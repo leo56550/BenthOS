@@ -1211,14 +1211,6 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                     _cv.release()
                     if _shown is not None:
                         # Dessiner la bounding box depuis les coins stockés lors du scan.
-                        # On n'essaie PAS de re-détecter dans la frame affichée : les paramètres
-                        # permissifs + CLAHE trouveraient un faux marqueur sur les vêtements/équipements.
-                        if aruco_corners and len(aruco_corners) == 4:
-                            pts = np.array(aruco_corners, dtype=np.int32).reshape((-1, 1, 2))
-                            cv2.polylines(_shown, [pts], isClosed=True,
-                                          color=(0, 255, 0), thickness=3)
-                            for cx, cy in aruco_corners:
-                                cv2.circle(_shown, (int(cx), int(cy)), 6, (0, 200, 255), -1)
                         _rgb = cv2.cvtColor(_shown, cv2.COLOR_BGR2RGB)
                         _h, _w = _rgb.shape[:2]
                         _qr_img = QtGui.QImage(

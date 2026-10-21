@@ -779,19 +779,16 @@ class ValidationController:
 
         # Calcul de la position de départ (ArUco) avant le chargement
         _aruco_start_fn = 0
-        _aruco_corners = None
         if self._get_aruco_result:
             _ar = self._get_aruco_result(selected_video_path)
             if _ar:
                 _aruco_start_fn = _ar.get("frame_number", 0)
-                _aruco_corners = _ar.get("corners")
                 print(f"[SEEK] Clic vidéo → QRcode détecté frame {_aruco_start_fn} ({_ar.get('frame_ms', '?')} ms)")
             else:
                 print(f"[SEEK] Clic vidéo → pas de QRcode détecté")
 
         self.player.load_video_and_events(video_to_load, detected_events, is_stereo=is_stereo,
-                                          start_frame_number=_aruco_start_fn,
-                                          aruco_corners=_aruco_corners)
+                                          start_frame_number=_aruco_start_fn)
 
         csv_telemetry = find_video_csv(selected_video_path)
         if os.path.exists(csv_telemetry):
