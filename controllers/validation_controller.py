@@ -528,6 +528,7 @@ class ValidationController:
                 vob["derush_comment"]["value"] = text or None
             else:
                 vob["derush_comment"] = {"value": text or None}
+            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← video_observation.derush_comment = {text!r}")
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
         except Exception as e:
@@ -700,6 +701,7 @@ class ValidationController:
 
         self.current_video_path = selected_video_path
         self.current_json_path = resolve_video_json_path(self._working_dir, selected_video_path)
+        print(f"[TEMP_JSON] chargement : {os.path.basename(self.current_json_path)} ({'existe' if os.path.isfile(self.current_json_path) else 'ABSENT'})")
         # Rafraîchit le numéro du point dans l'item (peut avoir été renseigné depuis le chargement)
         try:
             with open(self.current_json_path, "r", encoding="utf-8") as _jf:
@@ -1257,6 +1259,7 @@ class ValidationController:
             if "exploitable" not in video_obs:
                 video_obs["exploitable"] = {}
             video_obs["exploitable"]["value"] = text
+            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← video_observation.exploitable = {text!r}")
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
 
@@ -1355,6 +1358,7 @@ class ValidationController:
                 else:
                     obs["point_name"] = {"value": station_num}
                 obs["station_number"] = {"value": station_num}
+            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← video_observation.point_name/station_number = {station_num!r}")
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
             # Mise à jour immédiate dans la liste
@@ -1486,6 +1490,7 @@ class ValidationController:
                     obs["point_name"] = {"value": station_num}
                 obs["station_number"] = {"value": station_num}
 
+            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← ardoise tc={time_str!r} point={station_num!r}")
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
 

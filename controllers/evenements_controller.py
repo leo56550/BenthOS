@@ -197,6 +197,7 @@ class _BatchLandingWorker(QtCore.QThread):
                         vobs[key]["value"] = _ms_to_tc(ms_val)
                     else:
                         vobs[key] = {"value": _ms_to_tc(ms_val)}
+                print(f"[TEMP_JSON] batch landing/takeoff : {os.path.basename(temp_path)}")
                 with open(temp_path, 'w', encoding='utf-8') as f:
                     json.dump(jdata, f, indent=4, ensure_ascii=False)
                 processed += 1
@@ -953,6 +954,7 @@ class EvenementsController:
                 data = json.load(f)
             obs = data.setdefault("video_observation", {})
             obs.setdefault(field_key, {})["value"] = timecode
+            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← video_observation.{field_key} = {timecode!r}")
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
             label = self.translate("Atterrissage", "Landing") if field_key == "timecode_landing" \
@@ -1862,6 +1864,7 @@ class EvenementsController:
                 vob[field_key]["value"] = value or None
             else:
                 vob[field_key] = {"value": value or None}
+            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← video_observation.{field_key} = {value!r}")
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
         except Exception as e:
@@ -3411,6 +3414,7 @@ class EvenementsController:
                 data["video_observation"][json_key][0]["values"] = values_list
 
             event_dict["_json_key"] = json_key
+            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← {json_key} += {label!r}")
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
             if self._on_events_changed:
@@ -3472,6 +3476,7 @@ class EvenementsController:
                         if not (v.get("value") == target_value
                                 and abs(v.get("frame_number_start", 0) - target_frame_start) <= tolerance)
                     ]
+            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← suppression événement {json_key!r}")
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
             if self._on_events_changed:
@@ -3551,6 +3556,7 @@ class EvenementsController:
                 if modified:
                     break
             if modified:
+                print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← commentaire événement modifié {target_value!r}")
                 with open(self.current_json_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=4, ensure_ascii=False)
         except Exception as e:
@@ -3596,6 +3602,7 @@ class EvenementsController:
                     video_obs[new_json_key] = [{"authorized_values_fr": [], "values": []}]
                 video_obs[new_json_key][0].setdefault("values", []).append(moved_entry)
                 data["video_observation"] = video_obs
+                print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← événement {value!r} déplacé → {new_json_key!r}")
                 with open(self.current_json_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=4, ensure_ascii=False)
         except Exception as e:
@@ -3804,6 +3811,7 @@ class EvenementsController:
                 vob["derush_comment"]["value"] = text or None
             else:
                 vob["derush_comment"] = {"value": text or None}
+            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← video_observation.derush_comment = {text!r}")
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
         except Exception as e:
@@ -3929,6 +3937,7 @@ class EvenementsController:
                         first_motor["values"] = existing_deploy
             if modified:
                 data["video_observation"] = video_obs
+                print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← events_motor cleanup/deploy")
                 with open(self.current_json_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=4, ensure_ascii=False)
                 if self._on_events_changed:

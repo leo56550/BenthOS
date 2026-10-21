@@ -2161,6 +2161,7 @@ class MetadonneesController:
 
             if _needs_save:
                 try:
+                    print(f"[TEMP_JSON] {os.path.basename(json_path)} ← auto-save (video_number/video_path fix)")
                     with open(json_path, 'w', encoding='utf-8') as _fw:
                         json.dump(self._json_data, _fw, indent=4, ensure_ascii=False)
                 except Exception as _we:
@@ -3172,6 +3173,7 @@ class MetadonneesController:
 
             try:
                 _fix_section_misplacements(jdata)
+                print(f"[TEMP_JSON] génération : {os.path.basename(temp_path)}")
                 with open(temp_path, 'w', encoding='utf-8') as f:
                     json.dump(jdata, f, indent=4, ensure_ascii=False)
                 generated += 1
@@ -3317,6 +3319,7 @@ class MetadonneesController:
 
             try:
                 _fix_section_misplacements(jdata)
+                print(f"[TEMP_JSON] import CSV : {os.path.basename(temp_path)}")
                 with open(temp_path, 'w', encoding='utf-8') as f:
                     json.dump(jdata, f, indent=4, ensure_ascii=False)
                 matched += 1

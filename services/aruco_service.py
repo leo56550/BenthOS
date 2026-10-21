@@ -29,7 +29,7 @@ def _detect_in_frame(frame):
                            pts[j][1] - pts[(j+1)%4][1]) for j in range(4))
         if p > best_perim:
             best_perim, best_i = p, i
-    return [int(ids[best_i][0])], corners[best_i][0].tolist()
+    return [int(ids[best_i].flat[0])], corners[best_i][0].tolist()
 
 
 def detect_aruco_in_video(video_path: str,
