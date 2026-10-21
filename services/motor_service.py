@@ -92,7 +92,7 @@ def find_video_txt(video_path: str) -> str:
 
 
 def get_motor_stable_timestamps(csv_path: str, delay: float = 6.0, start_track_id: int = 6,
-                                 txt_path: str = None) -> list:
+                                 txt_path: str = None, video_filename: str = None) -> list:
     """Calcule les timestamps stables depuis un fichier systemEvent.csv.
 
     Pour chaque START MOTEUR, cherche le premier END AWB ALGO qui suit (fin de
@@ -103,11 +103,16 @@ def get_motor_stable_timestamps(csv_path: str, delay: float = 6.0, start_track_i
     le timestamp final est calé sur la frame la plus proche plutôt que sur le temps brut CSV
     (plus précis en cas d'irrégularités d'encodage ou de décalage horloge).
 
+    Si video_filename est fourni (ex: '0238_01.mp4'), utilise le START/END ENCODER du
+    segment correspondant comme fenêtre temporelle, corrigeant le décalage dû à la
+    conversion entre segments.
+
     Args:
         csv_path: Chemin vers le fichier CSV systemEvent.
         delay: Fallback en secondes si aucun END AWB ALGO n'est disponible (défaut 6.0).
         start_track_id: Identifiant de départ pour la séquence de tracks (défaut 6).
         txt_path: Chemin vers le fichier .txt de PTS de frames (optionnel).
+        video_filename: Nom du fichier vidéo (ex: '0238_01.mp4') pour cibler le bon segment.
 
     Returns:
         Liste de dicts avec 'track_id', 'timestamp', 'duration', 'start' (ms),
@@ -123,23 +128,69 @@ def get_motor_stable_timestamps(csv_path: str, delay: float = 6.0, start_track_i
 
     col_event = 'event'
     col_time = 'heure'
+    col_fichier = 'fichier'
 
     if col_event not in df.columns:
         raise KeyError(f"Colonne 'Event' introuvable. Colonnes détectées : {list(df.columns)}")
 
     df[col_event] = df[col_event].astype(str).str.strip().str.upper()
     df[col_time] = df[col_time].astype(str).str.strip()
+    if col_fichier in df.columns:
+        df[col_fichier] = df[col_fichier].astype(str).str.strip()
 
-    start_encoder_rows = df[df[col_event] == 'START ENCODER']
-    if start_encoder_rows.empty:
-        print("START ENCODER non trouvé, utilisation de la première ligne.")
-        t0_str = df.iloc[0][col_time]
+    # ── Déterminer t0 et la fenêtre temporelle du segment ────────────────────
+    t_end = None
+    motors_before_segment = 0  # nombre de moteurs avant ce segment (pour rotation_index)
+
+    if video_filename and col_fichier in df.columns:
+        h264_name = os.path.splitext(video_filename)[0] + '.h264'
+        enc_start = df[(df[col_event] == 'START ENCODER') & (df[col_fichier] == h264_name)]
+        enc_end   = df[(df[col_event] == 'END ENCODER')   & (df[col_fichier] == h264_name)]
+
+        if not enc_start.empty:
+            t0_str = enc_start.iloc[0][col_time]
+            t0 = datetime.strptime(t0_str, "%Hh%Mm%Ss")
+            print(f"[MOTOR] t0 du segment '{h264_name}' : {t0_str}")
+
+            if not enc_end.empty:
+                t_end = datetime.strptime(enc_end.iloc[0][col_time], "%Hh%Mm%Ss")
+
+            # Compter les moteurs dans les segments précédents (pour rotation_index global)
+            all_motor_indices = df.index[df[col_event] == 'START MOTEUR'].tolist()
+            motors_before_segment = sum(
+                1 for idx in all_motor_indices
+                if datetime.strptime(df.loc[idx, col_time], "%Hh%Mm%Ss") < t0
+            )
+        else:
+            # Pas de correspondance exacte → repli sur le premier START ENCODER
+            print(f"[MOTOR] '{h264_name}' non trouvé dans le CSV, repli sur premier START ENCODER.")
+            start_encoder_rows = df[df[col_event] == 'START ENCODER']
+            t0_str = start_encoder_rows.iloc[0][col_time] if not start_encoder_rows.empty else df.iloc[0][col_time]
+            t0 = datetime.strptime(t0_str, "%Hh%Mm%Ss")
     else:
-        t0_str = start_encoder_rows.iloc[0][col_time]
+        start_encoder_rows = df[df[col_event] == 'START ENCODER']
+        if start_encoder_rows.empty:
+            print("START ENCODER non trouvé, utilisation de la première ligne.")
+            t0_str = df.iloc[0][col_time]
+        else:
+            t0_str = start_encoder_rows.iloc[0][col_time]
+        t0 = datetime.strptime(t0_str, "%Hh%Mm%Ss")
 
-    t0 = datetime.strptime(t0_str, "%Hh%Mm%Ss")
-
-    motor_indices = df.index[df[col_event] == 'START MOTEUR'].tolist()
+    # ── Filtrer les événements moteur dans la fenêtre du segment ─────────────
+    all_motor_indices = df.index[df[col_event] == 'START MOTEUR'].tolist()
+    if t_end is not None:
+        motor_indices = [
+            idx for idx in all_motor_indices
+            if t0 <= datetime.strptime(df.loc[idx, col_time], "%Hh%Mm%Ss") <= t_end
+        ]
+    elif video_filename and col_fichier in df.columns and t_end is None:
+        # Pas de END ENCODER trouvé mais on a t0 : garder seulement >= t0
+        motor_indices = [
+            idx for idx in all_motor_indices
+            if datetime.strptime(df.loc[idx, col_time], "%Hh%Mm%Ss") >= t0
+        ]
+    else:
+        motor_indices = all_motor_indices
 
     # Charger les PTS de frames si le fichier .txt est disponible
     frame_pts: list = []
@@ -168,7 +219,8 @@ def get_motor_stable_timestamps(csv_path: str, delay: float = 6.0, start_track_i
             stable_offset = motor_offset
             print(f"[MOTOR] Rot #{i+1}: START MOTEUR +{motor_offset:.0f}s depuis encodeur")
 
-            angle_step = (i % 6) + 1
+            global_i = motors_before_segment + i
+            angle_step = (global_i % 6) + 1
             calculated_angle = angle_step * 60
             rotation_type = "rotation_360°" if calculated_angle == 360 else f"rotation_{calculated_angle}°"
 
@@ -194,7 +246,7 @@ def get_motor_stable_timestamps(csv_path: str, delay: float = 6.0, start_track_i
                 "start": stable_ms,
                 "type": rotation_type,
                 "angle": calculated_angle,
-                "rotation_index": (i // 6) + 1
+                "rotation_index": (global_i // 6) + 1
             })
             track_id += 1
 
@@ -253,7 +305,8 @@ def persist_motor_events_from_csv(video_path: str, json_path: str, fps: float = 
     txt_path = txt_path if os.path.isfile(txt_path) else None
 
     try:
-        motor_data = get_motor_stable_timestamps(csv_path, delay=6.0, txt_path=txt_path)
+        motor_data = get_motor_stable_timestamps(csv_path, delay=6.0, txt_path=txt_path,
+                                                  video_filename=os.path.basename(video_path))
     except Exception as e:
         print(f"[MOTOR] Erreur lecture CSV {os.path.basename(csv_path)}: {e}")
         return 0
