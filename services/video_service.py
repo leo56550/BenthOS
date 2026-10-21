@@ -128,13 +128,13 @@ def check_stereo_status(video_path: str):
             if os.path.exists(main_candidate):
                 return True, [main_candidate, v]
 
-    # --- Segments séquentiels : X.mp4 + X_01.mp4 / X_02.mp4 ... → charge uniquement X.mp4 ---
-    stems = [os.path.splitext(os.path.basename(v))[0] for v in all_videos]
-    primaries = [s for s in stems if not _re.search(r'_\d+$', s)]
-    if len(primaries) == 1:
-        primary_path = os.path.join(video_dir, primaries[0] + ".mp4")
-        if os.path.exists(primary_path):
-            return False, primary_path
+    # --- Segments séquentiels : X.mp4 + X_01.mp4 / X_02.mp4 ...
+    # Si la vidéo sélectionnée est un segment (_01, _02...), on la charge telle quelle.
+    # Si c'est le primaire, on le charge tel quel (il n'est pas redirigé vers un segment).
+    selected_stem = os.path.splitext(os.path.basename(video_path))[0]
+    if _re.search(r'_\d+$', selected_stem):
+        # Vidéo sélectionnée = segment → charger directement
+        return False, video_path
 
     # Fallback mono
     return False, video_path
