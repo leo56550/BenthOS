@@ -35,8 +35,8 @@ def _get_station_time(video_path: str, cache: dict) -> str:
     si absent. Le CSV reflète parfois le moment où l'événement a été journalisé (ex. à la
     conversion h264→mp4) plutôt que l'heure réelle de prise, d'où la priorité au JSON."""
     folder = os.path.dirname(video_path)
-    if folder in cache:
-        return cache[folder]
+    if video_path in cache:
+        return cache[video_path]
     result = _STATION_TIME_SORT_MISSING
 
     json_path = get_temp_json_path(video_path)
@@ -49,7 +49,7 @@ def _get_station_time(video_path: str, cache: dict) -> str:
                 parts = t_val.replace("h", ":").replace("H", ":").split(":")
                 if len(parts) >= 2:
                     result = f"{int(parts[0]):02d}:{int(parts[1]):02d}"
-                    cache[folder] = result
+                    cache[video_path] = result
                     return result
         except Exception:
             pass
@@ -83,7 +83,7 @@ def _get_station_time(video_path: str, cache: dict) -> str:
                 break
             except Exception:
                 continue
-    cache[folder] = result
+    cache[video_path] = result
     return result
 
 
