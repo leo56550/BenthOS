@@ -1290,6 +1290,8 @@ class EvenementsController:
         self._motor_detection_progress_dlg.setWindowModality(
             QtCore.Qt.WindowModality.WindowModal)
         self._motor_detection_progress_dlg.setMinimumDuration(0)
+        self._motor_detection_progress_dlg.setAutoClose(False)
+        self._motor_detection_progress_dlg.setAutoReset(False)
         self._motor_detection_progress_dlg.canceled.connect(worker.abort)
         self._motor_detection_progress_dlg.show()
 
@@ -1300,6 +1302,7 @@ class EvenementsController:
         if dlg:
             dlg.setValue(pct)
             dlg.setLabelText(msg)
+            QtWidgets.QApplication.processEvents()
 
     def _on_motor_detection_error(self, err: str):
         dlg = getattr(self, '_motor_detection_progress_dlg', None)

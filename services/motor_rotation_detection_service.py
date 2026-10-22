@@ -124,7 +124,7 @@ def detect_motor_rotations(
         prev_gray = gray
         frame_idx += 1
 
-        if progress_cb and total_frames > 0 and frame_idx % (step * 8) == 0:
+        if progress_cb and total_frames > 0 and sample_frames and len(sample_frames) % 8 == 0:
             pct = min(49, int(frame_idx / total_frames * 50))
             progress_cb(pct, f"Analyse… {int(frame_idx/fps)//60:02d}:{int(frame_idx/fps)%60:02d} / "
                              f"{int(total_frames/fps)//60:02d}:{int(total_frames/fps)%60:02d}")
