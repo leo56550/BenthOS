@@ -539,6 +539,11 @@ class VideoTimeline(QtWidgets.QWidget):
             return
 
         content_h = H - RH
+        # Axe Y : [0 ; 110 % du max] → marge visuelle en bas
+        depth_scale = self._depth_max * 1.1
+
+        def _depth_y(d):
+            return RH + (max(0.0, d) / depth_scale) * content_h
 
         # ── Polygone : surface → profil → surface (colonne d'eau) ────────────
         pts = []
@@ -546,8 +551,7 @@ class VideoTimeline(QtWidgets.QWidget):
         pts.append(QtCore.QPointF(first_x, RH))
         for time_ms, depth_m in self._depth_profile:
             x = self._clamp_int((time_ms / total_duration) * width)
-            y = RH + (max(0.0, depth_m) / self._depth_max) * content_h
-            pts.append(QtCore.QPointF(x, y))
+            pts.append(QtCore.QPointF(x, _depth_y(depth_m)))
         last_x = self._clamp_int((self._depth_profile[-1][0] / total_duration) * width)
         pts.append(QtCore.QPointF(last_x, RH))
 
@@ -570,18 +574,16 @@ class VideoTimeline(QtWidgets.QWidget):
             t1, d1 = self._depth_profile[i - 1]
             t2, d2 = self._depth_profile[i]
             x1 = self._clamp_int((t1 / total_duration) * width)
-            y1 = RH + (max(0.0, d1) / self._depth_max) * content_h
             x2 = self._clamp_int((t2 / total_duration) * width)
-            y2 = RH + (max(0.0, d2) / self._depth_max) * content_h
-            painter.drawLine(QtCore.QPointF(x1, y1), QtCore.QPointF(x2, y2))
+            painter.drawLine(QtCore.QPointF(x1, _depth_y(d1)), QtCore.QPointF(x2, _depth_y(d2)))
 
-        # ── Labels axe profondeur (droite, 4 paliers) ─────────────────────────
+        # ── Labels axe profondeur (droite, 4 paliers sur le vrai max) ────────
         f_depth = QtGui.QFont("Segoe UI", 7)
         painter.setFont(f_depth)
         painter.setPen(QtGui.QColor(0, 200, 255, 120))
         for i in range(5):
             depth = self._depth_max * i / 4
-            y = int(RH + (depth / self._depth_max) * content_h)
+            y = int(_depth_y(depth))
             lbl = f"{depth:.1f}m"
             painter.drawText(width - 40, y - 7, 38, 14,
                              QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter,

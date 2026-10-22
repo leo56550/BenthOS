@@ -155,12 +155,6 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
         rl.setContentsMargins(14, 14, 14, 14)
         rl.setSpacing(8)
 
-        # Nom de mission
-        rl.addWidget(_lbl(self.translate("Nom de la mission", "Mission name")))
-        self._edit_mission = QtWidgets.QLineEdit()
-        self._edit_mission.setPlaceholderText(self.translate("ex : Campagne Iroise 2026", "e.g.: Iroise Campaign 2026"))
-        rl.addWidget(self._edit_mission)
-
         # Date de deploiement
         rl.addWidget(_lbl(self.translate("Date de deploiement", "Deployment date")))
         self._date_edit = QtWidgets.QDateEdit()
@@ -203,11 +197,6 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
             "color: #7ec8e3; font-size: 10px; border: none; font-style: italic;")
         rl.addWidget(self._lbl_infostation_info)
 
-        btn_clr_info = QtWidgets.QPushButton(self.translate("Effacer points infostation", "Clear infostation points"))
-        btn_clr_info.setObjectName("btn_clear")
-        btn_clr_info.clicked.connect(self._clear_infostation)
-        rl.addWidget(btn_clr_info)
-
         rl.addWidget(_sep())
 
         # Liste waypoints
@@ -240,10 +229,33 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
 
         rl.addWidget(_sep())
 
-        btn_del = QtWidgets.QPushButton(self.translate("Supprimer la selection", "Delete selection"))
-        btn_del.setObjectName("btn_delete")
-        btn_del.clicked.connect(self._delete_selected)
-        rl.addWidget(btn_del)
+        # ── Ajout par coordonnées ─────────────────────────────────────────
+        lbl_coords = QtWidgets.QLabel(self.translate(
+            "Ajouter un point par coordonnées", "Add point by coordinates"))
+        lbl_coords.setStyleSheet("color: #F2BFB4; font-weight: bold; font-size: 11px; border: none;")
+        rl.addWidget(lbl_coords)
+
+        coords_row = QtWidgets.QHBoxLayout()
+        coords_row.setSpacing(4)
+        self._edit_lat = QtWidgets.QLineEdit()
+        self._edit_lat.setPlaceholderText("Lat (ex: 47.5)")
+        self._edit_lng = QtWidgets.QLineEdit()
+        self._edit_lng.setPlaceholderText("Lng (ex: -3.5)")
+        coords_row.addWidget(self._edit_lat)
+        coords_row.addWidget(self._edit_lng)
+        rl.addLayout(coords_row)
+
+        self._edit_coord_name = QtWidgets.QLineEdit()
+        self._edit_coord_name.setPlaceholderText(
+            self.translate("Nom du point (optionnel)", "Point name (optional)"))
+        rl.addWidget(self._edit_coord_name)
+
+        btn_add_coords = QtWidgets.QPushButton(
+            self.translate("Ajouter ce point", "Add this point"))
+        btn_add_coords.clicked.connect(self._add_point_by_coords)
+        rl.addWidget(btn_add_coords)
+
+        rl.addWidget(_sep())
 
         btn_clr = QtWidgets.QPushButton(self.translate("Tout effacer", "Clear all"))
         btn_clr.setObjectName("btn_clear")
@@ -251,10 +263,6 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
         rl.addWidget(btn_clr)
 
         rl.addWidget(_sep())
-
-        btn_exp = QtWidgets.QPushButton(self.translate("Exporter JSON", "Export JSON"))
-        btn_exp.clicked.connect(self._export_json)
-        rl.addWidget(btn_exp)
 
         btn_send = QtWidgets.QPushButton(self.translate("Envoyer vers KOSMOS", "Send to KOSMOS"))
         btn_send.setStyleSheet(
@@ -291,79 +299,105 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
     # ── Infostation ──────────────────────────────────────────────────────────
 
     def _load_infostation(self):
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, self.translate("Charger un fichier infoStation", "Load an infoStation file"), "",
-            self.translate("Tous les fichiers (*);;CSV (*.csv *.CSV *.txt)", "All files (*);;CSV (*.csv *.CSV *.txt)")
+        paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
+            self, self.translate("Charger des fichiers infoStation", "Load infoStation file(s)"), "",
+            self.translate(
+                "Infostation (*.csv *.CSV *.xlsx *.xls *.txt);;Tous les fichiers (*)",
+                "Infostation (*.csv *.CSV *.xlsx *.xls *.txt);;All files (*)",
+            )
         )
-        if not path:
+        if not paths:
             return
 
-        points = []
+        all_points = []
         campaign_name = ""
         year = ""
 
-        try:
-            for enc in ("cp1252", "utf-8-sig", "utf-8", "latin-1"):
-                try:
-                    with open(path, newline='', encoding=enc) as f:
-                        reader = csv.DictReader(f, delimiter=';')
-                        rows = list(reader)
-                    break
-                except (UnicodeDecodeError, Exception):
-                    rows = []
+        for path in paths:
+            try:
+                rows = []
+                ext = os.path.splitext(path)[1].lower()
+                if ext in ('.xlsx', '.xls'):
+                    try:
+                        import openpyxl as _opxl
+                        wb = _opxl.load_workbook(path, data_only=True)
+                        ws = wb.active
+                        hdrs = [str(c.value or '').strip()
+                                for c in next(ws.iter_rows(min_row=1, max_row=1))]
+                        for row_vals in ws.iter_rows(min_row=2, values_only=True):
+                            rows.append({hdrs[i]: (str(v) if v is not None else '')
+                                         for i, v in enumerate(row_vals)})
+                    except Exception as xe:
+                        raise RuntimeError(f"Impossible de lire le fichier Excel : {xe}")
+                else:
+                    for enc in ("cp1252", "utf-8-sig", "utf-8", "latin-1"):
+                        try:
+                            with open(path, newline='', encoding=enc) as f:
+                                sample = f.read(4096)
+                            delim = ';' if sample.count(';') >= sample.count(',') else ','
+                            with open(path, newline='', encoding=enc) as f:
+                                reader = csv.DictReader(f, delimiter=delim)
+                                rows = list(reader)
+                            if rows:
+                                break
+                        except (UnicodeDecodeError, Exception):
+                            rows = []
 
-            for row in rows:
-                try:
-                    lat = float(str(row.get("Latitude", "")).replace(",", ".").strip())
-                    lng = float(str(row.get("Longitude", "")).replace(",", ".").strip())
-                except (ValueError, TypeError):
-                    continue
+                # Index insensible à la casse/espaces, robuste aux clés None
+                def _get(row, *keys):
+                    row_low = {str(k).strip().lower(): v
+                               for k, v in row.items() if k is not None}
+                    for k in keys:
+                        v = row_low.get(k.lower().strip(), "")
+                        if v:
+                            return str(v).strip()
+                    return ""
 
-                code = str(row.get("Codestation", "")).strip()
-                nom  = str(row.get("Nom du point", "") or row.get("Nom du point GPS", "")).strip()
-                date = str(row.get("Date", "")).strip()
+                for row in rows:
+                    try:
+                        lat = float(_get(row, "Latitude").replace(",", "."))
+                        lng = float(_get(row, "Longitude").replace(",", "."))
+                    except (ValueError, TypeError):
+                        continue
 
-                if not campaign_name:
-                    campaign_name = str(row.get("Nom campagne", "")).strip()
-                if not year and date:
-                    # format DD/MM/YYYY → year = 4 derniers chars
-                    parts = date.split("/")
-                    if len(parts) == 3 and len(parts[2]) == 4:
-                        year = parts[2]
+                    code = _get(row, "Codestation")
+                    nom  = _get(row, "Nom du point", "Nom du point GPS", "Point")
+                    date = _get(row, "Date")
 
-                points.append({
-                    "lat":  lat,
-                    "lng":  lng,
-                    "code": code,
-                    "nom":  nom,
-                    "date": date,
-                })
+                    if not campaign_name:
+                        campaign_name = _get(row, "Nom campagne", "Campagne")
+                    if not year and date:
+                        parts = date.split("/")
+                        if len(parts) == 3 and len(parts[2]) == 4:
+                            year = parts[2]
 
-        except Exception as e:
-            QtWidgets.QMessageBox.critical(
-                self, self.translate("Erreur", "Error"),
-                self.translate(f"Impossible de lire le fichier :\n{e}", f"Unable to read the file:\n{e}")
-            )
-            return
+                    all_points.append({
+                        "lat": lat, "lng": lng,
+                        "code": code, "nom": nom or code, "date": date,
+                    })
 
-        if not points:
+            except Exception as e:
+                QtWidgets.QMessageBox.critical(
+                    self, self.translate("Erreur", "Error"),
+                    self.translate(f"Impossible de lire :\n{path}\n{e}",
+                                   f"Unable to read:\n{path}\n{e}")
+                )
+
+        if not all_points:
             QtWidgets.QMessageBox.warning(
                 self, self.translate("Aucun point", "No points"),
                 self.translate(
-                    "Aucun point avec coordonnées valides trouvé dans ce fichier.",
-                    "No point with valid coordinates found in this file."
+                    "Aucun point avec coordonnées valides trouvé dans les fichiers sélectionnés.",
+                    "No point with valid coordinates found in the selected files."
                 ))
             return
 
-        # Afficher sur la carte
+        # Ajouter comme vrais waypoints (marqueurs bleus numérotés, dans la liste)
         self._map_view.page().runJavaScript(
-            f"loadInfostationPoints({json.dumps(points)});"
+            f"loadImportedPoints({json.dumps(all_points)});"
         )
 
         # Auto-remplir la mission et l'année
-        if campaign_name and not self._edit_mission.text().strip():
-            label = f"{campaign_name} {year}".strip()
-            self._edit_mission.setText(label)
         if year:
             try:
                 d = self._date_edit.date()
@@ -372,7 +406,11 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
                 pass
 
         # Info label
-        info = self.translate(f"{len(points)} point(s) chargé(s)", f"{len(points)} point(s) loaded")
+        n_files = len(paths)
+        info = self.translate(
+            f"{len(all_points)} point(s) ajouté(s) depuis {n_files} fichier(s)",
+            f"{len(all_points)} point(s) added from {n_files} file(s)",
+        )
         if campaign_name:
             info += self.translate(f"\nCampagne : {campaign_name}", f"\nCampaign: {campaign_name}")
         if year:
@@ -438,6 +476,40 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
             if len(digits) == 6:
                 return f"20{digits[:2]}-{digits[2:4]}-{digits[4:6]}"
         return fallback.toString("yyyy-MM-dd")
+
+    def _add_point_by_coords(self):
+        """Ajoute un waypoint depuis les champs lat/lng saisis manuellement."""
+        try:
+            lat = float(self._edit_lat.text().strip().replace(",", "."))
+            lng = float(self._edit_lng.text().strip().replace(",", "."))
+        except ValueError:
+            QtWidgets.QMessageBox.warning(
+                self,
+                self.translate("Coordonnées invalides", "Invalid coordinates"),
+                self.translate(
+                    "Veuillez saisir une latitude et une longitude numériques.",
+                    "Please enter numeric latitude and longitude values.",
+                ),
+            )
+            return
+        if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+            QtWidgets.QMessageBox.warning(
+                self,
+                self.translate("Coordonnées hors limites", "Out-of-range coordinates"),
+                self.translate(
+                    "Latitude [-90 ; 90]  —  Longitude [-180 ; 180].",
+                    "Latitude [-90 ; 90]  —  Longitude [-180 ; 180].",
+                ),
+            )
+            return
+        name = self._edit_coord_name.text().strip()
+        safe_name = name.replace("'", "\\'") if name else ""
+        self._map_view.page().runJavaScript(
+            f"addWaypointAtCoords({lat}, {lng}, '{safe_name}');"
+        )
+        self._edit_lat.clear()
+        self._edit_lng.clear()
+        self._edit_coord_name.clear()
 
     def _on_point_added(self, payload: str):
         try:
@@ -546,7 +618,7 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
 
     def _build_json_bytes(self) -> bytes:
         payload = {
-            "mission":          self._edit_mission.text().strip() or None,
+            "mission":          None,
             "date_deploiement": self._date_edit.date().toString("yyyy-MM-dd"),
             "waypoints": [
                 {

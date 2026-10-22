@@ -69,8 +69,14 @@ def find_campaign_gps_points(campaign_folder: str) -> list:
                 lon_f = float(str(lon).replace(",", "."))
                 if math.isnan(lat_f) or math.isnan(lon_f):
                     continue
-                nom = str((obs.get("point_name") or {}).get("value")
-                          or (obs.get("station_number") or {}).get("value") or "").strip()
+                def _val(block, key):
+                    v = block.get(key)
+                    return str(v.get("value") if isinstance(v, dict) else v or "").strip()
+
+                nom = (_val(obs, "point_name")
+                       or _val(obs, "gps_waypoint")
+                       or _val(obs, "station_number")
+                       or os.path.basename(os.path.dirname(jpath)))
                 date_v = str((survey.get("date") or {}).get("value") or "").strip()
                 points.append({
                     "lat": lat_f, "lng": lon_f,

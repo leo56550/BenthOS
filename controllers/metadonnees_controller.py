@@ -1796,11 +1796,8 @@ class MetadonneesController:
         """Surligne toute la ligne courante du tableau infostation au clic (la sélection
         reste par cellule — SelectItems — pour ne pas casser le remplissage/incrémentation
         multi-cellules ; ce surlignage est purement visuel, superposé à la couleur système)."""
-        _depth_col = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "depth"), None)
         if hasattr(self, '_btn_calc_depth'):
-            self._btn_calc_depth.setEnabled(
-                _depth_col is not None and current_col == _depth_col and current_row >= 0
-            )
+            self._btn_calc_depth.setEnabled(current_row >= 0)
         if previous_row == current_row:
             return
         if self._ft_highlighted_item0 is not None:
@@ -1814,96 +1811,79 @@ class MetadonneesController:
             self._ft_highlighted_item0 = self._ft_table.item(current_row, 0)
 
     def _on_calc_depth_clicked(self):
-        """Calcule la profondeur depuis PressionMax du CSV télémétrie et l'injecte dans la cellule."""
+        """Calcule la profondeur depuis PressionMax du CSV télémétrie pour toutes les lignes sélectionnées."""
         import pandas as pd
 
         depth_col = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "depth"), None)
         if depth_col is None:
             return
 
-        cur_row = self._ft_table.currentRow()
-        if cur_row < 0:
+        # Collecte des lignes sélectionnées (dédupliquées, ordre croissant)
+        selected_rows = sorted({idx.row() for idx in self._ft_table.selectedIndexes()})
+        if not selected_rows:
+            cur = self._ft_table.currentRow()
+            if cur >= 0:
+                selected_rows = [cur]
+        if not selected_rows:
             return
 
-        item0 = self._ft_table.item(cur_row, 0)
-        video_path = str(item0.data(QtCore.Qt.ItemDataRole.UserRole) or "") if item0 else ""
-        if not video_path:
-            QtWidgets.QMessageBox.warning(
-                self.page,
-                self.translate("Calcul profondeur", "Calculate depth"),
-                self.translate("Aucun fichier vidéo associé à cette ligne.",
-                               "No video file associated with this row."),
-            )
-            return
+        _COL_ALIASES = {'pression': 'pression', 'pressure': 'pression', 'press': 'pression'}
 
-        csv_path = find_video_csv(video_path)
-        if not os.path.isfile(csv_path):
-            QtWidgets.QMessageBox.warning(
-                self.page,
-                self.translate("Calcul profondeur", "Calculate depth"),
-                self.translate(
-                    f"Fichier CSV télémétrie introuvable :\n{csv_path}",
-                    f"Telemetry CSV file not found:\n{csv_path}",
-                ),
-            )
-            return
-
-        _COL_ALIASES = {
-            'pression': 'pression', 'pressure': 'pression', 'press': 'pression',
-        }
-        try:
+        def _read_pression_max(csv_path: str):
             for enc in ('utf-8', 'cp1252', 'latin-1'):
                 try:
                     df = pd.read_csv(csv_path, sep=';', decimal=',', header=0, encoding=enc)
-                    break
+                    df.columns = [_COL_ALIASES.get(c.strip().lower(), c.strip()) for c in df.columns]
+                    if 'pression' not in df.columns:
+                        return None, self.translate(
+                            "Colonne 'pression' absente du CSV.", "Column 'pression' missing in CSV.")
+                    df['pression'] = pd.to_numeric(
+                        df['pression'].astype(str).str.replace(',', '.', regex=False), errors='coerce')
+                    val = df['pression'].max()
+                    return (None, self.translate("Aucune valeur de pression valide.",
+                                                 "No valid pressure value.")) if pd.isna(val) else (val, None)
                 except UnicodeDecodeError:
                     continue
-            else:
-                raise ValueError("Encodage CSV inconnu")
+            return None, self.translate("Encodage CSV inconnu.", "Unknown CSV encoding.")
 
-            df.columns = [_COL_ALIASES.get(c.strip().lower(), c.strip()) for c in df.columns]
-            if 'pression' not in df.columns:
-                QtWidgets.QMessageBox.warning(
-                    self.page,
-                    self.translate("Calcul profondeur", "Calculate depth"),
-                    self.translate(
-                        "Colonne 'pression' absente du CSV télémétrie.",
-                        "Column 'pression' not found in telemetry CSV.",
-                    ),
-                )
-                return
+        errors = []
+        n_done = 0
+        for row in selected_rows:
+            item0 = self._ft_table.item(row, 0)
+            video_path = str(item0.data(QtCore.Qt.ItemDataRole.UserRole) or "") if item0 else ""
+            if not video_path:
+                errors.append(self.translate(f"Ligne {row+1} : pas de vidéo associée.",
+                                             f"Row {row+1}: no video associated."))
+                continue
+            csv_path = find_video_csv(video_path)
+            if not os.path.isfile(csv_path):
+                errors.append(self.translate(f"Ligne {row+1} : CSV introuvable.",
+                                             f"Row {row+1}: CSV not found."))
+                continue
+            try:
+                pression_max, err = _read_pression_max(csv_path)
+                if err:
+                    errors.append(f"Ligne {row+1} : {err}")
+                    continue
+                depth = max(0.0, ((pression_max - 1013) / (1029 * 9.80665)) * 100)
+                depth_str = f"{depth:.1f}"
+                depth_item = self._ft_table.item(row, depth_col)
+                if depth_item:
+                    depth_item.setText(depth_str)
+                else:
+                    self._ft_table.setItem(row, depth_col, QtWidgets.QTableWidgetItem(depth_str))
+                n_done += 1
+            except Exception as exc:
+                errors.append(f"Ligne {row+1} : {exc}")
 
-            df['pression'] = pd.to_numeric(
-                df['pression'].astype(str).str.replace(',', '.', regex=False), errors='coerce'
+        if errors:
+            detail = "\n".join(errors)
+            msg = self.translate(
+                f"{n_done} profondeur(s) calculée(s).\n\nErreurs :\n{detail}",
+                f"{n_done} depth(s) calculated.\n\nErrors:\n{detail}",
             )
-            pression_max = df['pression'].max()
-            if pd.isna(pression_max):
-                QtWidgets.QMessageBox.warning(
-                    self.page,
-                    self.translate("Calcul profondeur", "Calculate depth"),
-                    self.translate(
-                        "Aucune valeur de pression valide dans le CSV.",
-                        "No valid pressure value found in CSV.",
-                    ),
-                )
-                return
-
-            depth = ((pression_max - 1013) / (1029 * 9.80665)) * 100
-            depth = max(0.0, depth)
-            depth_str = f"{depth:.1f}"
-
-            depth_item = self._ft_table.item(cur_row, depth_col)
-            if depth_item:
-                depth_item.setText(depth_str)
-            else:
-                self._ft_table.setItem(cur_row, depth_col, QtWidgets.QTableWidgetItem(depth_str))
-
-        except Exception as exc:
-            QtWidgets.QMessageBox.critical(
-                self.page,
-                self.translate("Calcul profondeur", "Calculate depth"),
-                self.translate(f"Erreur : {exc}", f"Error: {exc}"),
-            )
+            QtWidgets.QMessageBox.warning(
+                self.page, self.translate("Calcul profondeur", "Calculate depth"), msg)
 
     def _set_ft_row_highlighted(self, row: int, highlighted: bool):
         # setBackground() déclenche dataChanged/cellChanged comme une vraie édition ; sans

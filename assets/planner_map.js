@@ -90,7 +90,8 @@ function loadImportedPoints(data) {
     if (p.lat == null || p.lng == null) return;
     var idx   = markers.length;
     var label = p.nom || p.code || ('Point ' + (idx + 1));
-    var m = L.marker([p.lat, p.lng], { icon: _importedIcon(idx + 1) })
+    var iconTxt = p.nom || String(idx + 1);
+    var m = L.marker([p.lat, p.lng], { icon: _importedIcon(iconTxt) })
              .addTo(map)
              .bindPopup(
                '<b>' + label + '</b><br>'
@@ -155,6 +156,22 @@ function removeMarkerByIndex(idx) {
 function clearAllMarkers() {
   markers.forEach(function (m) { map.removeLayer(m); });
   markers = [];
+}
+
+function addWaypointAtCoords(lat, lng, label) {
+  var idx = markers.length;
+  var lbl = label || ('Point ' + (idx + 1));
+  var m = L.marker([lat, lng], { icon: _icon(idx + 1, lbl) })
+           .addTo(map)
+           .bindPopup('<b>' + lbl + '</b><br>'
+             + lat.toFixed(6) + ',&nbsp;' + lng.toFixed(6));
+  markers.push(m);
+  if (bridge) {
+    bridge.onPointAdded(JSON.stringify({
+      index: idx, lat: lat, lng: lng, label: lbl
+    }));
+  }
+  map.setView([lat, lng], Math.max(map.getZoom(), 12));
 }
 
 /* ── Clic sur la carte → ajout d'un waypoint ───────────────────────────── */
