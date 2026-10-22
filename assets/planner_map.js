@@ -25,6 +25,62 @@ var markers = [];
 /* ── Marqueurs infoStation (points de référence, orange) ────────────────── */
 var infoMarkers = [];
 
+/* ── Palette par année ───────────────────────────────────────────────────── */
+var _YEAR_PALETTE = [
+  { bg: '#e68c14', border: '#f5c842' },  // orange
+  { bg: '#16a0a0', border: '#4fd4d4' },  // teal
+  { bg: '#9B59B6', border: '#c39bd3' },  // violet
+  { bg: '#27AE60', border: '#82e0aa' },  // vert
+  { bg: '#C0392B', border: '#e57373' },  // rouge
+  { bg: '#E91E63', border: '#f48fb1' },  // rose
+  { bg: '#795548', border: '#bcaaa4' },  // brun
+  { bg: '#607D8B', border: '#90a4ae' },  // bleu-gris
+];
+var _yearColorMap  = {};   // { "2025": {bg, border}, ... }
+var _yearColorIdx  = 0;
+
+function _yearColor(year) {
+  if (!year) return { bg: '#556677', border: '#7ec8e3' };
+  if (!_yearColorMap[year]) {
+    _yearColorMap[year] = _YEAR_PALETTE[_yearColorIdx % _YEAR_PALETTE.length];
+    _yearColorIdx++;
+    _refreshLegend();
+  }
+  return _yearColorMap[year];
+}
+
+function _extractYear(dateStr) {
+  if (!dateStr) return null;
+  var s = String(dateStr).trim();
+  var parts = s.split('/');
+  if (parts.length === 3 && parts[2].length === 4) return parts[2];
+  if (s.length >= 4 && s[4] === '-') return s.substring(0, 4);
+  if (/^\d{8}$/.test(s)) return s.substring(0, 4);
+  if (/^\d{6}$/.test(s)) return '20' + s.substring(0, 2);
+  return null;
+}
+
+function _refreshLegend() {
+  var leg = document.getElementById('legend');
+  if (!leg) return;
+  var years = Object.keys(_yearColorMap);
+  if (years.length === 0) { leg.style.display = 'none'; return; }
+  var html = '<div style="font-weight:bold;margin-bottom:5px;color:#F2BFB4;">Légende</div>';
+  years.sort().forEach(function(y) {
+    var c = _yearColorMap[y];
+    html += '<div style="display:flex;align-items:center;gap:7px;margin:3px 0;">'
+          + '<span style="display:inline-block;width:16px;height:16px;border-radius:50%;'
+          + 'background:' + c.bg + ';border:2px solid ' + c.border + ';flex-shrink:0;"></span>'
+          + '<span>' + y + '</span></div>';
+  });
+  html += '<div style="display:flex;align-items:center;gap:7px;margin:3px 0;">'
+        + '<span style="display:inline-block;width:16px;height:16px;border-radius:50%;'
+        + 'background:#2778a2;border:2px solid #7ec8e3;flex-shrink:0;"></span>'
+        + '<span style="color:#7ec8e3;">Ajoutés</span></div>';
+  leg.innerHTML  = html;
+  leg.style.display = 'block';
+}
+
 function _infoIcon(code) {
   return L.divIcon({
     className: '',
@@ -37,14 +93,15 @@ function _infoIcon(code) {
   });
 }
 
-function _importedIcon(n) {
+function _importedIcon(txt, bg, border) {
   return L.divIcon({
     className: '',
-    html: '<div style="background:#16a0a0;color:#fff;border:2px solid #4fd4d4;'
+    html: '<div style="background:' + (bg||'#16a0a0') + ';color:#fff;'
+        + 'border:2px solid ' + (border||'#4fd4d4') + ';'
         + 'border-radius:50%;min-width:26px;height:26px;line-height:22px;'
         + 'text-align:center;font:bold 11px sans-serif;padding:0 4px;'
         + 'box-shadow:0 2px 6px #0008;white-space:nowrap;">'
-        + n + '</div>',
+        + txt + '</div>',
     iconSize: null, iconAnchor: [13, 13], popupAnchor: [0, -16]
   });
 }
@@ -91,7 +148,9 @@ function loadImportedPoints(data) {
     var idx   = markers.length;
     var label = p.nom || p.code || ('Point ' + (idx + 1));
     var iconTxt = p.nom || String(idx + 1);
-    var m = L.marker([p.lat, p.lng], { icon: _importedIcon(iconTxt) })
+    var year  = _extractYear(p.date);
+    var clr   = _yearColor(year);
+    var m = L.marker([p.lat, p.lng], { icon: _importedIcon(iconTxt, clr.bg, clr.border) })
              .addTo(map)
              .bindPopup(
                '<b>' + label + '</b><br>'
@@ -101,10 +160,38 @@ function loadImportedPoints(data) {
     markers.push(m);
     if (bridge) {
       bridge.onPointAdded(JSON.stringify({
-        index: idx, lat: p.lat, lng: p.lng, label: label, date: p.date || ''
+        index: idx, lat: p.lat, lng: p.lng, label: label, date: p.date || '',
+        source: 'imported', iconTxt: iconTxt
       }));
     }
   });
+}
+
+function rebuildMarkers(data) {
+  clearAllMarkers();
+  _yearColorMap = {};
+  _yearColorIdx = 0;
+  var points = typeof data === 'string' ? JSON.parse(data) : data;
+  points.forEach(function (p, i) {
+    var lbl     = p.label || ('Point ' + (i + 1));
+    var iconTxt = p.iconTxt || lbl;
+    var m;
+    if (p.source === 'imported') {
+      var clr = _yearColor(_extractYear(p.date));
+      m = L.marker([p.lat, p.lng], { icon: _importedIcon(iconTxt, clr.bg, clr.border) })
+           .addTo(map)
+           .bindPopup('<b>' + lbl + '</b><br>'
+             + Number(p.lat).toFixed(6) + ',&nbsp;' + Number(p.lng).toFixed(6)
+             + (p.date ? '<br><span style="color:#aaa;font-size:11px;">' + p.date + '</span>' : ''));
+    } else {
+      m = L.marker([p.lat, p.lng], { icon: _icon(i + 1, lbl) })
+           .addTo(map)
+           .bindPopup('<b>' + lbl + '</b><br>'
+             + Number(p.lat).toFixed(6) + ', ' + Number(p.lng).toFixed(6));
+    }
+    markers.push(m);
+  });
+  _refreshLegend();
 }
 
 function _icon(n, label) {
@@ -168,10 +255,12 @@ function addWaypointAtCoords(lat, lng, label) {
   markers.push(m);
   if (bridge) {
     bridge.onPointAdded(JSON.stringify({
-      index: idx, lat: lat, lng: lng, label: lbl
+      index: idx, lat: lat, lng: lng, label: lbl,
+      source: 'manual', iconTxt: String(idx + 1)
     }));
   }
   map.setView([lat, lng], Math.max(map.getZoom(), 12));
+  _refreshLegend();
 }
 
 /* ── Clic sur la carte → ajout d'un waypoint ───────────────────────────── */
@@ -188,10 +277,9 @@ map.on('click', function (e) {
 
   if (bridge) {
     bridge.onPointAdded(JSON.stringify({
-      index: idx,
-      lat:   lat.toFixed(6),
-      lng:   lng.toFixed(6),
-      label: defaultLabel
+      index: idx, lat: lat.toFixed(6), lng: lng.toFixed(6),
+      label: defaultLabel, source: 'manual', iconTxt: String(idx + 1)
     }));
   }
+  _refreshLegend();
 });

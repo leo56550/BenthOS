@@ -96,7 +96,11 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
         self.setStyleSheet(_STYLE)
 
         self._points: list[dict] = []
-        self._updating_name = False   # garde contre boucle signal
+        self._updating_name   = False
+        self._undo_stack: list[list[dict]] = []
+        self._batch_importing = False          # True pendant loadImportedPoints
+        self._name_edit_undo_pushed  = False   # évite push à chaque frappe
+        self._date_edit_undo_pushed  = False
 
         self._bridge  = _PlanBridge(self)
         self._channel = QWebChannel(self)
@@ -107,6 +111,31 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
 
     def translate(self, fr: str, en: str) -> str:
         return fr if self.current_language == 'fr' else en
+
+    # ── Undo ─────────────────────────────────────────────────────────────────
+
+    def _push_undo_state(self):
+        import copy
+        self._undo_stack.append(copy.deepcopy(self._points))
+
+    def _undo(self):
+        if not self._undo_stack:
+            return
+        self._points = self._undo_stack.pop()
+        self._map_view.page().runJavaScript(
+            f"rebuildMarkers({json.dumps(self._points)});"
+        )
+        self._edit_name.clear()
+        self._edit_name.setEnabled(False)
+        self._refresh_list()
+
+    def keyPressEvent(self, event):
+        if (event.key() == QtCore.Qt.Key.Key_Z
+                and event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier):
+            self._undo()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     # ── Construction UI ───────────────────────────────────────────────────────
 
@@ -181,7 +210,7 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
         rl.addWidget(btn_load_info)
 
         btn_compare_campaign = QtWidgets.QPushButton(
-            self.translate("Comparer avec campagne", "Compare with campaign"))
+            self.translate("Charger campagne", "LOAD campaign"))
         btn_compare_campaign.setStyleSheet(
             "QPushButton { background-color: #2a1a3a; color: #b98ce6;"
             " border: 1px solid #9B59B6; border-radius: 4px;"
@@ -393,9 +422,12 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
             return
 
         # Ajouter comme vrais waypoints (marqueurs bleus numérotés, dans la liste)
+        self._push_undo_state()
+        self._batch_importing = True
         self._map_view.page().runJavaScript(
             f"loadImportedPoints({json.dumps(all_points)});"
         )
+        QtCore.QTimer.singleShot(1500, lambda: setattr(self, '_batch_importing', False))
 
         # Auto-remplir la mission et l'année
         if year:
@@ -442,9 +474,12 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
                 ))
             return
 
+        self._push_undo_state()
+        self._batch_importing = True
         self._map_view.page().runJavaScript(
             f"loadImportedPoints({json.dumps(points)});"
         )
+        QtCore.QTimer.singleShot(1500, lambda: setattr(self, '_batch_importing', False))
 
         info = self.translate(
             f"{len(points)} point(s) de campagne ajouté(s) aux waypoints",
@@ -516,12 +551,16 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
             data = json.loads(payload)
         except Exception:
             return
+        if not self._batch_importing:
+            self._push_undo_state()
         date_iso = self._parse_point_date(data.get("date", ""), self._date_edit.date())
         self._points.append({
-            "label": data.get("label", f"Point {len(self._points)+1}"),
-            "lat":   float(data["lat"]),
-            "lng":   float(data["lng"]),
-            "date":  date_iso,
+            "label":   data.get("label", f"Point {len(self._points)+1}"),
+            "lat":     float(data["lat"]),
+            "lng":     float(data["lng"]),
+            "date":    date_iso,
+            "source":  data.get("source", "manual"),
+            "iconTxt": data.get("iconTxt", ""),
         })
         self._refresh_list()
         # Selectionner le nouveau point
@@ -543,6 +582,8 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
             self._list.setCurrentRow(current)
 
     def _on_selection_changed(self, row: int):
+        self._name_edit_undo_pushed = False
+        self._date_edit_undo_pushed = False
         if row < 0 or row >= len(self._points):
             self._edit_name.setEnabled(False)
             self._edit_name.clear()
@@ -566,6 +607,9 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
         row = self._list.currentRow()
         if row < 0 or row >= len(self._points):
             return
+        if not self._date_edit_undo_pushed:
+            self._push_undo_state()
+            self._date_edit_undo_pushed = True
         self._points[row]["date"] = qdate.toString("yyyy-MM-dd")
 
     def _on_name_edited(self, text: str):
@@ -574,6 +618,9 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
         row = self._list.currentRow()
         if row < 0 or row >= len(self._points):
             return
+        if not self._name_edit_undo_pushed:
+            self._push_undo_state()
+            self._name_edit_undo_pushed = True
         name = text.strip() or f"Point {row+1}"
         self._points[row]["label"] = name
         # Mettre a jour le marqueur JS
@@ -608,6 +655,7 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
         )
         if reply != QtWidgets.QMessageBox.StandardButton.Yes:
             return
+        self._push_undo_state()
         self._map_view.page().runJavaScript("clearAllMarkers();")
         self._points.clear()
         self._edit_name.clear()
