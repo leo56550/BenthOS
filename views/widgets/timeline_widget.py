@@ -690,27 +690,44 @@ class VideoTimeline(QtWidgets.QWidget):
         # Marqueurs verticaux (rotation_manual, timecode_marker, etc.) : sélection par proximité x
         # Les timecode_marker (atterrissage/décollage) activent aussi le drag horizontal
         # Les rotation_manual activent le drag horizontal avec Ctrl
+        # Priorité : timecode_marker > moteur en cas de superposition
         TOLERANCE_PX = 6
+        marker_candidates = []
         for evt in self.events:
             if evt.get("type") != "custom_event":
                 x_line = int((evt.get("start", 0) / total_duration) * width)
                 if abs(pos_x - x_line) <= TOLERANCE_PX:
-                    self.set_selected_event(evt)
-                    is_motor_drag = self._is_motor_event(evt.get("type", "")) and ctrl
-                    is_timecode_drag = evt.get("type") == "timecode_marker" and ctrl
-                    if not is_motor_drag and not is_timecode_drag:
-                        self.eventSelected.emit(evt)
-                    if is_timecode_drag:
-                        self.active_marker_move = evt
-                        self.drag_marker_mouse_x = pos_x
-                        self.drag_marker_start_ms = evt["start"]
-                    elif is_motor_drag:
-                        evt["_pre_drag_start"] = evt["start"]
-                        evt["_pre_drag_end"] = evt["end"]
-                        self.active_marker_move = evt
-                        self.drag_marker_mouse_x = pos_x
-                        self.drag_marker_start_ms = evt["start"]
-                    return
+                    marker_candidates.append((abs(pos_x - x_line), evt))
+
+        if marker_candidates:
+            # timecode_marker prioritaire sur les événements moteur
+            def _marker_priority(item):
+                dist, e = item
+                t = e.get("type", "")
+                if t == "timecode_marker":
+                    return (0, dist)
+                if self._is_motor_event(t):
+                    return (2, dist)
+                return (1, dist)
+
+            marker_candidates.sort(key=_marker_priority)
+            evt = marker_candidates[0][1]
+            self.set_selected_event(evt)
+            is_motor_drag = self._is_motor_event(evt.get("type", "")) and ctrl
+            is_timecode_drag = evt.get("type") == "timecode_marker" and ctrl
+            if not is_motor_drag and not is_timecode_drag:
+                self.eventSelected.emit(evt)
+            if is_timecode_drag:
+                self.active_marker_move = evt
+                self.drag_marker_mouse_x = pos_x
+                self.drag_marker_start_ms = evt["start"]
+            elif is_motor_drag:
+                evt["_pre_drag_start"] = evt["start"]
+                evt["_pre_drag_end"] = evt["end"]
+                self.active_marker_move = evt
+                self.drag_marker_mouse_x = pos_x
+                self.drag_marker_start_ms = evt["start"]
+            return
 
         self.set_selected_event(None)
         self.eventSelected.emit(None)

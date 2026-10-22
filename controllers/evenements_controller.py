@@ -2001,15 +2001,17 @@ class EvenementsController:
         layout.addWidget(analyse_grid)
 
         # ── Export campagne (batch) ───────────────────────────────────────────
-        sep_batch = QtWidgets.QFrame()
-        sep_batch.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        sep_batch.setStyleSheet("border: none; border-top: 1px solid #1e3448; max-height: 1px;")
-        layout.addWidget(sep_batch)
+        self._sep_batch = QtWidgets.QFrame()
+        self._sep_batch.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        self._sep_batch.setStyleSheet("border: none; border-top: 1px solid #1e3448; max-height: 1px;")
+        self._sep_batch.setVisible(False)
+        layout.addWidget(self._sep_batch)
 
         self._lbl_batch_export = QtWidgets.QLabel(
             self.translate("Export campagne", "Campaign export"))
         self._lbl_batch_export.setStyleSheet(
             "color: #7ec8e3; font-size: 15px; font-weight: bold; border: none;")
+        self._lbl_batch_export.setVisible(False)
         layout.addWidget(self._lbl_batch_export)
 
         # Bouton batch supprimé — accès via clic droit sur "EXPORTER LES ÉVÉNEMENTS"
@@ -4470,6 +4472,8 @@ class EvenementsController:
         if not selected:
             return
 
+        self._sep_batch.setVisible(True)
+        self._lbl_batch_export.setVisible(True)
         self._btn_batch_cancel.setVisible(True)
         self._batch_overall_progress.setMaximum(len(selected))
         self._batch_overall_progress.setValue(0)
@@ -4527,6 +4531,8 @@ class EvenementsController:
 
         options = dialog.get_processing_options()
 
+        self._sep_batch.setVisible(True)
+        self._lbl_batch_export.setVisible(True)
         self._btn_batch_cancel.setVisible(True)
         self._batch_overall_progress.setMaximum(len(video_paths))
         self._batch_overall_progress.setValue(0)
@@ -4559,6 +4565,8 @@ class EvenementsController:
     def _on_batch_cancel_clicked(self):
         if self._batch_coordinator:
             self._batch_coordinator.cancel()
+        self._sep_batch.setVisible(False)
+        self._lbl_batch_export.setVisible(False)
 
     def _on_batch_video_started(self, idx: int, total: int, video_name: str):
         self._batch_overall_progress.setFormat(
@@ -4589,6 +4597,8 @@ class EvenementsController:
         self._batch_overall_progress.setVisible(False)
         self._batch_video_progress.setVisible(False)
         self._btn_batch_cancel.setVisible(False)
+        self._sep_batch.setVisible(False)
+        self._lbl_batch_export.setVisible(False)
         parts = [self.translate(f"✓ {done} exportée(s)", f"✓ {done} exported")]
         if skipped:
             parts.append(self.translate(f"{skipped} ignorée(s)", f"{skipped} skipped"))
