@@ -38,12 +38,25 @@ The qualification page is the first processing step. All videos of the campaign 
 
 The validation page is a secondary review pass over the qualified videos. For each video the operator can set its **exploitability** status (exploitable / partially exploitable / not exploitable) and confirm the stereo/mono camera configuration. Filling in the **slate** (ardoise) is mandatory on this page before the video can be considered validated. All choices are persisted in the per-video `_temp.json` sidecar file. `Ctrl+Z` undoes the last exploitability change.
 
+**Right-click on "SAISIR ARDOISE"** opens a context menu with three ArUco-based slate detection options:
+- **Détecter Ardoise** — detect the slate QR code on the currently loaded video (disabled for sequential segments `_01`, `_02`…).
+- **Détecter ardoise — toutes les vidéos** — run detection on every video in the campaign.
+- **Détecter toutes les ardoises sans codestations** — run detection only on videos that do not yet have a codestation filled in.
+
 ---
 
 ### Event annotation
 ![Events](img/screenshots/event.png)
 
 The event annotation page allows the operator to stamp timestamped biological observations directly on the video timeline. Supported event types include fish, birds, turtles and motor events, each with a configurable sub-type, count and free-text comment. A sound cue plays on each capture. Events are displayed in a tree view on the right and can be moved along the timeline with `Ctrl+drag`. `Ctrl+Z` undoes the last placement, deletion or move. The full event list can be exported to CSV.
+
+**Motor rotation auto-detection** — Right-click on the "Rotation moteur" button opens a context menu with:
+- **Détecter automatiquement (entre ATT/DÉC)** — available only once Landing (*Atterrissage*) and Takeoff (*Décollage*) markers are placed. The algorithm uses OpenCV phase correlation to identify horizontal camera panning between the two bounds, runs in a background thread and shows a progress dialog. Detected rotations are added to the same pool as manually placed ones.
+- **Détecter toutes les vidéos (avec ATT/DÉC posés)** — batch detection across all campaign videos that have both Landing and Takeoff set. A two-bar progress dialog shows per-video progress (0–100 %) and total campaign progress simultaneously.
+
+**Zone-aware timeline interaction** — The timeline is divided into three horizontal zones (Deployment, Fauna/Animal, Interesting Images). Motor rotation markers are only selectable, draggable and hoverable within the Deployment zone; hovering over another zone at the same horizontal position does not trigger their tooltip or cursor.
+
+**Marker priority on overlap** — When Landing/Takeoff (`timecode_marker`) and a motor rotation event share the same position, `Ctrl+click` always selects the `timecode_marker`.
 
 ### Event export
 ![Event export](img/screenshots/export_events.png)
@@ -106,13 +119,33 @@ The progress dashboard gives a real-time overview of the campaign processing sta
 | Page | Description |
 |---|---|
 | **Qualification** | Review all recordings on an interactive GPS map. Keep or discard each video with one click. |
-| **Validation** | Secondary review pass. Toggle exploitability and stereo/mono status per video. |
-| **Event annotation** | Mark timestamped events on the video timeline: fish, birds, turtles, motor events — with audio cues. |
+| **Validation** | Secondary review pass. Toggle exploitability and stereo/mono status per video. Right-click "SAISIR ARDOISE" to run ArUco slate detection on the current video, all videos, or only those missing a codestation. |
+| **Event annotation** | Mark timestamped events on the video timeline: fish, birds, turtles, motor events — with audio cues. Zone-aware interaction and motor rotation auto-detection (single video or full batch). |
 | **Metadata editing** | Edit structured fields driven by a configurable `template.json` schema. Includes weather lookup and GPS map view. |
 | **Extraction** | Clip video segments and capture still frames with CLAHE dehazing, histogram equalisation and stereo rectification. |
 | **PDF report** | Generate a campaign report with statistics, GPS scatter, and per-video data sheets. |
 | **SFTP transfer** | Pull files from the KOSMOS SD card directly over SSH/SFTP without mounting the drive. |
 | **Bilingual UI** | French / English toggle at runtime. |
+
+---
+
+## Recent additions
+
+### Motor rotation auto-detection
+The "Rotation moteur" button in the event annotation page now exposes a right-click context menu. The **Détecter automatiquement** action runs an OpenCV phase-correlation analysis between the Landing and Takeoff timestamps to locate horizontal camera panning without manual review. The analysis runs in a `QThread` with a progress dialog that fills progressively throughout the process. Detected rotations are merged into the existing `events_motor` pool alongside manually placed ones.
+
+A second action, **Détecter toutes les vidéos**, runs the same detection across every video in the campaign that has both Landing and Takeoff markers. A dedicated dialog shows two progress bars in parallel — one for the video currently being processed (0–100 %) and one for the overall campaign progress.
+
+### Zone-aware timeline
+Motor rotation markers are drawn inside the Deployment zone and can only be interacted with (click, Ctrl+drag, tooltip) when the cursor is within that zone. Hovering over the Fauna or Interesting Images zones at the same horizontal position no longer triggers the motor event tooltip or drag cursor.
+
+When a Landing/Takeoff marker and a motor rotation share the same horizontal position, `Ctrl+click` always resolves to the Landing/Takeoff marker.
+
+### Slate detection via SAISIR ARDOISE
+On the Validation page, right-clicking the **SAISIR ARDOISE** button now exposes three ArUco-based slate detection shortcuts. The right-click menu was removed from the video list to consolidate the entry point on the action button.
+
+### Sector-view button overlay
+The "Vue des secteurs" toggle button on the event annotation page is now displayed as a floating overlay in the top-right corner of the video player, rather than in a separate bar above it. The button repositions itself automatically when the player is resized.
 
 ---
 
@@ -310,7 +343,7 @@ If the metadata is incomplete (no date, region or zone filled in), BenthOS falls
 | `Ctrl+Z` | Qualification | Undo last Keep / Discard |
 | `Ctrl+Z` | Validation | Undo last exploitability change |
 | `Ctrl+Z` | Events | Undo last event placement, deletion, or move |
-| `Ctrl+drag` | Events — timeline | Move an event to a new position |
+| `Ctrl+drag` | Events — timeline | Move an event to a new position (motor rotation events only respond when the cursor is within the Deployment zone) |
 | `Space` | Video player | Play / Pause |
 | `Delete` | Events — tree | Delete selected event |
 

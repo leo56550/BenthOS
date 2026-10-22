@@ -8,7 +8,9 @@ import cv2
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 from services.motor_service import get_motor_stable_timestamps, find_system_event_csv, find_video_csv
-from services.motor_rotation_detection_service import MotorRotationDetectionWorker, _timecode_to_ms
+from services.motor_rotation_detection_service import (
+    MotorRotationDetectionWorker, MotorRotationBatchWorker, _timecode_to_ms,
+)
 from services.campaign_service import (
     get_video_json_path, get_campaign_output_dir,
     resolve_video_json_path, build_video_output_name,
@@ -1068,6 +1070,11 @@ class EvenementsController:
             self.translate("Détecter automatiquement (entre ATT/DÉC)",
                            "Auto-detect (between LND/TKF)"))
         action_auto.setEnabled(bool(self.current_video_path and has_bounds))
+
+        action_auto_all = menu.addAction(
+            self.translate("Détecter toutes les vidéos (avec ATT/DÉC posés)",
+                           "Auto-detect all videos (with LND/TKF set)"))
+        action_auto_all.setEnabled(bool(self._working_dir and self.video_model))
         menu.addSeparator()
 
         if has_motor:
@@ -1082,6 +1089,8 @@ class EvenementsController:
             return
         if chosen is action_auto:
             self._auto_detect_motor_rotations()
+        elif chosen is action_auto_all:
+            self._auto_detect_motor_rotations_all()
         elif chosen is action_del:
             self._delete_all_motor_rotations()
         elif chosen is action_restore:
@@ -1364,6 +1373,297 @@ class EvenementsController:
         if worker is not None:
             worker.wait()          # retourne quasi-instantanément ici
             self._motor_detection_worker = None
+
+    # ── Détection batch (toutes les vidéos) ────────────────────────────────
+
+    def _get_landing_takeoff_bounds_from_json(self, json_path: str):
+        """Lit (landing_ms, takeoff_ms) depuis un JSON quelconque, ou None si incomplet."""
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception:
+            return None
+        obs = data.get("video_observation", {})
+        landing_val = (obs.get("timecode_landing") or {}).get("value", "")
+        takeoff_val = (obs.get("timecode_takeoff") or {}).get("value", "")
+        if not landing_val or not takeoff_val:
+            return None
+        landing_ms = _timecode_to_ms(landing_val)
+        takeoff_ms = _timecode_to_ms(takeoff_val)
+        if landing_ms <= 0 and takeoff_ms <= 0:
+            return None
+        return (landing_ms, takeoff_ms)
+
+    def _auto_detect_motor_rotations_all(self):
+        """Lance la détection automatique des rotations sur toutes les vidéos ayant ATT+DÉC posés."""
+        if not self._working_dir or not self.video_model:
+            return
+
+        # Arrêter toute détection en cours
+        self._abort_motor_detection_worker()
+        existing_batch = getattr(self, '_motor_batch_worker', None)
+        if existing_batch is not None and existing_batch.isRunning():
+            return
+
+        # Collecter les vidéos avec ATT+DÉC
+        tasks = []
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if not item:
+                continue
+            video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if not video_path or not os.path.isfile(str(video_path)):
+                continue
+            json_path = resolve_video_json_path(self._working_dir, str(video_path))
+            if not json_path or not os.path.isfile(json_path):
+                continue
+            bounds = self._get_landing_takeoff_bounds_from_json(json_path)
+            if bounds is None:
+                continue
+            tasks.append((str(video_path), json_path, bounds[0], bounds[1]))
+
+        if not tasks:
+            QtWidgets.QMessageBox.information(
+                self.page,
+                self.translate("Aucune vidéo éligible", "No eligible video"),
+                self.translate(
+                    "Aucune vidéo ne possède à la fois un Atterrissage et un Décollage posés.",
+                    "No video has both Landing and Takeoff set.",
+                ),
+            )
+            return
+
+        # ── Dialog à 2 barres ────────────────────────────────────────────
+        dlg = QtWidgets.QDialog(self.page)
+        dlg.setWindowTitle(self.translate(
+            "Détection automatique — toutes les vidéos",
+            "Auto-detection — all videos"))
+        dlg.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
+        dlg.setMinimumWidth(460)
+        dlg.setStyleSheet("background-color: #0d1825; color: #c8dce8;")
+        dlg_layout = QtWidgets.QVBoxLayout(dlg)
+        dlg_layout.setSpacing(8)
+        dlg_layout.setContentsMargins(16, 16, 16, 16)
+
+        lbl_video = QtWidgets.QLabel(
+            self.translate("Initialisation…", "Initializing…"))
+        lbl_video.setStyleSheet("color: #a0c8e8; font-size: 12px;")
+        dlg_layout.addWidget(lbl_video)
+
+        bar_video = QtWidgets.QProgressBar()
+        bar_video.setRange(0, 100)
+        bar_video.setValue(0)
+        bar_video.setTextVisible(True)
+        bar_video.setStyleSheet(
+            "QProgressBar{background:#0f1e2e;border:1px solid #2778A2;border-radius:4px;height:18px;}"
+            "QProgressBar::chunk{background:#2778A2;border-radius:3px;}")
+        dlg_layout.addWidget(bar_video)
+
+        dlg_layout.addSpacing(6)
+
+        lbl_total = QtWidgets.QLabel(
+            self.translate(f"Total : 0 / {len(tasks)}", f"Total: 0 / {len(tasks)}"))
+        lbl_total.setStyleSheet("color: #a0c8e8; font-size: 12px;")
+        dlg_layout.addWidget(lbl_total)
+
+        bar_total = QtWidgets.QProgressBar()
+        bar_total.setRange(0, len(tasks))
+        bar_total.setValue(0)
+        bar_total.setTextVisible(True)
+        bar_total.setStyleSheet(
+            "QProgressBar{background:#0f1e2e;border:1px solid #2778A2;border-radius:4px;height:18px;}"
+            "QProgressBar::chunk{background:#1e7a42;border-radius:3px;}")
+        dlg_layout.addWidget(bar_total)
+
+        dlg_layout.addSpacing(8)
+
+        btn_cancel = QtWidgets.QPushButton(self.translate("Annuler", "Cancel"))
+        btn_cancel.setStyleSheet(
+            "QPushButton{background:#1a2a3a;color:#c8dce8;border:1px solid #2778A2;"
+            "border-radius:4px;padding:5px 20px;}"
+            "QPushButton:hover{background:#1e3a55;}")
+        dlg_layout.addWidget(btn_cancel, alignment=QtCore.Qt.AlignmentFlag.AlignRight)
+        dlg.show()
+
+        # ── Worker batch ─────────────────────────────────────────────────
+        self._motor_batch_n_done = 0
+        self._motor_batch_total  = len(tasks)
+
+        worker = MotorRotationBatchWorker(tasks)
+        self._motor_batch_worker = worker
+        self._motor_batch_dlg    = dlg
+
+        btn_cancel.clicked.connect(worker.abort)
+        btn_cancel.clicked.connect(dlg.close)
+
+        def _on_video_started(name, idx, total):
+            lbl_video.setText(
+                self.translate(f"Vidéo {idx}/{total} : {name}",
+                               f"Video {idx}/{total}: {name}"))
+            bar_video.setValue(0)
+            QtWidgets.QApplication.processEvents()
+
+        def _on_video_progress(pct, msg):
+            bar_video.setValue(pct)
+            bar_video.setFormat(f"{pct}%  {msg}")
+            QtWidgets.QApplication.processEvents()
+
+        def _on_video_done(video_path, json_path, detections):
+            self._motor_batch_n_done += 1
+            bar_total.setValue(self._motor_batch_n_done)
+            lbl_total.setText(
+                self.translate(
+                    f"Total : {self._motor_batch_n_done} / {self._motor_batch_total}",
+                    f"Total: {self._motor_batch_n_done} / {self._motor_batch_total}"))
+            bar_video.setValue(100)
+            QtWidgets.QApplication.processEvents()
+            self._inject_motor_detections_to_json(video_path, json_path, detections)
+
+        def _on_finished():
+            try:
+                dlg.close()
+            except RuntimeError:
+                pass
+            w = self._motor_batch_worker
+            if w is not None:
+                w.wait()
+            self._motor_batch_worker = None
+            self._motor_batch_dlg    = None
+            n = self._motor_batch_n_done
+            QtWidgets.QMessageBox.information(
+                self.page,
+                self.translate("Détection terminée", "Detection complete"),
+                self.translate(
+                    f"Détection terminée sur {n} vidéo(s).",
+                    f"Detection complete on {n} video(s)."),
+            )
+            if self._on_events_changed:
+                self._on_events_changed()
+
+        worker.video_started.connect(_on_video_started)
+        worker.video_progress.connect(_on_video_progress)
+        worker.video_done.connect(_on_video_done)
+        worker.finished.connect(_on_finished)
+
+        if not getattr(self, '_motor_batch_quit_connected', False):
+            app = QtWidgets.QApplication.instance()
+            if app:
+                app.aboutToQuit.connect(self._abort_motor_batch_worker)
+            self._motor_batch_quit_connected = True
+
+        worker.start()
+
+    def _abort_motor_batch_worker(self):
+        """Arrête proprement le worker batch s'il tourne."""
+        worker = getattr(self, '_motor_batch_worker', None)
+        if worker is None:
+            return
+        if worker.isRunning():
+            worker.abort()
+        try:
+            worker.wait(10000)
+        except RuntimeError:
+            pass
+        dlg = getattr(self, '_motor_batch_dlg', None)
+        if dlg:
+            try:
+                dlg.close()
+            except RuntimeError:
+                pass
+        self._motor_batch_dlg    = None
+        self._motor_batch_worker = None
+
+    def _inject_motor_detections_to_json(self, video_path: str, json_path: str,
+                                          detections: list):
+        """Injecte des rotations détectées dans le JSON d'une vidéo quelconque.
+
+        Met aussi à jour la timeline/arbre si c'est la vidéo actuellement chargée.
+        """
+        import cv2 as _cv2
+        if not detections:
+            return
+
+        # FPS de la vidéo (via OpenCV pour les vidéos non chargées)
+        if video_path == getattr(self, 'current_video_path', None):
+            fps = self._get_video_fps()
+        else:
+            cap = _cv2.VideoCapture(video_path)
+            fps = cap.get(_cv2.CAP_PROP_FPS) if cap.isOpened() else 25.0
+            cap.release()
+            if fps <= 0:
+                fps = 25.0
+
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception as e:
+            print(f"[MOTOR_BATCH] Erreur lecture JSON {os.path.basename(json_path)}: {e}")
+            return
+
+        obs = data.setdefault("video_observation", {})
+        obs["events_motor"] = self._strip_events_motor_placeholder(obs.get("events_motor"))
+
+        for det in detections:
+            start_ms = int(det["start_ms"])
+            frame_number = self._ms_to_frame(start_ms, fps)
+            event_uid = self._generate_event_uid()
+            h = start_ms // 3600000
+            m = (start_ms % 3600000) // 60000
+            s = (start_ms % 60000) // 1000
+            obs["events_motor"].append({
+                "event_id": event_uid,
+                "time_code": f"{h:02d}:{m:02d}:{s:02d}",
+                "start_ms": start_ms,
+                "frame_number": frame_number,
+                "description_fr": "Rotation moteur",
+                "description_en": "Motor rotation",
+                "comment": "",
+            })
+
+        self._recalculate_motor_rotation_angles(obs["events_motor"], fps)
+
+        try:
+            with open(json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            print(f"[MOTOR_BATCH] Erreur écriture JSON {os.path.basename(json_path)}: {e}")
+            return
+
+        # Mise à jour UI si c'est la vidéo courante
+        if video_path == getattr(self, 'current_video_path', None):
+            tl = getattr(getattr(self, 'event_player', None), 'timeline', None)
+            zone_index = self._zone_index_for_event_type("events_motor")
+            if tl is not None:
+                for det in detections:
+                    start_ms = int(det["start_ms"])
+                    tl.events.append({
+                        "start": start_ms, "end": start_ms,
+                        "title": "Rotation moteur",
+                        "type": "rotation_manual",
+                        "zone": zone_index,
+                        "_json_key": "events_motor",
+                    })
+                tl.update()
+            if hasattr(self, 'tree_captures') and self.tree_captures:
+                category_name = self._get_label_from_json_key("events_motor")
+                self._thumb_bulkload = True
+                for det in detections:
+                    start_ms = int(det["start_ms"])
+                    txt_start = tl._format_ms(start_ms) if tl else ""
+                    label = next(
+                        (e.get("description_fr", "Rotation moteur")
+                         for e in obs["events_motor"]
+                         if abs(e.get("start_ms", 0) - start_ms) < 500),
+                        "Rotation moteur",
+                    )
+                    tree_item = QtWidgets.QTreeWidgetItem(
+                        [txt_start, "-", category_name, label, "", ""])
+                    tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
+                    tree_item.setForeground(0, QtGui.QBrush(self._zone_color(zone_index)))
+                    self.tree_captures.addTopLevelItem(tree_item)
+                    self.add_tree_thumbnail(tree_item, start_ms)
+                self._thumb_bulkload = False
+                self._start_thumb_loader()
 
     def _on_auto_motor_rotations_detected(self, detections: list):
         """Injecte les rotations détectées automatiquement dans le JSON + timeline + arbre."""

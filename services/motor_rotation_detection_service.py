@@ -198,6 +198,45 @@ def detect_motor_rotations(
     return results
 
 
+class MotorRotationBatchWorker(QThread):
+    """Worker Qt : détecte les rotations moteur sur une liste de vidéos, séquentiellement."""
+
+    video_started  = pyqtSignal(str, int, int)   # (video_name, idx_1based, total)
+    video_progress = pyqtSignal(int, str)          # (pct 0-100, msg) pour la vidéo courante
+    video_done     = pyqtSignal(str, str, list)    # (video_path, json_path, detections)
+    video_error    = pyqtSignal(str, str)          # (video_name, error_msg)
+
+    def __init__(self, tasks: list, parent=None):
+        """tasks : liste de (video_path, json_path, landing_ms, takeoff_ms)."""
+        super().__init__(parent)
+        self._tasks = tasks
+        self._abort = False
+
+    def abort(self):
+        self._abort = True
+
+    def run(self):
+        import os as _os
+        total = len(self._tasks)
+        for idx, (video_path, json_path, landing_ms, takeoff_ms) in enumerate(self._tasks):
+            if self._abort:
+                break
+            self.video_started.emit(_os.path.basename(video_path), idx + 1, total)
+            try:
+                results = detect_motor_rotations(
+                    video_path,
+                    ignore_before_ms=landing_ms,
+                    ignore_after_ms=takeoff_ms,
+                    progress_cb=lambda pct, msg: self.video_progress.emit(pct, msg),
+                    abort_check=lambda: self._abort,
+                )
+                self.video_done.emit(video_path, json_path, results)
+            except InterruptedError:
+                break
+            except Exception as exc:
+                self.video_error.emit(_os.path.basename(video_path), str(exc))
+
+
 class MotorRotationDetectionWorker(QThread):
     """Worker Qt : lance detect_motor_rotations en arrière-plan."""
 
