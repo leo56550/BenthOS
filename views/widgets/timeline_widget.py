@@ -317,42 +317,52 @@ class VideoTimeline(QtWidgets.QWidget):
                 is_blinking = (start_ms == self._blink_event_start and not self._blink_on)
                 is_360 = "360" in title
 
+                # Confinement à la zone de l'événement
+                zi_m = max(0, min(evt.get("zone", 0), zone_count - 1))
+                y_zm = zone_top_margin + zi_m * (zone_height + zone_spacing)
+                y_bot = y_zm + zone_height - 2
+
                 if is_blinking:
-                    c_line = QtGui.QColor("#ffffff")
-                    line_w = 3.0
+                    c_line = QtGui.QColor(255, 255, 255, 230)
                 elif is_360:
                     c_line = QtGui.QColor(self.C_MOTOR360)
-                    line_w = 3.0
                 else:
                     c_line = QtGui.QColor(self.C_MOTOR_MANUAL)
-                    line_w = 1.5
 
-                pen = QtGui.QPen(c_line, line_w)
-                pen.setStyle(QtCore.Qt.PenStyle.DashDotLine)
+                # Ligne verticale fine et semi-transparente
+                c_ln = QtGui.QColor(c_line)
+                c_ln.setAlpha(160)
+                pen = QtGui.QPen(c_ln, 1)
+                pen.setStyle(QtCore.Qt.PenStyle.SolidLine)
                 painter.setPen(pen)
-                # 360° : ligne qui remonte dans la règle pour être vraiment visible
-                line_top = max(0, RH - 10) if is_360 else RH
-                painter.drawLine(x_start, line_top, x_start, H)
+                tick_h = 8
+                painter.drawLine(x_start, y_zm + tick_h, x_start, y_bot)
 
-                # Losange — plus grand pour 360°
-                dm = 7 if is_360 else 4
+                # Petit tick horizontal en bas (ancre)
+                painter.drawLine(x_start - 3, y_bot, x_start + 3, y_bot)
+
+                # Triangle pointé vers le bas en haut de la zone (marqueur drapeau)
+                tw = 5 if not is_360 else 7
                 painter.setPen(QtCore.Qt.PenStyle.NoPen)
-                painter.setBrush(c_line)
-                pts = QtGui.QPolygon([
-                    QtCore.QPoint(x_start,      RH + 2),
-                    QtCore.QPoint(x_start + dm, RH + 2 + dm),
-                    QtCore.QPoint(x_start,      RH + 2 + dm * 2),
-                    QtCore.QPoint(x_start - dm, RH + 2 + dm),
+                c_tri = QtGui.QColor(c_line)
+                c_tri.setAlpha(210)
+                painter.setBrush(c_tri)
+                tri = QtGui.QPolygon([
+                    QtCore.QPoint(x_start - tw, y_zm + 2),
+                    QtCore.QPoint(x_start + tw, y_zm + 2),
+                    QtCore.QPoint(x_start,      y_zm + tick_h),
                 ])
-                painter.drawPolygon(pts)
+                painter.drawPolygon(tri)
 
-                # Label
+                # Label court à droite du triangle
                 lbl = "360°" if is_360 else "M"
-                f_m = QtGui.QFont("Segoe UI", 8 if is_360 else 7, QtGui.QFont.Weight.Bold)
-                painter.setFont(f_m)
-                painter.setPen(c_line)
                 _lbl_y_off = _vmark_levels.get(id(evt), 0) * LABEL_STAGGER
-                painter.drawText(x_start + dm + 2, RH + dm * 2 + 5 + _lbl_y_off, lbl)
+                f_m = QtGui.QFont("Segoe UI", 6)
+                painter.setFont(f_m)
+                c_lbl = QtGui.QColor(c_line)
+                c_lbl.setAlpha(180)
+                painter.setPen(c_lbl)
+                painter.drawText(x_start + tw + 2, y_zm + tick_h + _lbl_y_off, lbl)
                 continue
 
             x_end      = self._clamp_int((end_ms / total_duration) * width)
@@ -652,10 +662,9 @@ class VideoTimeline(QtWidgets.QWidget):
                 if not ctrl:
                     self.eventSelected.emit(evt)
 
-                if ctrl and not evt.get("single_frame", False):
-                    # Ctrl+clic bord → redimensionner ; Ctrl+clic centre → déplacer
-                    if evt.get("zone", -1) != 2:
-                        # Marge adaptative : max 1/3 du rect pour préserver une zone centrale
+                if ctrl:
+                    # Ctrl+clic bord → redimensionner (non single_frame) ; centre → déplacer
+                    if not evt.get("single_frame", False) and evt.get("zone", -1) != 2:
                         eff_margin = min(self.resize_margin, max(4, rect.width() // 3))
                         if abs(pos_x - rect.left()) <= eff_margin:
                             self.active_resize_event = evt

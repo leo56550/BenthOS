@@ -1444,13 +1444,18 @@ class EvenementsController:
         if not type_label:
             return 0
         label = type_label.lower()
-        if "deployment" in label or "déploiement" in label:
+        if "deployment" in label or "déploiement" in label or "motor" in label:
             return 0
         if "animal" in label or "faune" in label:
             return 1
         if "image" in label:
             return 2
         return 0
+
+    def _zone_color(self, zone_index: int) -> QtGui.QColor:
+        """Retourne la couleur accent de la zone (même couleur que les boutons en haut à droite)."""
+        _COLORS = ["#2778A2", "#D94F38", "#c8a800"]
+        return QtGui.QColor(_COLORS[zone_index] if zone_index < len(_COLORS) else _COLORS[0])
 
     # --- Event button panel ---
 
@@ -2188,7 +2193,7 @@ class EvenementsController:
                     [time_str, "-", clean_category_name, current_value, "", ""]
                 )
                 tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
-                tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#e68c14")))
+                tree_item.setForeground(0, QtGui.QBrush(self._zone_color(new_evt["zone"])))
                 self.tree_captures.addTopLevelItem(tree_item)
                 self.add_tree_thumbnail(tree_item, pos_ms)
 
@@ -2240,6 +2245,7 @@ class EvenementsController:
                 [start_str, end_str, clean_category, current_value, "", ""]
             )
             tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
+            tree_item.setForeground(0, QtGui.QBrush(self._zone_color(new_evt["zone"])))
             self.tree_captures.addTopLevelItem(tree_item)
             self.add_tree_thumbnail(tree_item, t_start)
 
@@ -2279,7 +2285,7 @@ class EvenementsController:
                 [time_str, "-", clean_cat, value, "", ""]
             )
             tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
-            tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#e68c14")))
+            tree_item.setForeground(0, QtGui.QBrush(self._zone_color(new_evt["zone"])))
             self.tree_captures.addTopLevelItem(tree_item)
             self.add_tree_thumbnail(tree_item, pos_ms)
         self.save_event_to_json(new_evt, deploy_label)
@@ -2357,7 +2363,7 @@ class EvenementsController:
                          if hasattr(self.event_player, 'timeline') else timecode
                 tree_item = QtWidgets.QTreeWidgetItem([txt_tc, "-", "Annotation", label, "", ""])
                 tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
-                tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#60a5fa")))
+                tree_item.setForeground(0, QtGui.QBrush(self._zone_color(0)))
                 self.tree_captures.addTopLevelItem(tree_item)
                 self.add_tree_thumbnail(tree_item, pos_ms)
             if btn is not None:
@@ -2523,7 +2529,7 @@ class EvenementsController:
                                 _ti = QtWidgets.QTreeWidgetItem(
                                     [txt_start, "-", category_name_local, value, json_comment, ""])
                                 _ti.setFlags(_ti.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
-                                _ti.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778A2")))
+                                _ti.setForeground(0, QtGui.QBrush(self._zone_color(zone_index)))
                                 self.tree_captures.addTopLevelItem(_ti)
                             self.add_tree_thumbnail(_ti, start_ms) if hasattr(self, 'tree_captures') and self.tree_captures else None
                             continue
@@ -2553,10 +2559,7 @@ class EvenementsController:
                                     [txt_start, txt_end, category_name, value, json_comment, ""]
                                 )
                                 tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
-                                if is_pic:
-                                    tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#e68c14")))
-                                else:
-                                    tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778a2")))
+                                tree_item.setForeground(0, QtGui.QBrush(self._zone_color(zone_index)))
                                 self.tree_captures.addTopLevelItem(tree_item)
                                 self.add_tree_thumbnail(tree_item, start_ms)
                 # --- Marqueurs timecode scalaires (atterrissage/décollage + annotation) ---
