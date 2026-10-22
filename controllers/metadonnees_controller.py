@@ -10,6 +10,7 @@ from PyQt6 import QtWidgets, QtCore, QtGui
 
 from services.weather_service import WeatherWorker
 from services.thumbnail_service import THUMB_W, THUMB_H
+from services.motor_service import find_video_csv
 from services.campaign_service import (
     get_video_json_path, _find_first_json_in_folder,
     get_video_gps_coords, year_2d_from_date,
@@ -733,6 +734,27 @@ class MetadonneesController:
         self._btn_web.setEnabled(False)
         self._btn_web.clicked.connect(self.action_compare_weather_web)
         tb_row.addWidget(self._btn_web)
+
+        self._btn_calc_depth = QtWidgets.QPushButton(
+            self.translate("CALCULER PROFONDEUR", "CALCULATE DEPTH"))
+        self._btn_calc_depth.setStyleSheet(
+            "QPushButton{background:#1a2a3a;color:#7ec8ea;border:1px solid #2778a2;"
+            "border-radius:4px;padding:2px 10px;font-size:10px;font-weight:bold;"
+            "font-family:'Segoe UI',sans-serif;}"
+            "QPushButton:hover{background:#2778a2;color:white;}"
+            "QPushButton:disabled{background:#111;color:#555;border-color:#333;}"
+        )
+        self._btn_calc_depth.setToolTip(
+            self.translate(
+                "Calcule la profondeur depuis PressionMax du CSV télémétrie :\n"
+                "Profondeur = ((PressionMax − 1013) / (1029 × 9.80665)) × 100",
+                "Compute depth from PressionMax in telemetry CSV:\n"
+                "Depth = ((PressionMax − 1013) / (1029 × 9.80665)) × 100",
+            )
+        )
+        self._btn_calc_depth.setEnabled(False)
+        self._btn_calc_depth.clicked.connect(self._on_calc_depth_clicked)
+        tb_row.addWidget(self._btn_calc_depth)
 
         self._btn_gpx = QtWidgets.QPushButton(self.translate("IMPORT GPX", "IMPORT GPX"))
         self._btn_gpx.setStyleSheet(
@@ -1770,10 +1792,15 @@ class MetadonneesController:
         if video_name and self._on_video_selected:
             self._on_video_selected(video_name, video_path)
 
-    def _on_ft_current_cell_changed(self, current_row, _current_col, previous_row, _previous_col):
+    def _on_ft_current_cell_changed(self, current_row, current_col, previous_row, _previous_col):
         """Surligne toute la ligne courante du tableau infostation au clic (la sélection
         reste par cellule — SelectItems — pour ne pas casser le remplissage/incrémentation
         multi-cellules ; ce surlignage est purement visuel, superposé à la couleur système)."""
+        _depth_col = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "depth"), None)
+        if hasattr(self, '_btn_calc_depth'):
+            self._btn_calc_depth.setEnabled(
+                _depth_col is not None and current_col == _depth_col and current_row >= 0
+            )
         if previous_row == current_row:
             return
         if self._ft_highlighted_item0 is not None:
@@ -1785,6 +1812,98 @@ class MetadonneesController:
         if current_row >= 0:
             self._set_ft_row_highlighted(current_row, True)
             self._ft_highlighted_item0 = self._ft_table.item(current_row, 0)
+
+    def _on_calc_depth_clicked(self):
+        """Calcule la profondeur depuis PressionMax du CSV télémétrie et l'injecte dans la cellule."""
+        import pandas as pd
+
+        depth_col = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "depth"), None)
+        if depth_col is None:
+            return
+
+        cur_row = self._ft_table.currentRow()
+        if cur_row < 0:
+            return
+
+        item0 = self._ft_table.item(cur_row, 0)
+        video_path = str(item0.data(QtCore.Qt.ItemDataRole.UserRole) or "") if item0 else ""
+        if not video_path:
+            QtWidgets.QMessageBox.warning(
+                self.page,
+                self.translate("Calcul profondeur", "Calculate depth"),
+                self.translate("Aucun fichier vidéo associé à cette ligne.",
+                               "No video file associated with this row."),
+            )
+            return
+
+        csv_path = find_video_csv(video_path)
+        if not os.path.isfile(csv_path):
+            QtWidgets.QMessageBox.warning(
+                self.page,
+                self.translate("Calcul profondeur", "Calculate depth"),
+                self.translate(
+                    f"Fichier CSV télémétrie introuvable :\n{csv_path}",
+                    f"Telemetry CSV file not found:\n{csv_path}",
+                ),
+            )
+            return
+
+        _COL_ALIASES = {
+            'pression': 'pression', 'pressure': 'pression', 'press': 'pression',
+        }
+        try:
+            for enc in ('utf-8', 'cp1252', 'latin-1'):
+                try:
+                    df = pd.read_csv(csv_path, sep=';', decimal=',', header=0, encoding=enc)
+                    break
+                except UnicodeDecodeError:
+                    continue
+            else:
+                raise ValueError("Encodage CSV inconnu")
+
+            df.columns = [_COL_ALIASES.get(c.strip().lower(), c.strip()) for c in df.columns]
+            if 'pression' not in df.columns:
+                QtWidgets.QMessageBox.warning(
+                    self.page,
+                    self.translate("Calcul profondeur", "Calculate depth"),
+                    self.translate(
+                        "Colonne 'pression' absente du CSV télémétrie.",
+                        "Column 'pression' not found in telemetry CSV.",
+                    ),
+                )
+                return
+
+            df['pression'] = pd.to_numeric(
+                df['pression'].astype(str).str.replace(',', '.', regex=False), errors='coerce'
+            )
+            pression_max = df['pression'].max()
+            if pd.isna(pression_max):
+                QtWidgets.QMessageBox.warning(
+                    self.page,
+                    self.translate("Calcul profondeur", "Calculate depth"),
+                    self.translate(
+                        "Aucune valeur de pression valide dans le CSV.",
+                        "No valid pressure value found in CSV.",
+                    ),
+                )
+                return
+
+            depth = ((pression_max - 1013) / (1029 * 9.80665)) * 100
+            depth = max(0.0, depth)
+            depth_str = f"{depth:.1f}"
+
+            depth_item = self._ft_table.item(cur_row, depth_col)
+            if depth_item:
+                depth_item.setText(depth_str)
+            else:
+                self._ft_table.setItem(cur_row, depth_col, QtWidgets.QTableWidgetItem(depth_str))
+
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(
+                self.page,
+                self.translate("Calcul profondeur", "Calculate depth"),
+                self.translate(f"Erreur : {exc}", f"Error: {exc}"),
+            )
 
     def _set_ft_row_highlighted(self, row: int, highlighted: bool):
         # setBackground() déclenche dataChanged/cellChanged comme une vraie édition ; sans
@@ -1905,6 +2024,8 @@ class MetadonneesController:
             self._btn_ardoise.setText(self.translate("Comparer avec l'ardoise", "Compare with slate"))
         if hasattr(self, '_btn_web'):
             self._btn_web.setText(self.translate("Comparer données web", "Compare web data"))
+        if hasattr(self, '_btn_calc_depth'):
+            self._btn_calc_depth.setText(self.translate("CALCULER PROFONDEUR", "CALCULATE DEPTH"))
         if hasattr(self, '_btn_incrementer'):
             self._btn_incrementer.setText(self.translate("Incrémenter ↓", "Increment ↓"))
         if hasattr(self, '_btn_copier'):

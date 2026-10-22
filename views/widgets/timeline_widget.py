@@ -940,11 +940,7 @@ class VideoTimeline(QtWidgets.QWidget):
             new_zoom = max(1.0, min(20.0, self.zoom_factor * factor))
             self.set_zoom(new_zoom)
             self.zoomChanged.emit(new_zoom)
-            event.accept()
-            return
-        event.ignore()
-        self.timeChanged.emit(self.current_pos)
-        self.update()
+        event.accept()  # toujours consommer → pas de défilement vertical du parent
 
     def calculate_and_emit_position(self, mouse_x):
         """Convertit la position souris en millisecondes et émet timeChanged."""
