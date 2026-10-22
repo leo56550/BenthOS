@@ -412,24 +412,38 @@ class EvenementsController:
             ]
             self.event_player = EmbeddedVideoPlayer(parent=self.player_container_events, zone_definitions=zones)
 
-            # ── Bascule lecteur / vue des secteurs ────────────────────────
+            # ── Bascule lecteur / vue des secteurs (overlay sur le player) ──
             self._sector_pixmaps: list = []
             self._sector_slot_labels: dict = {}
             self._sector_worker = None
             self._sector_view_active = False
 
-            toggle_row = QtWidgets.QWidget()
-            toggle_row.setStyleSheet("background: transparent;")
-            toggle_layout = QtWidgets.QHBoxLayout(toggle_row)
-            toggle_layout.setContentsMargins(0, 0, 0, 4)
-            toggle_layout.addStretch()
             self.btn_toggle_sector_view = QtWidgets.QPushButton(
-                self.translate("📷 Vue des secteurs", "📷 Sector view"))
+                self.translate("📷 Vue des secteurs", "📷 Sector view"),
+                self.event_player)          # enfant du player → overlay sans barre
             self.btn_toggle_sector_view.setStyleSheet(BTN_PRIMARY)
             self.btn_toggle_sector_view.clicked.connect(self._toggle_sector_view)
             self.btn_toggle_sector_view.setEnabled(False)
-            toggle_layout.addWidget(self.btn_toggle_sector_view)
-            layout.addWidget(toggle_row)
+            self.btn_toggle_sector_view.adjustSize()
+            self.btn_toggle_sector_view.raise_()
+
+            def _pos_sector_btn():
+                btn = self.btn_toggle_sector_view
+                bw = max(btn.sizeHint().width(), 140)
+                bh = btn.sizeHint().height()
+                btn.setFixedSize(bw, bh)
+                btn.move(self.event_player.width() - bw - 8, 6)
+                btn.raise_()
+
+            class _SectorBtnWatcher(QtCore.QObject):
+                def eventFilter(self_, obj, event):  # noqa: N805
+                    if event.type() == QtCore.QEvent.Type.Resize:
+                        _pos_sector_btn()
+                    return False
+
+            self._sector_btn_watcher = _SectorBtnWatcher(self.event_player)
+            self.event_player.installEventFilter(self._sector_btn_watcher)
+
             layout.addWidget(self.event_player)
 
             self._sector_scroll = QtWidgets.QScrollArea()
