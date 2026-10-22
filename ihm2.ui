@@ -910,6 +910,7 @@ background-color: rgb(39, 120, 162);
        </layout>
       </widget>
       <widget class="QWidget" name="page_apropos"/>
+      <widget class="QWidget" name="page_analyse_habitat"/>
      </widget>
     </item>
    </layout>
@@ -939,6 +940,7 @@ background-color: rgb(39, 120, 162);
    <addaction name="actionExport"/>
    <addaction name="actionExtraction"/>
    <addaction name="actionA_propos"/>
+   <addaction name="actionAnalyseHabitat"/>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
@@ -1009,6 +1011,14 @@ background-color: rgb(39, 120, 162);
   <action name="actionExtraction">
    <property name="text">
     <string>Extraction </string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::MenuRole::NoRole</enum>
+   </property>
+  </action>
+  <action name="actionAnalyseHabitat">
+   <property name="text">
+    <string>Analyse Habitat</string>
    </property>
    <property name="menuRole">
     <enum>QAction::MenuRole::NoRole</enum>

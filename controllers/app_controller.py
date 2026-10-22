@@ -145,6 +145,7 @@ from controllers.evenements_controller import EvenementsController
 from controllers.metadonnees_controller import MetadonneesController
 from controllers.extraction_controller import ExtractionController
 from controllers.apropos_controller import AProposController
+from controllers.analyse_habitat_controller import AnalyseHabitatController
 import os
 
 
@@ -203,6 +204,7 @@ class AppController(QtCore.QObject):
             on_open_map=self._open_map_from_metadonnees,
         )
         self.apropos_ctrl = AProposController(window.page_apropos)
+        self.analyse_habitat_ctrl = AnalyseHabitatController(window.page_analyse_habitat)
         self.extraction_ctrl = ExtractionController(
             window.page_extraction, self.qualif_ctrl.video_model,
             on_video_focused=self._focus_map,
@@ -210,7 +212,8 @@ class AppController(QtCore.QObject):
 
         self.page_controllers = [
             self.accueil_ctrl, self.qualif_ctrl, self.validation_ctrl,
-            self.evenements_ctrl, self.metadonnees_ctrl, self.apropos_ctrl, self.extraction_ctrl
+            self.evenements_ctrl, self.metadonnees_ctrl, self.apropos_ctrl, self.extraction_ctrl,
+            self.analyse_habitat_ctrl,
         ]
 
         # Empêche le QStackedWidget de forcer une hauteur minimale basée sur ses pages,
@@ -249,6 +252,7 @@ class AppController(QtCore.QObject):
         window.actionMetadonnees.triggered.connect(lambda: self.switch_page(window.page_metadonnees))
         window.actionA_propos.triggered.connect(lambda: self.switch_page(window.page_apropos))
         window.actionExtraction.triggered.connect(lambda: self.switch_page(window.page_extraction))
+        window.actionAnalyseHabitat.triggered.connect(lambda: self.switch_page(window.page_analyse_habitat))
 
         # Language buttons
         window.btn_lang_fr.clicked.connect(lambda: self.set_language("fr"))
@@ -292,6 +296,7 @@ class AppController(QtCore.QObject):
             window.page_metadonnees: window.actionMetadonnees,
             window.page_extraction: window.actionExtraction,
             window.page_apropos: window.actionA_propos,
+            window.page_analyse_habitat: window.actionAnalyseHabitat,
         }
 
         self.lock_navigation(True)
@@ -1630,7 +1635,8 @@ class AppController(QtCore.QObject):
     def switch_page(self, page):
         """Bascule vers page si le workflow le permet, arrête les lecteurs de la page courante."""
         w = self.window
-        free_pages = [w.page_accueil, w.page_apropos, w.page_extraction, w.page_metadonnees]
+        free_pages = [w.page_accueil, w.page_apropos, w.page_extraction, w.page_metadonnees,
+                      w.page_analyse_habitat]
 
         self._stop_background_players(page)
 
