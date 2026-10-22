@@ -881,11 +881,16 @@ class VideoTimeline(QtWidgets.QWidget):
 
         # Marqueurs verticaux si pas de rect trouvé
         if not tip:
+            pos_y = event.position().y()
             for evt in self.events:
                 if evt.get("type") == "custom_event":
                     continue
                 x_line = int((evt.get("start", 0) / total_duration) * width)
                 if abs(pos_x - x_line) <= TOLERANCE_PX:
+                    if self._is_motor_event(evt.get("type", "")):
+                        y_top, y_bot = self._zone_y_range(evt.get("zone", 0))
+                        if not (y_top <= pos_y <= y_bot):
+                            continue
                     title = evt.get("title", evt.get("type", ""))
                     start = self._format_ms(evt.get("start", 0))
                     tip = f"{title}\n{start}"
