@@ -800,6 +800,52 @@ class VideoTimeline(QtWidgets.QWidget):
                         return
             self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.ArrowCursor))
 
+        # ── Tooltip ─────────────────────────────────────────────────────────
+        self._update_tooltip(event, pos_x, total_duration, width)
+
+    def _update_tooltip(self, event, pos_x: float, total_duration: int, width: int):
+        """Affiche un tooltip sur l'événement survolé, ou masque le tooltip."""
+        if self.is_dragging or self.active_resize_event or self.active_move_event or self.active_marker_move:
+            QtWidgets.QToolTip.hideText()
+            return
+        TOLERANCE_PX = 8
+        tip = ""
+        global_pos = event.globalPosition().toPoint()
+
+        # Rects (custom_event) — priorité
+        MIN_HIT_W = 10
+        for idx, (evt, rect) in self.rects_evenements.items():
+            hit = rect
+            if rect.width() < MIN_HIT_W:
+                extra = (MIN_HIT_W - rect.width()) // 2
+                hit = rect.adjusted(-extra, 0, extra, 0)
+            if hit.contains(int(pos_x), int(event.position().y())):
+                title = evt.get("title", "")
+                start = self._format_ms(evt.get("start", 0))
+                end = self._format_ms(evt.get("end", evt.get("start", 0)))
+                if evt.get("single_frame", False) or evt.get("start") == evt.get("end"):
+                    tip = f"{title}\n{start}"
+                else:
+                    tip = f"{title}\n{start}  →  {end}"
+                break
+
+        # Marqueurs verticaux si pas de rect trouvé
+        if not tip:
+            for evt in self.events:
+                if evt.get("type") == "custom_event":
+                    continue
+                x_line = int((evt.get("start", 0) / total_duration) * width)
+                if abs(pos_x - x_line) <= TOLERANCE_PX:
+                    title = evt.get("title", evt.get("type", ""))
+                    start = self._format_ms(evt.get("start", 0))
+                    tip = f"{title}\n{start}"
+                    break
+
+        if tip:
+            QtWidgets.QToolTip.showText(global_pos, tip, self)
+        else:
+            QtWidgets.QToolTip.hideText()
+
     def mouseReleaseEvent(self, event):
         """Finalise le redimensionnement/déplacement et émet les signaux appropriés."""
         if event.button() == QtCore.Qt.MouseButton.LeftButton:

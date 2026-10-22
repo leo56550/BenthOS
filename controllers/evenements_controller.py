@@ -2500,7 +2500,7 @@ class EvenementsController:
                         else:
                             start_ms = int(((frame_start - 1) / fps) * 1000) if frame_start and fps else 0
                             end_ms = int(((frame_end - 1) / fps) * 1000) if frame_end and fps else 0
-                        is_pic = (json_key == "events_interesting_images" or start_ms == end_ms)
+                        is_pic = (json_key == "events_interesting_images") or (json_key != "events_motor" and start_ms == end_ms)
                         timeline_title = f"Pic: {value}" if is_pic else value
                         zone_index = self._zone_index_for_event_type(json_key)
 
