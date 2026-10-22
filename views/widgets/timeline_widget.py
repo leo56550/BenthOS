@@ -75,6 +75,20 @@ class VideoTimeline(QtWidgets.QWidget):
     def _is_motor_event(evt_type: str) -> bool:
         return evt_type == "rotation_manual" or evt_type.startswith("rotation_")
 
+    def _zone_y_range(self, zi: int):
+        """Retourne (y_top, y_bot) de la zone zi dans les coordonnées du widget."""
+        H = self.height()
+        zone_defs = self.zone_definitions or []
+        zone_count = len(zone_defs) if zone_defs else 1
+        zone_top_margin = self.RULER_H + 2
+        zone_spacing = 3
+        if zone_defs:
+            zone_height = max(38, (H - zone_top_margin - (zone_count - 1) * zone_spacing - 2) // zone_count)
+        else:
+            zone_height = max(28, H - zone_top_margin - 2)
+        y_top = zone_top_margin + zi * (zone_height + zone_spacing)
+        return y_top, y_top + zone_height
+
     def _clamp_int(self, value):
         """Clamp value dans l'intervalle des entiers 32 bits signés, retourne 0 si invalide."""
         try:
@@ -697,6 +711,11 @@ class VideoTimeline(QtWidgets.QWidget):
             if evt.get("type") != "custom_event":
                 x_line = int((evt.get("start", 0) / total_duration) * width)
                 if abs(pos_x - x_line) <= TOLERANCE_PX:
+                    # Les rotation_manual sont confinées à leur zone Y
+                    if self._is_motor_event(evt.get("type", "")):
+                        y_top, y_bot = self._zone_y_range(evt.get("zone", 0))
+                        if not (y_top <= pos_y <= y_bot):
+                            continue
                     marker_candidates.append((abs(pos_x - x_line), evt))
 
         if marker_candidates:
@@ -737,6 +756,7 @@ class VideoTimeline(QtWidgets.QWidget):
     def mouseMoveEvent(self, event):
         """Gère le redimensionnement, déplacement d'événement, drag curseur et curseur souris."""
         pos_x = event.position().x()
+        pos_y = event.position().y()
         width = self.min_zoomed_width()
         total_duration = self.total_duration if self.total_duration > 0 else 1
         current_ms = int((max(0.0, min(pos_x / width, 1.0))) * total_duration)
@@ -822,6 +842,10 @@ class VideoTimeline(QtWidgets.QWidget):
                 if (etype == "timecode_marker" or self._is_motor_event(etype)) and hover_ctrl:
                     x_line = int((evt.get("start", 0) / total_duration) * width)
                     if abs(pos_x - x_line) <= 6:
+                        if self._is_motor_event(etype):
+                            y_top, y_bot = self._zone_y_range(evt.get("zone", 0))
+                            if not (y_top <= pos_y <= y_bot):
+                                continue
                         self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.SizeHorCursor))
                         return
             self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.ArrowCursor))
