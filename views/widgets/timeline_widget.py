@@ -31,7 +31,7 @@ class VideoTimeline(QtWidgets.QWidget):
         self.start_marker_ms = 0
         self.end_marker_ms = 0
 
-        self.resize_margin = 6
+        self.resize_margin = 10
         self.active_resize_event = None
         self.resize_edge = None
 
@@ -410,11 +410,12 @@ class VideoTimeline(QtWidgets.QWidget):
             painter.drawPath(path)
 
             # Handles resize
-            if rect_width > 12:
-                hc = QtGui.QColor(255, 255, 255, 60)
-                painter.setPen(hc)
-                for hx in (x_start + 3, x_end - 3):
-                    painter.drawLine(hx, y_pos + 4, hx, y_pos + track_height - 4)
+            if rect_width > 8:
+                hc = QtGui.QColor(255, 255, 255, 110)
+                pen_h = QtGui.QPen(hc, 2)
+                painter.setPen(pen_h)
+                for hx in (x_start + 4, x_end - 4):
+                    painter.drawLine(hx, y_pos + 3, hx, y_pos + track_height - 3)
 
             # Label
             f_evt = QtGui.QFont("Segoe UI", 8)
@@ -640,14 +641,30 @@ class VideoTimeline(QtWidgets.QWidget):
 
         ctrl = bool(event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier)
 
+        MIN_HIT_W = 10  # largeur minimale de clic pour les rects courts
         for idx, (evt, rect) in self.rects_evenements.items():
-            if rect.contains(int(pos_x), int(pos_y)):
+            hit = rect
+            if rect.width() < MIN_HIT_W:
+                extra = (MIN_HIT_W - rect.width()) // 2
+                hit = rect.adjusted(-extra, 0, extra, 0)
+            if hit.contains(int(pos_x), int(pos_y)):
                 self.set_selected_event(evt)
                 if not ctrl:
                     self.eventSelected.emit(evt)
 
-                if ctrl:
-                    # Ctrl+click: déplacer l'événement
+                if ctrl and not evt.get("single_frame", False):
+                    # Ctrl+clic bord → redimensionner ; Ctrl+clic centre → déplacer
+                    if evt.get("zone", -1) != 2:
+                        # Marge adaptative : max 1/3 du rect pour préserver une zone centrale
+                        eff_margin = min(self.resize_margin, max(4, rect.width() // 3))
+                        if abs(pos_x - rect.left()) <= eff_margin:
+                            self.active_resize_event = evt
+                            self.resize_edge = "left"
+                            return
+                        elif abs(pos_x - rect.right()) <= eff_margin:
+                            self.active_resize_event = evt
+                            self.resize_edge = "right"
+                            return
                     evt["_pre_drag_start"] = evt["start"]
                     evt["_pre_drag_end"] = evt["end"]
                     self.active_move_event = evt
@@ -655,22 +672,8 @@ class VideoTimeline(QtWidgets.QWidget):
                     self.drag_start_event_start = evt["start"]
                     self.drag_start_event_end = evt["end"]
                     return
-                elif evt.get("zone", -1) != 2 and not evt.get("single_frame", False):
-                    # Clic sur le bord gauche/droit → redimensionner
-                    if abs(pos_x - rect.left()) <= self.resize_margin:
-                        self.active_resize_event = evt
-                        self.resize_edge = "left"
-                        return
-                    elif abs(pos_x - rect.right()) <= self.resize_margin:
-                        self.active_resize_event = evt
-                        self.resize_edge = "right"
-                        return
-                    else:
-                        # Clic au centre → déplacer le curseur lecture
-                        self.is_dragging = True
-                        self.calculate_and_emit_position(pos_x)
-                        return
                 else:
+                    # Sans Ctrl : simple déplacement du curseur de lecture
                     self.is_dragging = True
                     self.calculate_and_emit_position(pos_x)
                     return
@@ -763,23 +766,31 @@ class VideoTimeline(QtWidgets.QWidget):
             self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.SizeHorCursor))
             return
 
+        hover_ctrl = bool(event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier)
+        MIN_HIT_W = 10
         on_edge = False
         inside_block = False
         for idx, (evt, rect) in self.rects_evenements.items():
-            if rect.contains(event.position().toPoint()):
+            hit = rect
+            if rect.width() < MIN_HIT_W:
+                extra = (MIN_HIT_W - rect.width()) // 2
+                hit = rect.adjusted(-extra, 0, extra, 0)
+            if hit.contains(event.position().toPoint()):
                 inside_block = True
-                if evt.get("zone", -1) != 2 and not evt.get("single_frame", False):
-                    if abs(pos_x - rect.left()) <= self.resize_margin or abs(pos_x - rect.right()) <= self.resize_margin:
+                if hover_ctrl and evt.get("zone", -1) != 2 and not evt.get("single_frame", False):
+                    eff_margin = min(self.resize_margin, max(4, rect.width() // 3))
+                    if abs(pos_x - rect.left()) <= eff_margin or abs(pos_x - rect.right()) <= eff_margin:
                         on_edge = True
                 break
 
         if on_edge:
             self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.SizeHorCursor))
-        elif inside_block:
+        elif inside_block and hover_ctrl:
             self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.SizeAllCursor))
+        elif inside_block:
+            self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.ArrowCursor))
         else:
             # Hover sur un timecode_marker ou rotation_manual+Ctrl → curseur de déplacement horizontal
-            hover_ctrl = bool(event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier)
             for evt in self.events:
                 etype = evt.get("type")
                 if (etype == "timecode_marker" or self._is_motor_event(etype)) and hover_ctrl:
@@ -865,16 +876,20 @@ class VideoTimeline(QtWidgets.QWidget):
         total_duration = self.total_duration if self.total_duration > 0 else 1
         width = self.min_zoomed_width()
         TOLERANCE_PX = 6
+        MIN_HIT_W = 10
+        # Événements rectangulaires (custom_event) — priorité sur les marqueurs verticaux
+        if hasattr(self, 'rects_evenements'):
+            for idx, (evt, rect) in self.rects_evenements.items():
+                hit = rect
+                if rect.width() < MIN_HIT_W:
+                    extra = (MIN_HIT_W - rect.width()) // 2
+                    hit = rect.adjusted(-extra, 0, extra, 0)
+                if hit.contains(int(pos.x()), int(pos.y())):
+                    return evt
         # Marqueurs verticaux (timecode_marker, rotation_manual, rotations CSV) : proximité en x
         for evt in self.events:
             if evt.get("type") != "custom_event":
                 x = int((evt.get("start", 0) / total_duration) * width)
                 if abs(pos.x() - x) <= TOLERANCE_PX:
                     return evt
-        # Événements rectangulaires (custom_event)
-        if not hasattr(self, 'rects_evenements') or not self.rects_evenements:
-            return None
-        for idx, (evt, rect) in self.rects_evenements.items():
-            if rect.contains(int(pos.x()), int(pos.y())):
-                return evt
         return None
