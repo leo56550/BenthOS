@@ -128,8 +128,7 @@ class ValidationController:
             self.video_tree.setColumnHidden(3, True)
             self.video_tree.clicked.connect(self.on_video_selected)
             self.video_tree.setContextMenuPolicy(
-                QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
-            self.video_tree.customContextMenuRequested.connect(self._show_video_context_menu)
+                QtCore.Qt.ContextMenuPolicy.NoContextMenu)
             self._bar_delegate = VideoBarDelegate(self.video_tree, highlight_short_light=True)
             self._bar_delegate.show_point_number = True
             self._bar_delegate.show_exploitable_status = True
@@ -233,6 +232,8 @@ class ValidationController:
         btn_ard.setEnabled(False)
         btn_ard.setToolTip(self.translate("Saisir l'ardoise à la position courante",
                                           "Record slate at current position"))
+        btn_ard.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        btn_ard.customContextMenuRequested.connect(self._on_ardoise_btn_context_menu)
         ab_layout.addWidget(btn_ard)
 
         # Insérer juste après sp4 dans son layout parent
@@ -637,56 +638,6 @@ class ValidationController:
         """Clic (ou double-clic) sur un événement : positionne le lecteur au début de l'événement."""
         if event_dict is not None and hasattr(self, 'player') and self.player is not None:
             self.player.player.setPosition(int(event_dict.get("start", 0)))
-
-    def _show_video_context_menu(self, pos: QtCore.QPoint):
-        """Menu contextuel clic droit sur la liste vidéo."""
-        index = self.video_tree.indexAt(pos)
-        video_path = None
-        if index.isValid():
-            src = self.proxy_model.mapToSource(index)
-            item = self.video_model.item(src.row(), 0)
-            if item:
-                video_path = str(item.data(QtCore.Qt.ItemDataRole.UserRole) or "")
-
-        menu = QtWidgets.QMenu(self.video_tree)
-        menu.setStyleSheet("""
-            QMenu { background-color: #111820; color: #d0e8f8;
-                    border: 1px solid #2778a2; font-size: 12px; }
-            QMenu::item { padding: 5px 20px; }
-            QMenu::item:selected { background-color: #1e3a55; }
-            QMenu::item:disabled { color: #506070; }
-            QMenu::separator { height: 1px; background: #1e3448; margin: 3px 0; }
-        """)
-
-        import re as _re
-        lbl = "fr" if getattr(self, "current_language", "fr") == "fr" else "en"
-        _is_segment = bool(video_path and _re.search(
-            r'_\d+\.mp4$', os.path.basename(video_path), _re.IGNORECASE))
-        act_single = menu.addAction(
-            "🔍  Détecter Ardoise" if lbl == "fr" else "🔍  Detect Slate")
-        act_single.setEnabled(
-            bool(video_path) and not _is_segment and self._on_detect_aruco is not None)
-
-        menu.addSeparator()
-
-        act_all = menu.addAction(
-            "🔍  Détecter ardoise — toutes les vidéos"
-            if lbl == "fr" else "🔍  Detect slate — all videos")
-        act_all.setEnabled(self._on_detect_aruco_all is not None)
-
-        act_missing = menu.addAction(
-            "🔍  Détecter toutes les ardoises sans codestations"
-            if lbl == "fr" else "🔍  Detect slates — videos without codestation")
-        act_missing.setEnabled(self._on_detect_aruco_missing is not None)
-
-        chosen = menu.exec(self.video_tree.viewport().mapToGlobal(pos))
-
-        if chosen == act_single and video_path and self._on_detect_aruco:
-            self._on_detect_aruco(video_path)
-        elif chosen == act_all and self._on_detect_aruco_all:
-            self._on_detect_aruco_all()
-        elif chosen == act_missing and self._on_detect_aruco_missing:
-            self._on_detect_aruco_missing()
 
     def on_video_selected(self, index: QtCore.QModelIndex):
         """Charge la vidéo sélectionnée, les événements moteur et la télémétrie CSV."""
@@ -1378,6 +1329,50 @@ class ValidationController:
                 self._toggle_sector_view()
         except Exception as e:
             print(f"[VALIDATION] Erreur saisie point_name : {e}")
+
+    def _on_ardoise_btn_context_menu(self, pos):
+        """Menu contextuel du bouton SAISIR ARDOISE : détection ardoise (vidéo courante ou toutes)."""
+        import re as _re
+        lbl = "fr" if getattr(self, "current_language", "fr") == "fr" else "en"
+        vp = self.current_video_path
+        _is_segment = bool(vp and _re.search(r'_\d+\.mp4$', os.path.basename(vp), _re.IGNORECASE))
+
+        btn = self.player.btn_ardoise if hasattr(self, 'player') and self.player else None
+        menu = QtWidgets.QMenu(btn)
+        menu.setStyleSheet("""
+            QMenu { background-color: #111820; color: #d0e8f8;
+                    border: 1px solid #2778a2; font-size: 12px; }
+            QMenu::item { padding: 5px 20px; }
+            QMenu::item:selected { background-color: #1e3a55; }
+            QMenu::item:disabled { color: #506070; }
+            QMenu::separator { height: 1px; background: #1e3448; margin: 3px 0; }
+        """)
+
+        act_single = menu.addAction(
+            "🔍  Détecter Ardoise" if lbl == "fr" else "🔍  Detect Slate")
+        act_single.setEnabled(bool(vp) and not _is_segment and self._on_detect_aruco is not None)
+
+        menu.addSeparator()
+
+        act_all = menu.addAction(
+            "🔍  Détecter ardoise — toutes les vidéos"
+            if lbl == "fr" else "🔍  Detect slate — all videos")
+        act_all.setEnabled(self._on_detect_aruco_all is not None)
+
+        act_missing = menu.addAction(
+            "🔍  Détecter toutes les ardoises sans codestations"
+            if lbl == "fr" else "🔍  Detect slates — videos without codestation")
+        act_missing.setEnabled(self._on_detect_aruco_missing is not None)
+
+        global_pos = btn.mapToGlobal(pos) if btn else QtGui.QCursor.pos()
+        chosen = menu.exec(global_pos)
+
+        if chosen == act_single and vp and self._on_detect_aruco:
+            self._on_detect_aruco(vp)
+        elif chosen == act_all and self._on_detect_aruco_all:
+            self._on_detect_aruco_all()
+        elif chosen == act_missing and self._on_detect_aruco_missing:
+            self._on_detect_aruco_missing()
 
     def _saisir_ardoise(self):
         """Capture le timecode ardoise et ouvre un champ pour saisir le code station."""
