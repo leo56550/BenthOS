@@ -363,7 +363,6 @@ class EvenementsController:
         self.current_video_path = None
         self.event_dictionary = {}
         self.capture_start_time = None
-        self._analysis_widgets: dict[str, QtWidgets.QLineEdit] = {}
         self._undo_stack: list[dict] = []  # pile undo pour la pose d'événements
 
         self.left_frame_events = self.page.findChild(QtWidgets.QFrame, "frame_12")
@@ -586,35 +585,6 @@ class EvenementsController:
         self._rebuild_event_buttons()
         if hasattr(self, 'export_button'):
             self.export_button.setText(self.translate("EXPORTER LES ÉVÉNEMENTS", "EXPORT EVENTS"))
-        if hasattr(self, '_lbl_analyse'):
-            self._lbl_analyse.setText(self.translate("Analyse vidéo", "Video analysis"))
-        if hasattr(self, '_lbl_dist_min'):
-            self._lbl_dist_min.setText(self.translate("min", "min"))
-        if hasattr(self, '_lbl_dist_max'):
-            self._lbl_dist_max.setText(self.translate("max", "max"))
-        if hasattr(self, '_analysis_labels'):
-            _analysis_label_texts = {
-                "fish_annotator":        ("Analyseur poisson", "Fish annotator"),
-                "habitat_annotator":     ("Analyseur habitat", "Habitat annotator"),
-                "substrat":              ("Substrat", "Substrate"),
-                "estimated_visibility":  ("Visibilité (m)", "Visibility (m)"),
-                "distance_range":        ("Distance analysable (m)", "Analyzable distance (m)"),
-            }
-            for key, (fr, en) in _analysis_label_texts.items():
-                lbl = self._analysis_labels.get(key)
-                if lbl:
-                    lbl.setText(self.translate(fr, en))
-        if hasattr(self, '_analysis_widgets'):
-            _analysis_placeholders = {
-                "fish_annotator":       ("ex : Jean Dupont", "e.g. John Doe"),
-                "habitat_annotator":    ("ex : Marie Martin", "e.g. Jane Doe"),
-                "substrat":             ("ex : Sable, Roche, Herbier…", "e.g. Sand, Rock, Seagrass…"),
-                "estimated_visibility": ("ex : 5", "e.g. 5"),
-            }
-            for key, (fr, en) in _analysis_placeholders.items():
-                widget = self._analysis_widgets.get(key)
-                if widget:
-                    widget.setPlaceholderText(self.translate(fr, en))
         if hasattr(self, '_lbl_batch_export'):
             self._lbl_batch_export.setText(
                 self.translate("Export campagne", "Campaign export"))
@@ -2424,43 +2394,6 @@ class EvenementsController:
 
     # --- Export UI ---
 
-    def _save_analysis_field(self, field_key: str, value: str):
-        """Écrit field_key dans video_observation du JSON courant."""
-        if not self.current_json_path or not os.path.exists(self.current_json_path):
-            return
-        try:
-            with open(self.current_json_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            vob = data.setdefault("video_observation", {})
-            if field_key in vob and isinstance(vob[field_key], dict):
-                vob[field_key]["value"] = value or None
-            else:
-                vob[field_key] = {"value": value or None}
-            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← video_observation.{field_key} = {value!r}")
-            with open(self.current_json_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=4, ensure_ascii=False)
-        except Exception as e:
-            print(f"[Analyse] Erreur sauvegarde {field_key}: {e}")
-
-    def _load_analysis_fields(self):
-        """Peuple les widgets d'analyse depuis le JSON courant."""
-        if not self._analysis_widgets:
-            return
-        data = {}
-        if self.current_json_path and os.path.exists(self.current_json_path):
-            try:
-                with open(self.current_json_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-            except Exception:
-                pass
-        vob = data.get("video_observation", {})
-        for field_key, widget in self._analysis_widgets.items():
-            entry = vob.get(field_key, {})
-            val = entry.get("value", "") if isinstance(entry, dict) else (entry or "")
-            widget.blockSignals(True)
-            widget.setText(str(val) if val is not None else "")
-            widget.blockSignals(False)
-
     def _initialize_export_ui(self):
         """Crée le bouton d'export, la barre de progression et le label de statut."""
         if not self.export_container:
@@ -2499,73 +2432,6 @@ class EvenementsController:
         layout.addWidget(self.export_button)
         layout.addWidget(self.export_progress)
         layout.addWidget(self.export_status_label)
-
-        # ── Analyse vidéo ────────────────────────────────────────────────
-        sep_analyse = QtWidgets.QFrame()
-        sep_analyse.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        sep_analyse.setStyleSheet("border: none; border-top: 1px solid #1e3448; max-height: 1px;")
-        layout.addWidget(sep_analyse)
-
-        self._lbl_analyse = QtWidgets.QLabel(self.translate("Analyse vidéo", "Video analysis"))
-        self._lbl_analyse.setStyleSheet("color: #7ec8e3; font-size: 15px; font-weight: bold; border: none;")
-        layout.addWidget(self._lbl_analyse)
-
-        _lbl_s = "color: #7ec8e3; font-size: 14px; border: none;"
-        _inp_s = ("background-color: #162433; color: #F2BFB4; border: 1px solid #2a4057;"
-                  " border-radius: 4px; padding: 6px 8px; font-size: 14px;")
-
-        analyse_grid = QtWidgets.QWidget()
-        analyse_grid.setStyleSheet("background: transparent;")
-        analyse_grid.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Maximum)
-        ag = QtWidgets.QGridLayout(analyse_grid)
-        ag.setContentsMargins(0, 8, 0, 8)
-        ag.setHorizontalSpacing(10)
-        ag.setVerticalSpacing(16)
-
-        self._analysis_labels: dict[str, QtWidgets.QLabel] = {}
-
-        def _albl(key, text):
-            l = QtWidgets.QLabel(text)
-            l.setStyleSheet(_lbl_s)
-            self._analysis_labels[key] = l
-            return l
-
-        def _ainput(field_key, placeholder=""):
-            w = QtWidgets.QLineEdit()
-            w.setPlaceholderText(placeholder)
-            w.setStyleSheet(_inp_s)
-            w.setMinimumHeight(30)
-            w.editingFinished.connect(lambda fk=field_key, widget=w: self._save_analysis_field(fk, widget.text()))
-            self._analysis_widgets[field_key] = w
-            return w
-
-        ag.addWidget(_albl("fish_annotator", self.translate("Analyseur poisson", "Fish annotator")), 0, 0)
-        ag.addWidget(_ainput("fish_annotator", self.translate("ex : Jean Dupont", "e.g. John Doe")), 0, 1)
-        ag.addWidget(_albl("habitat_annotator", self.translate("Analyseur habitat", "Habitat annotator")), 1, 0)
-        ag.addWidget(_ainput("habitat_annotator", self.translate("ex : Marie Martin", "e.g. Jane Doe")), 1, 1)
-        ag.addWidget(_albl("substrat", self.translate("Substrat", "Substrate")), 2, 0)
-        ag.addWidget(_ainput("substrat", self.translate("ex : Sable, Roche, Herbier…", "e.g. Sand, Rock, Seagrass…")), 2, 1)
-        ag.addWidget(_albl("estimated_visibility", self.translate("Visibilité (m)", "Visibility (m)")), 3, 0)
-        ag.addWidget(_ainput("estimated_visibility", self.translate("ex : 5", "e.g. 5")), 3, 1)
-
-        dist_w = QtWidgets.QWidget()
-        dist_w.setStyleSheet("background: transparent;")
-        dist_row = QtWidgets.QHBoxLayout(dist_w)
-        dist_row.setContentsMargins(0, 0, 0, 0)
-        dist_row.setSpacing(6)
-        self._lbl_dist_min = QtWidgets.QLabel(self.translate("min", "min"))
-        self._lbl_dist_min.setStyleSheet(_lbl_s)
-        self._lbl_dist_max = QtWidgets.QLabel(self.translate("max", "max"))
-        self._lbl_dist_max.setStyleSheet(_lbl_s)
-        dist_row.addWidget(self._lbl_dist_min)
-        dist_row.addWidget(_ainput("distance_min", "0"))
-        dist_row.addWidget(self._lbl_dist_max)
-        dist_row.addWidget(_ainput("distance_max", "5"))
-        ag.addWidget(_albl("distance_range", self.translate("Distance analysable (m)", "Analyzable distance (m)")), 4, 0)
-        ag.addWidget(dist_w, 4, 1)
-
-        layout.addWidget(analyse_grid)
 
         # ── Export campagne (batch) ───────────────────────────────────────────
         self._sep_batch = QtWidgets.QFrame()
@@ -2630,6 +2496,11 @@ class EvenementsController:
         layout.addWidget(self._batch_export_status)
 
         layout.addStretch(1)
+
+        # Donner la majorité de l'espace vertical à l'arbre des événements
+        splitter = self.export_container.parentWidget()
+        if isinstance(splitter, QtWidgets.QSplitter):
+            QtCore.QTimer.singleShot(0, lambda: splitter.setSizes([9999, 120]))
 
         self.export_button.clicked.connect(self.on_export_segment_clicked)
         # Clic droit → menu "Exporter en batch"
@@ -2990,7 +2861,6 @@ class EvenementsController:
         self.charger_evenements_du_json()
         self._nettoyer_json_misplaced_events()
         self._update_export_button_state()
-        self._load_analysis_fields()
         self._load_evt_comment()
 
         video_fps = 25.0

@@ -10,6 +10,8 @@ from PyQt6 import QtWidgets, QtCore, QtGui
 
 from services.image_service import extract_frame_at_time
 from services.campaign_service import resolve_video_json_path
+from services.motor_service import find_video_csv
+from views.widgets.embedded_player import EmbeddedVideoPlayer
 
 # ── Schéma du formulaire ──────────────────────────────────────────────────────
 # (section_name, note, [(field_key, label, type)])
@@ -152,143 +154,71 @@ class _FrameWorker(QtCore.QThread):
                     pass
 
 
-# ── Fenêtre flottante détachable ──────────────────────────────────────────────
+# ── Fenêtre flottante avec lecteur vidéo complet ─────────────────────────────
 
-class _SectorPlayerWindow(QtWidgets.QWidget):
-    """Fenêtre flottante et redimensionnable pour visualiser la frame d'un secteur.
+class _SectorVideoWindow(QtWidgets.QWidget):
+    """Fenêtre détachable contenant l'EmbeddedVideoPlayer restreint à la plage du secteur."""
 
-    Peut être déplacée/redimensionnée librement. Touches :
-      Echap / F  → fermer / plein écran
-    """
-
-    def __init__(self, pixmap: QtGui.QPixmap, title: str = "", parent=None):
-        super().__init__(
-            parent,
-            QtCore.Qt.WindowType.Window |          # fenêtre indépendante
-            QtCore.Qt.WindowType.WindowStaysOnTopHint,
-        )
+    def __init__(self, video_path: str, clip_start_ms: int, clip_end_ms: int,
+                 title: str = "", parent=None):
+        super().__init__(parent, QtCore.Qt.WindowType.Window)
         self.setWindowTitle(title)
         self.setStyleSheet("background:#0b1421;")
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
-        self.resize(960, 560)
-        self._pixmap = pixmap
-        self._fullscreen = False
+        self.resize(1100, 720)
+
+        self._clip_start = clip_start_ms
+        self._clip_end   = clip_end_ms
+        self._video_path = video_path
 
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
 
-        # — Barre titre personnalisée —
-        bar = QtWidgets.QWidget()
-        bar.setFixedHeight(34)
-        bar.setStyleSheet("background:#0d1e2e; border-bottom:1px solid #1e3448;")
-        bar_lay = QtWidgets.QHBoxLayout(bar)
-        bar_lay.setContentsMargins(12, 0, 6, 0)
-        bar_lay.setSpacing(6)
+        self.player = EmbeddedVideoPlayer(parent=self)
+        self.player.scroll_area_timeline.setVisible(False)
+        lay.addWidget(self.player)
 
-        lbl_title = QtWidgets.QLabel(title)
-        lbl_title.setStyleSheet(
-            "color:#7ec8e3; font-size:12px; font-weight:bold;"
-            " font-family:'Segoe UI',sans-serif;")
-        bar_lay.addWidget(lbl_title)
-        bar_lay.addStretch()
+        QtCore.QTimer.singleShot(150, self._load)
 
-        btn_fs = QtWidgets.QPushButton("⛶")
-        btn_fs.setFixedSize(26, 26)
-        btn_fs.setToolTip("Plein écran (F)")
-        btn_fs.setStyleSheet(
-            "QPushButton { background:#1a2e40; color:#7ec8e3; border:none;"
-            " border-radius:4px; font-size:14px; }"
-            "QPushButton:hover { background:#2778a2; }")
-        btn_fs.clicked.connect(self._toggle_fullscreen)
-        bar_lay.addWidget(btn_fs)
-        self._btn_fs = btn_fs
-
-        btn_close = QtWidgets.QPushButton("✕")
-        btn_close.setFixedSize(26, 26)
-        btn_close.setToolTip("Fermer (Echap)")
-        btn_close.setStyleSheet(
-            "QPushButton { background:#1a2e40; color:#c0d0e0; border:none;"
-            " border-radius:4px; font-size:13px; }"
-            "QPushButton:hover { background:#c0392b; color:#fff; }")
-        btn_close.clicked.connect(self.close)
-        bar_lay.addWidget(btn_close)
-        lay.addWidget(bar)
-
-        # — Image —
-        self._img_label = QtWidgets.QLabel()
-        self._img_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self._img_label.setStyleSheet("background:#000;")
-        self._img_label.setMinimumSize(320, 180)
-        lay.addWidget(self._img_label, 1)
-
-        # — Barre de statut —
-        status = QtWidgets.QLabel("  Cliquez en dehors ou appuyez sur Echap pour fermer")
-        status.setFixedHeight(22)
-        status.setStyleSheet(
-            "color:#3a5568; font-size:10px; background:#080e16;"
-            " font-family:'Segoe UI',sans-serif; padding-left:8px;")
-        lay.addWidget(status)
-
-        self._update_image()
-        self.show()
-
-    # Déplacement via la barre titre
-    def _title_bar_height(self) -> int:
-        return 34
-
-    def mousePressEvent(self, e):
-        if e.button() == QtCore.Qt.MouseButton.LeftButton and e.position().y() < self._title_bar_height():
-            self._drag_pos = e.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            e.accept()
-
-    def mouseMoveEvent(self, e):
-        if e.buttons() & QtCore.Qt.MouseButton.LeftButton and hasattr(self, '_drag_pos'):
-            if not self._fullscreen:
-                self.move(e.globalPosition().toPoint() - self._drag_pos)
-            e.accept()
-
-    def mouseReleaseEvent(self, e):
-        if hasattr(self, '_drag_pos'):
-            del self._drag_pos
-
-    def _update_image(self):
-        if not (self._pixmap and not self._pixmap.isNull()):
-            return
-        avail = self._img_label.size()
-        if avail.width() < 4 or avail.height() < 4:
-            return
-        scaled = self._pixmap.scaled(
-            avail,
-            QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-            QtCore.Qt.TransformationMode.SmoothTransformation,
+    def _load(self):
+        p = self.player
+        p.load_video_and_events(
+            self._video_path, [],
+            is_stereo=False,
+            start_position_ms=self._clip_start,
         )
-        self._img_label.setPixmap(scaled)
+        csv_tel = find_video_csv(self._video_path)
+        if os.path.isfile(csv_tel):
+            p.load_dynamic_metadata(csv_tel)
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self._update_image()
+        # Contrainte de plage — appliquée après chargement
+        QtCore.QTimer.singleShot(300, self._apply_clip)
 
-    def _toggle_fullscreen(self):
-        if self._fullscreen:
-            self.showNormal()
-            self._fullscreen = False
-            self._btn_fs.setText("⛶")
-            self._btn_fs.setToolTip("Plein écran (F)")
-        else:
-            self.showFullScreen()
-            self._fullscreen = True
-            self._btn_fs.setText("❐")
-            self._btn_fs.setToolTip("Fenêtré (F)")
+    def _apply_clip(self):
+        p = self.player
+        start, end = self._clip_start, self._clip_end
 
-    def keyPressEvent(self, event):
-        if event.key() == QtCore.Qt.Key.Key_Escape:
-            if self._fullscreen:
-                self._toggle_fullscreen()
-            else:
-                self.close()
-        elif event.key() == QtCore.Qt.Key.Key_F:
-            self._toggle_fullscreen()
+        # Remplace jump_time_offset pour clamper dans [start, end]
+        def _clamped_jump(ms: int):
+            target = max(start, min(p.player.position() + ms, end))
+            p.player.setPosition(target)
+            if p.is_stereo:
+                p.player_R.setPosition(target)
+            if p.left_display.currentIndex() == 1:
+                QtCore.QTimer.singleShot(80, lambda: p._step_frame_overlay(target))
+        p.jump_time_offset = _clamped_jump
+
+        # "Début" = début du secteur, pas début de la vidéo
+        p._goto_start = lambda: p.player.setPosition(start)
+
+        # Stoppe la lecture à la fin du secteur
+        p.player.positionChanged.connect(self._enforce_end)
+
+    def _enforce_end(self, pos_ms: int):
+        if pos_ms >= self._clip_end:
+            self.player.player.pause()
+            self.player.player.setPosition(self._clip_end)
 
 
 # ── Widgets du formulaire ─────────────────────────────────────────────────────
@@ -451,9 +381,11 @@ class AnalyseHabitatController(QtCore.QObject):
         self._video_model = None
         self._widgets: dict[str, list] = {}
         self._updating = False
+        self._av_widgets: dict[str, QtWidgets.QLineEdit] = {}  # champs "Analyse vidéo" partagés
 
         # Thumbnails secteurs
         self._sector_mid_ts: list[float | None] = [None] * 6
+        self._sector_bounds: list[tuple[int, int] | None] = [None] * 6  # (start_ms, end_ms)
         self._sector_pixmaps: list[QtGui.QPixmap | None] = [None] * 6
         self._sector_photo_labels: list[QtWidgets.QLabel] = []
         self._sector_worker: _FrameWorker | None = None
@@ -512,6 +444,9 @@ class AnalyseHabitatController(QtCore.QObject):
         vlay = QtWidgets.QVBoxLayout(panel)
         vlay.setContentsMargins(0, 0, 0, 0)
         vlay.setSpacing(0)
+
+        # Panneau "Analyse vidéo" fixe, partagé entre toutes les vidéos
+        vlay.addWidget(self._build_analysis_panel())
 
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
@@ -619,6 +554,131 @@ class AnalyseHabitatController(QtCore.QObject):
         cell.mousePressEvent = lambda e, i=idx: self._on_sector_clicked(i)
         return cell
 
+    def _build_analysis_panel(self) -> QtWidgets.QWidget:
+        """Panneau 'Analyse vidéo' fixe — valeurs partagées entre toutes les vidéos."""
+        panel = QtWidgets.QWidget()
+        panel.setStyleSheet("background:#0d1825; border-bottom:2px solid #1a3a54;")
+
+        vlay = QtWidgets.QVBoxLayout(panel)
+        vlay.setContentsMargins(12, 10, 12, 10)
+        vlay.setSpacing(8)
+
+        title = QtWidgets.QLabel("Analyse vidéo")
+        title.setStyleSheet(
+            "color:#7ec8e3; font-size:13px; font-weight:bold;"
+            " font-family:'Segoe UI',sans-serif; background:transparent;")
+        vlay.addWidget(title)
+
+        grid = QtWidgets.QWidget()
+        grid.setStyleSheet("background:transparent;")
+        gl = QtWidgets.QGridLayout(grid)
+        gl.setContentsMargins(0, 0, 0, 0)
+        gl.setHorizontalSpacing(10)
+        gl.setVerticalSpacing(6)
+        gl.setColumnStretch(1, 1)
+        gl.setColumnStretch(3, 1)
+
+        _lbl_s = ("color:#7ec8e3; font-size:12px;"
+                  " font-family:'Segoe UI',sans-serif; background:transparent;")
+        _inp_s = ("QLineEdit { background:#162433; color:#F2BFB4;"
+                  " border:1px solid #2a4057; border-radius:4px;"
+                  " padding:4px 8px; font-size:12px; }"
+                  "QLineEdit:focus { border-color:#2778a2; }")
+
+        def _lbl(text):
+            w = QtWidgets.QLabel(text)
+            w.setStyleSheet(_lbl_s)
+            return w
+
+        def _inp(key, placeholder=""):
+            w = QtWidgets.QLineEdit()
+            w.setPlaceholderText(placeholder)
+            w.setStyleSheet(_inp_s)
+            w.setMinimumHeight(26)
+            w.editingFinished.connect(lambda k=key, wi=w: self._save_av_field(k, wi.text()))
+            self._av_widgets[key] = w
+            return w
+
+        # Ligne 0 : analyseur poisson | analyseur habitat
+        gl.addWidget(_lbl("Analyseur poisson"),  0, 0)
+        gl.addWidget(_inp("fish_annotator",   "ex : Jean Dupont"),   0, 1)
+        gl.addWidget(_lbl("Analyseur habitat"), 0, 2)
+        gl.addWidget(_inp("habitat_annotator", "ex : Marie Martin"), 0, 3)
+
+        # Ligne 1 : substrat | visibilité
+        gl.addWidget(_lbl("Substrat"),      1, 0)
+        gl.addWidget(_inp("substrat",       "ex : Sable, Roche…"), 1, 1)
+        gl.addWidget(_lbl("Visibilité (m)"), 1, 2)
+        gl.addWidget(_inp("estimated_visibility", "ex : 5"),        1, 3)
+
+        # Ligne 2 : distance analysable min/max
+        gl.addWidget(_lbl("Distance analysable (m)"), 2, 0)
+        dist_w = QtWidgets.QWidget()
+        dist_w.setStyleSheet("background:transparent;")
+        dist_row = QtWidgets.QHBoxLayout(dist_w)
+        dist_row.setContentsMargins(0, 0, 0, 0)
+        dist_row.setSpacing(6)
+        dist_row.addWidget(_lbl("min"))
+        dist_row.addWidget(_inp("distance_min", "0"))
+        dist_row.addWidget(_lbl("max"))
+        dist_row.addWidget(_inp("distance_max", "5"))
+        dist_row.addStretch()
+        gl.addWidget(dist_w, 2, 1, 1, 3)
+
+        vlay.addWidget(grid)
+        return panel
+
+    def _save_av_field(self, field_key: str, value: str):
+        """Sauvegarde field_key dans le JSON de TOUTES les vidéos du modèle."""
+        if not self._video_model:
+            return
+        for row in range(self._video_model.rowCount()):
+            item = self._video_model.item(row, 0)
+            if not item:
+                continue
+            vpath = item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if not vpath:
+                continue
+            json_path = _find_json(str(vpath))
+            if not json_path or not os.path.isfile(json_path):
+                continue
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                vob = data.setdefault("video_observation", {})
+                entry = vob.get(field_key)
+                if isinstance(entry, dict):
+                    entry["value"] = value or None
+                else:
+                    vob[field_key] = {"value": value or None}
+                with open(json_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=4, ensure_ascii=False)
+            except Exception as e:
+                print(f"[ANALYSE-HABITAT] _save_av_field {field_key}: {e}")
+
+    def _load_av_fields(self, video_path: str | None = None):
+        """Lit les champs Analyse vidéo depuis le JSON de la vidéo courante (ou première dispo)."""
+        if not self._av_widgets:
+            return
+        vpath = video_path or self._current_video
+        if not vpath:
+            return
+        json_path = _find_json(vpath)
+        if not json_path or not os.path.isfile(json_path):
+            return
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception:
+            return
+        vob = data.get("video_observation", {})
+        for key, widget in self._av_widgets.items():
+            entry = vob.get(key, {})
+            val = entry.get("value", "") if isinstance(entry, dict) else (entry or "")
+            widget.blockSignals(True)
+            widget.setText(str(val) if val is not None else "")
+            widget.blockSignals(False)
+
     def _build_form(self, parent_lay: QtWidgets.QVBoxLayout):
         row_bg_even = "#0d1825"
         row_bg_odd  = "#0b1421"
@@ -677,6 +737,7 @@ class AnalyseHabitatController(QtCore.QObject):
     def _load_rotation_timestamps(self, video_path: str):
         """Extrait les 6 timestamps de milieu de secteur depuis le JSON de la vidéo."""
         self._sector_mid_ts = [None] * 6
+        self._sector_bounds = [None] * 6
         self._sector_pixmaps = [None] * 6
 
         # Réinitialise les thumbnails
@@ -727,10 +788,13 @@ class AnalyseHabitatController(QtCore.QObject):
 
             for idx, ts in enumerate(ts_list):
                 if idx + 1 < len(ts_list):
-                    mid = (ts + ts_list[idx + 1]) / 2.0
+                    end_ts = ts_list[idx + 1]
+                    mid = (ts + end_ts) / 2.0
                 else:
+                    end_ts = ts + avg_interval
                     mid = ts + avg_interval / 2.0
                 self._sector_mid_ts[idx] = mid
+                self._sector_bounds[idx] = (int(ts * 1000), int(end_ts * 1000))
 
         except Exception as e:
             print(f"[ANALYSE-HABITAT] _load_rotation_timestamps: {e}")
@@ -778,19 +842,22 @@ class AnalyseHabitatController(QtCore.QObject):
             "background:#0b1520; border-radius:3px; border:none;")
 
     def _on_sector_clicked(self, sector_idx: int):
-        """Ouvre la frame du secteur en plein écran."""
-        pixmap = self._sector_pixmaps[sector_idx] if sector_idx < len(self._sector_pixmaps) else None
-        if pixmap is None or pixmap.isNull():
+        """Ouvre un lecteur vidéo restreint à la fenêtre temporelle du secteur."""
+        if not self._current_video:
             return
-        win = _SectorPlayerWindow(
-            pixmap,
+        bounds = self._sector_bounds[sector_idx] if sector_idx < len(self._sector_bounds) else None
+        if bounds is None:
+            return
+        clip_start_ms, clip_end_ms = bounds
+        win = _SectorVideoWindow(
+            video_path=self._current_video,
+            clip_start_ms=clip_start_ms,
+            clip_end_ms=clip_end_ms,
             title=f"Secteur S{sector_idx + 1} — {(sector_idx + 1) * 60}°",
             parent=self._page,
         )
-        win.showFullScreen()
-        win._fullscreen = True
-        win._btn_fs.setText("❐")
-        win._btn_fs.setToolTip("Fenêtré (F)")
+        win.show()
+        win.raise_()
 
     # ── Données formulaire ────────────────────────────────────────────────────
 
@@ -863,6 +930,7 @@ class AnalyseHabitatController(QtCore.QObject):
         self._header_bar.setVisible(True)
         self._scroll.setVisible(True)
         self._no_sel_label.setVisible(False)
+        self._load_av_fields(self._current_video)
         self._load_station(self._current_video)
         self._load_rotation_timestamps(self._current_video)
         self._start_frame_extraction(self._current_video)
@@ -874,6 +942,13 @@ class AnalyseHabitatController(QtCore.QObject):
         self._rebuild_list()
         model.rowsInserted.connect(self._rebuild_list)
         model.rowsRemoved.connect(self._rebuild_list)
+        # Pré-charger les champs Analyse vidéo depuis la première vidéo disponible
+        for row in range(model.rowCount()):
+            item = model.item(row, 0)
+            vp = item.data(QtCore.Qt.ItemDataRole.UserRole) if item else None
+            if vp and _find_json(str(vp)):
+                self._load_av_fields(str(vp))
+                break
 
     def _rebuild_list(self, *_):
         self._list.blockSignals(True)
