@@ -1596,6 +1596,7 @@ class AppController(QtCore.QObject):
             (self.evenements_ctrl, 'load_campaign_videos'),
             (self.metadonnees_ctrl, 'load_campaign_videos'),
             (self.extraction_ctrl, 'load_campaign_videos'),
+            (self.analyse_habitat_ctrl, 'load_campaign_videos'),
         ]:
             if hasattr(ctrl, method):
                 getattr(ctrl, method)(updated_model)

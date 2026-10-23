@@ -158,6 +158,11 @@ class _StatsWorker(QtCore.QThread):
                 if _is_filled(sections.get(section, {}).get(field_key)):
                     optional_filled += 1
 
+        analyse_eligible = sum(
+            1 for k in expl_breakdown if k in {"oui", "yes", "habitat"}
+            for _ in range(expl_breakdown[k])
+        )
+
         self.stats_ready.emit({
             "total":             total,
             "trashed":           self._trash_count,
@@ -169,6 +174,7 @@ class _StatsWorker(QtCore.QThread):
             "essential_total":   _N_ESSENTIAL * total,
             "optional_filled":   optional_filled,
             "optional_total":    _N_OPTIONAL  * total,
+            "analyse_eligible":  analyse_eligible,
         })
 
 
@@ -806,16 +812,20 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
         self._card_ardoise = _DonutCard("Validation", "#fbbf24")
         self._card_meta    = _DonutMetaSplit("Métadonnées")
         self._card_derush  = _DonutDerushSplit("Dérushé")
+        self._card_analyse = _DonutCard("Analyse", "#34d399")
 
         self._card_ardoise.double_clicked.connect(self._show_expl_popup)
         self._card_ardoise.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self._card_ardoise.setToolTip(
             "Double-cliquer pour voir la répartition par statut d'exploitabilité")
+        self._card_analyse.setToolTip(
+            "Vidéos avec exploitabilité 'oui' ou 'habitat'")
 
-        for i, card in enumerate((self._card_kept, self._card_ardoise,
-                                   self._card_meta, self._card_derush)):
+        cards = (self._card_kept, self._card_ardoise,
+                 self._card_meta, self._card_derush, self._card_analyse)
+        for i, card in enumerate(cards):
             dl.addWidget(card, 1)
-            if i < 3:
+            if i < len(cards) - 1:
                 dl.addWidget(_VSep())
 
         self._stack.addWidget(donuts_page)
@@ -843,6 +853,7 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
             stats["optional_filled"],  max(stats["optional_total"],  1),
             delay_ms=320)
         self._card_derush.set_data(stats["derushees"], stats["annotations"], total,    delay_ms=480)
+        self._card_analyse.set_data(stats.get("analyse_eligible", 0), max(total, 1),   delay_ms=640)
 
         self._stack.setCurrentIndex(1)
 
@@ -866,9 +877,13 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
             self._card_meta._title    = "Métadonnées"
             self._card_derush._title  = "Dérushé"
             self._title_lbl.setText("Avancement de la campagne")
+        if lang == 'en':
+            self._card_analyse._title = "Analysis"
+        else:
+            self._card_analyse._title = "Analyse"
         self._card_meta.update()
         for card in (self._card_kept, self._card_ardoise,
-                     self._card_meta, self._card_derush):
+                     self._card_meta, self._card_derush, self._card_analyse):
             card.update()
 
 
@@ -895,7 +910,7 @@ class AvancementPanel(QtWidgets.QDialog):
         layout.setContentsMargins(0, 0, 0, 0)
         self.dashboard = ProgressDashboardWidget(self)
         layout.addWidget(self.dashboard)
-        self.setFixedWidth(660)
+        self.setFixedWidth(800)
 
     def show_below(self, anchor_widget: QtWidgets.QWidget):
         gp = anchor_widget.mapToGlobal(QtCore.QPoint(0, anchor_widget.height()))

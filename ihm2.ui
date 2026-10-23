@@ -938,9 +938,9 @@ background-color: rgb(39, 120, 162);
    <addaction name="actionMetadonnees"/>
    <addaction name="actionEvenements"/>
    <addaction name="actionExport"/>
+   <addaction name="actionAnalyseHabitat"/>
    <addaction name="actionExtraction"/>
    <addaction name="actionA_propos"/>
-   <addaction name="actionAnalyseHabitat"/>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">

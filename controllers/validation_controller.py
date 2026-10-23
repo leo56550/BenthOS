@@ -757,7 +757,8 @@ class ValidationController:
         self.player.set_playback_rate_all(1.0)
         if hasattr(self.player, 'btn_x1'):
             self.player.btn_x1.setChecked(True)
-        if os.path.exists(csv_system):
+        _has_json_events = self._json_has_rotation_events()
+        if os.path.exists(csv_system) or _has_json_events:
             self._load_sector_view(selected_video_path, csv_system, self.current_json_path)
             # Codestation calculable → afficher directement la mosaïque des secteurs
             if _has_codestation:
@@ -769,7 +770,7 @@ class ValidationController:
                     item.widget().deleteLater()
         # Mettre à jour l'état du bouton secteur selon la vidéo chargée
         if hasattr(self, 'btn_toggle_sector_view'):
-            has_events = os.path.exists(csv_system) or self._json_has_rotation_events()
+            has_events = os.path.exists(csv_system) or _has_json_events
             self.btn_toggle_sector_view.setEnabled(has_events)
         self._sector_dirty = False
 
@@ -892,8 +893,16 @@ class ValidationController:
             if json_path and os.path.isfile(json_path):
                 with open(json_path, 'r', encoding='utf-8') as _f:
                     _jdata = json.load(_f)
+                _non_rot = {"atterrissage", "atterissage", "décollage", "decollage",
+                            "landing", "takeoff", "debut_analyse", "fin_analyse",
+                            "analysis_start", "analysis_end"}
                 for _entry in (_jdata.get("video_observation", {}).get("events_motor") or []):
                     if not isinstance(_entry, dict):
+                        continue
+                    _desc = _entry.get("description_fr", "")
+                    if _desc.strip().lower() in _non_rot:
+                        continue
+                    if int(_entry.get("start_ms") or 0) == 0 and int(_entry.get("frame_number") or 0) == 0:
                         continue
                     if "start_ms" in _entry:
                         _ms = int(_entry["start_ms"])
@@ -905,7 +914,6 @@ class ValidationController:
                         except Exception:
                             _fn = _entry.get("frame_number", 0)
                             _ms = int((_fn / 25.0) * 1000) if _fn else 0
-                    _desc = _entry.get("description_fr", "")
                     _m = _re.search(r'\((\d+)°\)', _desc)
                     _angle = int(_m.group(1)) if _m else 0
                     _etype = "rotation_360°" if _angle == 360 else f"rotation_{_angle}°"
