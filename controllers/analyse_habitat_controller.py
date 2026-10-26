@@ -8,7 +8,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from PyQt6 import QtWidgets, QtCore, QtGui
 
-from services.image_service import extract_frame_at_time
+import cv2
+import numpy as np
+from services.image_service import (
+    extract_frame_at_time,
+    process_image_he,
+    calculate_water_light,
+    process_image_dehaze,
+)
 from services.campaign_service import resolve_video_json_path
 from services.motor_service import find_video_csv
 from views.widgets.embedded_player import EmbeddedVideoPlayer
@@ -119,6 +126,21 @@ _COL_W   = 72   # largeur d'un secteur (plus large pour la flèche combobox)
 _LABEL_W = 240  # largeur de la colonne label
 _THUMB_H = 90   # hauteur des thumbnails dans la barre d'en-tête
 _HEADER_H = _THUMB_H + 28  # hauteur totale de la barre d'en-tête
+
+# Types de recouvrement visible (même ordre que dans _SCHEMA)
+_RECOUVREMENT_TYPES: list[tuple[str, str]] = [
+    ("sable",         "Sable"),
+    ("vase",          "Vase"),
+    ("debris_petits", "Débris, petits blocs (<30cm)"),
+    ("moyens_blocs",  "Moyens blocs (30cm–1m)"),
+    ("gros_blocs",    "Gros blocs et roche (>1m)"),
+    ("dalle",         "Dalle"),
+    ("bioconstruit",  "Bioconstruit"),
+    ("haploops",      "Haploops"),
+    ("maerl",         "Maerl"),
+    ("algues_snv",    "Algues / substrat non-visible"),
+    ("herbier_snv",   "Herbier / substrat non-visible"),
+]
 
 # Mots-clés non-rotation à exclure des events_motor
 _NON_ROTATION = {"atterrissage", "atterissage", "décollage", "decollage",
@@ -408,6 +430,442 @@ class _CollapsibleSection(QtWidgets.QWidget):
         self._content.setLayout(layout)
 
 
+# ── Canvas image zoomable/panable ────────────────────────────────────────────
+
+class _ImageCanvas(QtWidgets.QWidget):
+    """Zone d'affichage image zoomable (molette) et panable (clic-glisser)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._pixmap: QtGui.QPixmap | None = None
+        self._zoom = 1.0
+        self._offset = QtCore.QPointF(0.0, 0.0)
+        self._last_mouse: QtCore.QPointF | None = None
+        self.setStyleSheet("background:#0b1520;")
+        self.setMinimumHeight(100)
+        self.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
+
+    def set_pixmap(self, pixmap: QtGui.QPixmap | None, reset: bool = True):
+        self._pixmap = pixmap
+        if reset:
+            self._zoom = 1.0
+            self._offset = QtCore.QPointF(0.0, 0.0)
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.fillRect(self.rect(), QtGui.QColor("#0b1520"))
+        if not self._pixmap or self._pixmap.isNull():
+            painter.setPen(QtGui.QColor("#2a4057"))
+            painter.setFont(QtGui.QFont("Segoe UI", 12))
+            painter.drawText(self.rect(), QtCore.Qt.AlignmentFlag.AlignCenter, "—")
+            return
+        pw = self._pixmap.width() * self._zoom
+        ph = self._pixmap.height() * self._zoom
+        x = (self.width() - pw) / 2.0 + self._offset.x()
+        y = (self.height() - ph) / 2.0 + self._offset.y()
+        painter.drawPixmap(
+            QtCore.QRectF(x, y, pw, ph),
+            self._pixmap,
+            QtCore.QRectF(self._pixmap.rect()),
+        )
+
+    def wheelEvent(self, event):
+        factor = 1.15 if event.angleDelta().y() > 0 else 1.0 / 1.15
+        self._zoom = max(0.1, min(10.0, self._zoom * factor))
+        self.update()
+
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self._last_mouse = event.position()
+
+    def mouseMoveEvent(self, event):
+        if (self._last_mouse is not None
+                and event.buttons() & QtCore.Qt.MouseButton.LeftButton):
+            self._offset += event.position() - self._last_mouse
+            self._last_mouse = event.position()
+            self.update()
+
+    def mouseReleaseEvent(self, event):
+        self._last_mouse = None
+
+    def zoom_in(self):
+        self._zoom = min(10.0, self._zoom * 1.25)
+        self.update()
+
+    def zoom_out(self):
+        self._zoom = max(0.1, self._zoom / 1.25)
+        self.update()
+
+    def zoom_fit(self):
+        self._zoom = 1.0
+        self._offset = QtCore.QPointF(0.0, 0.0)
+        self.update()
+
+
+# ── Viewer secteur : image + corrections + lecture vidéo ─────────────────────
+
+class _SectorViewerWidget(QtWidgets.QWidget):
+    """Afficheur secteur : image fixe + corrections HE/DH + lecture vidéo simple."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._video_path: str | None = None
+        self._fps = 25.0
+        self._clip_start_ms = 0
+        self._clip_end_ms = 0
+        self._pos_ms = 0
+        self._raw_frame: np.ndarray | None = None  # BGR
+        self._apply_he = False
+        self._apply_dh = False
+        self._cap = None  # cv2.VideoCapture ouvert pendant la lecture
+
+        self._play_timer = QtCore.QTimer(self)
+        self._play_timer.timeout.connect(self._advance_frame)
+
+        self._build_ui()
+        self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
+        self.setMinimumHeight(160)
+
+    def _build_ui(self):
+        vlay = QtWidgets.QVBoxLayout(self)
+        vlay.setContentsMargins(0, 0, 0, 0)
+        vlay.setSpacing(0)
+
+        self._canvas = _ImageCanvas(self)
+        vlay.addWidget(self._canvas, 1)
+
+        ctrl = QtWidgets.QWidget()
+        ctrl.setFixedHeight(34)
+        ctrl.setStyleSheet("background:#0d1825; border-top:1px solid #1e3448;")
+        cly = QtWidgets.QHBoxLayout(ctrl)
+        cly.setContentsMargins(8, 3, 8, 3)
+        cly.setSpacing(5)
+
+        _ss = (
+            "QPushButton { background:#1a2a3a; color:#7ec8e3;"
+            " border:1px solid #2a4057; border-radius:3px;"
+            " font-size:11px; padding:1px 7px; min-height:20px; }"
+            "QPushButton:checked { background:#2778a2; color:#fff;"
+            " border-color:#2778a2; }"
+            "QPushButton:hover:!checked { background:#243848; }"
+        )
+
+        def _sep():
+            s = QtWidgets.QFrame()
+            s.setFrameShape(QtWidgets.QFrame.Shape.VLine)
+            s.setStyleSheet("color:#1e3448;")
+            s.setFixedWidth(1)
+            return s
+
+        self._btn_play = QtWidgets.QPushButton("▶")
+        self._btn_play.setCheckable(True)
+        self._btn_play.setFixedWidth(30)
+        self._btn_play.setStyleSheet(_ss)
+        self._btn_play.toggled.connect(self._on_play_toggled)
+        cly.addWidget(self._btn_play)
+
+        cly.addWidget(_sep())
+
+        self._btn_he = QtWidgets.QPushButton("HE")
+        self._btn_he.setCheckable(True)
+        self._btn_he.setFixedWidth(34)
+        self._btn_he.setStyleSheet(_ss)
+        self._btn_he.toggled.connect(self._on_he_toggled)
+        cly.addWidget(self._btn_he)
+
+        self._btn_dh = QtWidgets.QPushButton("DH")
+        self._btn_dh.setCheckable(True)
+        self._btn_dh.setFixedWidth(34)
+        self._btn_dh.setStyleSheet(_ss)
+        self._btn_dh.toggled.connect(self._on_dh_toggled)
+        cly.addWidget(self._btn_dh)
+
+        cly.addWidget(_sep())
+
+        for sym, slot in (("+", self._canvas.zoom_in),
+                          ("−", self._canvas.zoom_out),
+                          ("⊡", self._canvas.zoom_fit)):
+            b = QtWidgets.QPushButton(sym)
+            b.setFixedWidth(26)
+            b.setStyleSheet(_ss)
+            b.clicked.connect(slot)
+            cly.addWidget(b)
+
+        cly.addStretch()
+
+        self._lbl_time = QtWidgets.QLabel("—")
+        self._lbl_time.setStyleSheet(
+            "color:#5a8090; font-size:11px; background:transparent;")
+        cly.addWidget(self._lbl_time)
+
+        vlay.addWidget(ctrl)
+
+    # ── API publique ──────────────────────────────────────────────────────────
+
+    def load_sector(self, video_path: str,
+                    clip_start_ms: int, clip_end_ms: int,
+                    mid_ms: int | None = None):
+        self._stop_playback()
+        self._video_path = video_path
+        self._clip_start_ms = clip_start_ms
+        self._clip_end_ms = clip_end_ms
+        cap_tmp = cv2.VideoCapture(video_path)
+        fps = cap_tmp.get(cv2.CAP_PROP_FPS)
+        cap_tmp.release()
+        self._fps = fps if fps > 0 else 25.0
+        self._pos_ms = mid_ms if mid_ms is not None else (clip_start_ms + clip_end_ms) // 2
+        self._read_and_show()
+
+    def clear(self):
+        self._stop_playback()
+        self._video_path = None
+        self._raw_frame = None
+        self._canvas.set_pixmap(None)
+        self._lbl_time.setText("—")
+
+    def show_frame_rgb(self, frame_rgb: np.ndarray):
+        """Affiche une frame RGB (retournée par extract_frame_at_time)."""
+        self._stop_playback()
+        self._raw_frame = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+        self._show_corrected()
+
+    # ── Lecture ───────────────────────────────────────────────────────────────
+
+    def _read_and_show(self):
+        if not self._video_path:
+            return
+        frame_num = round(self._pos_ms * self._fps / 1000.0)
+        cap = cv2.VideoCapture(self._video_path)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
+        ret, frame = cap.read()
+        cap.release()
+        if ret:
+            self._raw_frame = frame
+            self._show_corrected()
+
+    def _show_corrected(self):
+        if self._raw_frame is None:
+            return
+        frame = self._raw_frame.copy()
+        if self._apply_he:
+            frame = process_image_he(frame)
+        if self._apply_dh:
+            try:
+                vec = calculate_water_light(frame)
+                frame = process_image_dehaze(frame, vec, is_water=True)
+            except Exception:
+                pass
+        h, w = frame.shape[:2]
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        qimg = QtGui.QImage(
+            rgb.data, w, h, 3 * w,
+            QtGui.QImage.Format.Format_RGB888,
+        ).copy()
+        self._canvas.set_pixmap(QtGui.QPixmap.fromImage(qimg), reset=False)
+        s = self._pos_ms // 1000
+        self._lbl_time.setText(f"{s // 60:02d}:{s % 60:02d}")
+
+    def _advance_frame(self):
+        if self._cap is None or not self._cap.isOpened():
+            self._stop_playback()
+            return
+        ret, frame = self._cap.read()
+        if not ret:
+            self._stop_playback()
+            return
+        ms = int(self._cap.get(cv2.CAP_PROP_POS_MSEC))
+        if ms > self._clip_end_ms:
+            self._stop_playback()
+            return
+        self._pos_ms = ms
+        self._raw_frame = frame
+        self._show_corrected()
+
+    def _stop_playback(self):
+        self._play_timer.stop()
+        if self._cap is not None:
+            self._cap.release()
+            self._cap = None
+        self._btn_play.blockSignals(True)
+        self._btn_play.setChecked(False)
+        self._btn_play.setText("▶")
+        self._btn_play.blockSignals(False)
+
+    def _on_play_toggled(self, checked: bool):
+        if checked:
+            if not self._video_path:
+                self._btn_play.setChecked(False)
+                return
+            self._cap = cv2.VideoCapture(self._video_path)
+            frame_num = round(self._pos_ms * self._fps / 1000.0)
+            self._cap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
+            interval = max(16, int(1000.0 / self._fps))
+            self._play_timer.start(interval)
+            self._btn_play.setText("⏸")
+        else:
+            self._stop_playback()
+
+    def _on_he_toggled(self, checked: bool):
+        self._apply_he = checked
+        self._show_corrected()
+
+    def _on_dh_toggled(self, checked: bool):
+        self._apply_dh = checked
+        self._show_corrected()
+
+    def keyPressEvent(self, event):
+        if event.key() == QtCore.Qt.Key.Key_Space:
+            self._btn_play.setChecked(not self._btn_play.isChecked())
+        else:
+            super().keyPressEvent(event)
+
+
+# ── Widget cascade recouvrement ───────────────────────────────────────────────
+
+class _RecouvrementCascade(QtWidgets.QWidget):
+    """Saisie en cascade des types de recouvrement jusqu'à 100 %."""
+
+    data_changed = QtCore.pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._rows: list[dict] = []
+        self._loading = False
+        self.setStyleSheet("background:transparent;")
+        self._build_ui()
+
+    def _build_ui(self):
+        self._vlay = QtWidgets.QVBoxLayout(self)
+        self._vlay.setContentsMargins(8, 6, 8, 6)
+        self._vlay.setSpacing(3)
+
+        self._rows_widget = QtWidgets.QWidget()
+        self._rows_widget.setStyleSheet("background:transparent;")
+        self._rows_vlay = QtWidgets.QVBoxLayout(self._rows_widget)
+        self._rows_vlay.setContentsMargins(0, 0, 0, 0)
+        self._rows_vlay.setSpacing(3)
+        self._vlay.addWidget(self._rows_widget)
+
+        total_row = QtWidgets.QWidget()
+        total_row.setStyleSheet("background:transparent;")
+        tlay = QtWidgets.QHBoxLayout(total_row)
+        tlay.setContentsMargins(0, 4, 0, 4)
+        tlay.setSpacing(0)
+        self._total_lbl = QtWidgets.QLabel("Total : 0 %")
+        self._total_lbl.setStyleSheet(
+            "color:#f0c040; font-weight:bold; font-size:11px; background:transparent;")
+        tlay.addWidget(self._total_lbl)
+        tlay.addStretch()
+        self._vlay.addWidget(total_row)
+
+        self._btn_add = QtWidgets.QPushButton("+ Ajouter un substrat")
+        self._btn_add.setStyleSheet(
+            "QPushButton { background:#162433; color:#7ec8e3;"
+            " border:1px solid #2a4057; border-radius:3px;"
+            " font-size:11px; padding:3px 10px; }"
+            "QPushButton:hover { background:#1e3448; }"
+        )
+        self._btn_add.clicked.connect(lambda: self._add_row())
+        self._vlay.addWidget(self._btn_add)
+
+    def _add_row(self, key: str = "", pct: int = 0):
+        row_w = QtWidgets.QWidget()
+        row_w.setStyleSheet("background:transparent;")
+        rlay = QtWidgets.QHBoxLayout(row_w)
+        rlay.setContentsMargins(0, 0, 0, 0)
+        rlay.setSpacing(6)
+
+        _css = _COMBO_SS_BASE.format(bg="#0d1e2e", bd="#1e3448")
+
+        key_cb = QtWidgets.QComboBox()
+        key_cb.setStyleSheet(_css)
+        for k, label in _RECOUVREMENT_TYPES:
+            key_cb.addItem(label, k)
+        if key:
+            idx = next((i for i, (k, _) in enumerate(_RECOUVREMENT_TYPES) if k == key), 0)
+            key_cb.setCurrentIndex(idx)
+        key_cb.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        key_cb.setMinimumWidth(160)
+        rlay.addWidget(key_cb, 1)
+
+        pct_cb = QtWidgets.QComboBox()
+        pct_cb.setStyleSheet(_css)
+        for v in range(0, 101, 5):
+            pct_cb.addItem(f"{v} %", v)
+        if pct > 0:
+            idx_p = pct // 5
+            pct_cb.setCurrentIndex(min(idx_p, pct_cb.count() - 1))
+        pct_cb.setFixedWidth(70)
+        rlay.addWidget(pct_cb)
+
+        btn_del = QtWidgets.QPushButton("×")
+        btn_del.setFixedSize(22, 22)
+        btn_del.setStyleSheet(
+            "QPushButton { background:#1a2030; color:#e05050;"
+            " border:1px solid #2a1525; border-radius:3px; font-size:13px; }"
+            "QPushButton:hover { background:#2a1525; }"
+        )
+        row_info = {"widget": row_w, "key_cb": key_cb, "pct_cb": pct_cb}
+        btn_del.clicked.connect(lambda: self._remove_row(row_info))
+        rlay.addWidget(btn_del)
+
+        self._rows.append(row_info)
+        self._rows_vlay.addWidget(row_w)
+
+        key_cb.currentIndexChanged.connect(lambda _: self._on_row_changed())
+        pct_cb.currentIndexChanged.connect(lambda _: self._on_row_changed())
+
+        if not self._loading:
+            self._on_row_changed()
+
+    def _remove_row(self, row_info: dict):
+        row_info["widget"].setParent(None)
+        row_info["widget"].deleteLater()
+        if row_info in self._rows:
+            self._rows.remove(row_info)
+        self._on_row_changed()
+
+    def _on_row_changed(self):
+        total = sum((ri["pct_cb"].currentData() or 0) for ri in self._rows)
+        color = "#4ade80" if total == 100 else "#e05050" if total > 100 else "#f0c040"
+        self._total_lbl.setText(f"Total : {total} %")
+        self._total_lbl.setStyleSheet(
+            f"color:{color}; font-weight:bold; font-size:11px; background:transparent;")
+        self._btn_add.setVisible(total < 100)
+        if not self._loading:
+            self.data_changed.emit()
+
+    def get_data(self) -> dict[str, int]:
+        result: dict[str, int] = {}
+        for ri in self._rows:
+            k = ri["key_cb"].currentData()
+            v = ri["pct_cb"].currentData() or 0
+            if k and v > 0:
+                result[k] = result.get(k, 0) + v
+        return result
+
+    def set_data(self, data: dict[str, int]):
+        self._loading = True
+        for ri in list(self._rows):
+            ri["widget"].setParent(None)
+            ri["widget"].deleteLater()
+        self._rows.clear()
+        for k, v in data.items():
+            if v > 0:
+                self._add_row(k, v)
+        if not self._rows:
+            self._add_row()
+        self._loading = False
+        self._on_row_changed()
+
+
 # ── Contrôleur principal ──────────────────────────────────────────────────────
 
 class AnalyseHabitatController(QtCore.QObject):
@@ -420,13 +878,19 @@ class AnalyseHabitatController(QtCore.QObject):
         self._data: dict[str, dict[str, list]] = {}
         self._current_video: str | None = None
         self._video_model = None
-        self._widgets: dict[str, list] = {}
         self._updating = False
-        self._av_widgets: dict[str, QtWidgets.QLineEdit] = {}  # champs "Analyse vidéo" partagés
+        self._av_widgets: dict[str, QtWidgets.QLineEdit] = {}
 
-        # Thumbnails secteurs
+        # Secteur courant
+        self._current_sector_idx: int = 0
+        self._sector_btn_list: list[QtWidgets.QFrame] = []
+        self._sv_widgets: dict[str, QtWidgets.QWidget] = {}
+        self._sv_recouvrement: _RecouvrementCascade | None = None
+        self._sector_viewer: _SectorViewerWidget | None = None
+
+        # Timestamps / thumbnails secteurs
         self._sector_mid_ts: list[float | None] = [None] * 6
-        self._sector_bounds: list[tuple[int, int] | None] = [None] * 6  # (start_ms, end_ms)
+        self._sector_bounds: list[tuple[int, int] | None] = [None] * 6
         self._sector_pixmaps: list[QtGui.QPixmap | None] = [None] * 6
         self._sector_photo_labels: list[QtWidgets.QLabel] = []
         self._sector_worker: _FrameWorker | None = None
@@ -574,15 +1038,24 @@ class AnalyseHabitatController(QtCore.QObject):
 
     def _build_right_panel(self) -> QtWidgets.QWidget:
         panel = QtWidgets.QWidget()
+        panel.setStyleSheet("background:#0b1421;")
         vlay = QtWidgets.QVBoxLayout(panel)
         vlay.setContentsMargins(0, 0, 0, 0)
         vlay.setSpacing(0)
 
+        # 1. Sélecteur de secteur (S1..S6 avec thumbnails)
+        self._sector_selector = self._build_sector_selector()
+        vlay.addWidget(self._sector_selector)
+
+        # 2. Viewer image (image + corrections + lecture)
+        self._sector_viewer = _SectorViewerWidget()
+        self._sector_viewer.setFixedHeight(250)
+        vlay.addWidget(self._sector_viewer)
+
+        # 3. Formulaire mono-secteur (scrollable)
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(
-            QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setStyleSheet(
             "QScrollArea { background:#0b1421; }"
             "QScrollBar:vertical { background:#0d1e2e; width:8px; border-radius:4px; }"
@@ -594,16 +1067,12 @@ class AnalyseHabitatController(QtCore.QObject):
         form_lay.setContentsMargins(8, 4, 8, 16)
         form_lay.setSpacing(0)
 
-        # Barre de miniatures intégrée dans le scroll — même grille que les sections
-        self._header_bar = self._build_header_bar()
-        form_lay.addWidget(self._header_bar)
-
-        self._widgets.clear()
-        self._build_form(form_lay)
+        self._sv_widgets.clear()
+        self._build_single_sector_form(form_lay)
         form_lay.addStretch()
 
         scroll.setWidget(self._form_container)
-        vlay.addWidget(scroll)
+        vlay.addWidget(scroll, 1)
 
         self._no_sel_label = QtWidgets.QLabel(
             "Sélectionnez une station dans la liste")
@@ -612,77 +1081,218 @@ class AnalyseHabitatController(QtCore.QObject):
             "color:#3a5568; font-size:14px; font-family:'Segoe UI',sans-serif;")
         vlay.addWidget(self._no_sel_label)
 
-        self._header_bar.setVisible(False)
+        self._sector_selector.setVisible(False)
+        self._sector_viewer.setVisible(False)
         scroll.setVisible(False)
         self._scroll = scroll
         return panel
 
-    def _build_header_bar(self) -> QtWidgets.QWidget:
-        """Ligne de miniatures cliquables — même grille que les sections pour alignement parfait."""
+    def _build_sector_selector(self) -> QtWidgets.QWidget:
+        """Barre de sélection de secteur (S1..S6 avec thumbnails)."""
         bar = QtWidgets.QWidget()
-        bar.setStyleSheet(
-            "background:#0d1825; border-bottom:2px solid #1a3a54;")
+        bar.setFixedHeight(_HEADER_H)
+        bar.setStyleSheet("background:#0d1825; border-bottom:2px solid #1a3a54;")
+        hlay = QtWidgets.QHBoxLayout(bar)
+        hlay.setContentsMargins(8, 6, 8, 6)
+        hlay.setSpacing(6)
 
-        # Même paramètres de grille que _build_form → colonnes toujours alignées
-        grid = QtWidgets.QGridLayout(bar)
-        grid.setContentsMargins(4, 8, 4, 8)
-        grid.setHorizontalSpacing(4)
-        grid.setColumnMinimumWidth(0, _LABEL_W)
-        for col in range(1, 7):
-            grid.setColumnMinimumWidth(col, _COL_W)
-
-        lbl = QtWidgets.QLabel("Secteur")
-        lbl.setFixedWidth(_LABEL_W)
-        lbl.setAlignment(
-            QtCore.Qt.AlignmentFlag.AlignBottom | QtCore.Qt.AlignmentFlag.AlignLeft)
-        lbl.setStyleSheet(
-            "color:#5a8090; font-size:10px; font-family:'Segoe UI',sans-serif;"
-            " padding-bottom:4px;")
-        grid.addWidget(lbl, 0, 0)
-
+        self._sector_btn_list = []
         self._sector_photo_labels = []
-        for i in range(6):
-            cell = self._build_sector_cell(i)
-            grid.addWidget(cell, 0, i + 1)
 
+        for i in range(6):
+            cell = QtWidgets.QFrame()
+            cell.setFixedSize(_COL_W, _HEADER_H - 12)
+            cell.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+
+            cell_lay = QtWidgets.QVBoxLayout(cell)
+            cell_lay.setContentsMargins(2, 2, 2, 2)
+            cell_lay.setSpacing(2)
+
+            thumb = QtWidgets.QLabel("⏳")
+            thumb.setFixedSize(_COL_W - 4, _THUMB_H - 4)
+            thumb.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            thumb.setStyleSheet(
+                "color:#405060; font-size:16px; background:#0b1520;"
+                " border-radius:3px; border:none;")
+            cell_lay.addWidget(thumb)
+            self._sector_photo_labels.append(thumb)
+
+            lbl = QtWidgets.QLabel(f"S{i + 1}")
+            lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            lbl.setStyleSheet(
+                "color:#2778a2; font-weight:bold; font-size:11px;"
+                " font-family:'Segoe UI',sans-serif;"
+                " background:transparent; border:none;")
+            cell_lay.addWidget(lbl)
+
+            cell.mousePressEvent = lambda e, idx=i: self._on_sector_clicked(idx)
+            self._sector_btn_list.append(cell)
+            hlay.addWidget(cell)
+
+        hlay.addStretch()
+        self._highlight_sector(0)
         return bar
 
-    def _build_sector_cell(self, idx: int) -> QtWidgets.QFrame:
-        """Cellule cliquable d'un secteur (thumbnail + label)."""
-        cell = QtWidgets.QFrame()
-        cell.setFixedSize(_COL_W, _HEADER_H - 8)
-        cell.setStyleSheet(
+    def _highlight_sector(self, idx: int):
+        _sel = (
+            "QFrame { background:#163050; border-radius:4px;"
+            " border:2px solid #2778a2; }"
+        )
+        _unsel = (
             "QFrame { background:#111f2e; border-radius:4px;"
             " border:1px solid #1e3448; }"
             "QFrame:hover { border-color:#2778a2; background:#162030; }"
         )
-        cell.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
-        cell_lay = QtWidgets.QVBoxLayout(cell)
-        cell_lay.setContentsMargins(2, 2, 2, 2)
-        cell_lay.setSpacing(2)
+        for i, cell in enumerate(self._sector_btn_list):
+            cell.setStyleSheet(_sel if i == idx else _unsel)
 
-        # Zone thumbnail
-        thumb = QtWidgets.QLabel("⏳")
-        thumb.setFixedSize(_COL_W - 4, _THUMB_H - 4)
-        thumb.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        thumb.setStyleSheet(
-            "color:#405060; font-size:16px; background:#0b1520;"
-            " border-radius:3px; border:none;")
-        cell_lay.addWidget(thumb)
-        self._sector_photo_labels.append(thumb)
+    def _build_single_sector_form(self, parent_lay: QtWidgets.QVBoxLayout):
+        """Construit le formulaire de saisie pour un secteur à la fois."""
+        row_bg_even = "#0d1825"
+        row_bg_odd  = "#0b1421"
 
-        # Label "S1"…"S6"
-        lbl = QtWidgets.QLabel(f"S{idx + 1}")
-        lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        lbl.setStyleSheet(
-            "color:#2778a2; font-weight:bold; font-size:11px;"
-            " font-family:'Segoe UI',sans-serif; background:transparent;"
-            " border:none;")
-        cell_lay.addWidget(lbl)
+        for section_name, note, fields in _SCHEMA:
+            section = _CollapsibleSection(section_name, note)
 
-        # Connexion click
-        cell.mousePressEvent = lambda e, i=idx: self._on_sector_clicked(i)
-        return cell
+            if section_name == "Recouvrement visible":
+                inner = QtWidgets.QVBoxLayout()
+                inner.setContentsMargins(4, 4, 4, 4)
+                inner.setSpacing(4)
+                self._sv_recouvrement = _RecouvrementCascade()
+                self._sv_recouvrement.data_changed.connect(
+                    self._sv_on_recouvrement_changed)
+                inner.addWidget(self._sv_recouvrement)
+                section.set_layout(inner)
+            else:
+                grid = QtWidgets.QGridLayout()
+                grid.setContentsMargins(4, 4, 4, 4)
+                grid.setHorizontalSpacing(10)
+                grid.setVerticalSpacing(2)
+                grid.setColumnMinimumWidth(0, _LABEL_W)
+                grid.setColumnMinimumWidth(1, _COL_W)
+                grid.setColumnStretch(2, 1)
+
+                for row_idx, (fkey, flabel, ftype) in enumerate(fields):
+                    bg = row_bg_even if row_idx % 2 == 0 else row_bg_odd
+
+                    lbl = QtWidgets.QLabel(flabel)
+                    lbl.setFixedWidth(_LABEL_W)
+                    if ftype == "total":
+                        lbl.setStyleSheet(
+                            f"color:#f0c040; font-size:11px; font-weight:bold;"
+                            f" font-family:'Segoe UI',sans-serif;"
+                            f" background:#12253a; padding:3px 4px; border-radius:2px;")
+                    else:
+                        lbl.setStyleSheet(
+                            f"color:#a0b8c8; font-size:11px;"
+                            f" font-family:'Segoe UI',sans-serif;"
+                            f" background:{bg}; padding:3px 4px; border-radius:2px;")
+                    grid.addWidget(lbl, row_idx, 0)
+
+                    if ftype == "total":
+                        w = _TotalLabel()
+                    elif ftype == "presence":
+                        w = _PresenceCheckBox(bg_empty=bg)
+                        w.stateChanged.connect(
+                            lambda v, k=fkey: self._sv_on_changed(k, int(bool(v))))
+                    else:
+                        w = _SectorComboBox(ftype, bg_empty=bg)
+                        w.currentIndexChanged.connect(
+                            lambda _, k=fkey, wb=w: self._sv_on_changed(k, wb.get_value()))
+
+                    self._sv_widgets[fkey] = w
+                    grid.addWidget(w, row_idx, 1)
+
+                section.set_layout(grid)
+
+            parent_lay.addWidget(section)
+
+    # ── Gestion secteur courant ───────────────────────────────────────────────
+
+    def _switch_sector(self, idx: int):
+        """Change le secteur affiché dans le viewer et recharge le formulaire."""
+        self._current_sector_idx = idx
+        self._highlight_sector(idx)
+        if self._current_video and self._sector_viewer is not None:
+            bounds = self._sector_bounds[idx] if idx < len(self._sector_bounds) else None
+            mid_ts = self._sector_mid_ts[idx] if idx < len(self._sector_mid_ts) else None
+            if bounds:
+                self._sector_viewer.load_sector(
+                    self._current_video, bounds[0], bounds[1],
+                    mid_ms=int(mid_ts * 1000) if mid_ts is not None else None,
+                )
+            else:
+                pixmap = self._sector_pixmaps[idx] if idx < len(self._sector_pixmaps) else None
+                if pixmap:
+                    self._sector_viewer._canvas.set_pixmap(pixmap)
+                else:
+                    self._sector_viewer.clear()
+        self._sv_reload_form()
+
+    def _sv_reload_form(self):
+        """Recharge les widgets du formulaire mono-secteur depuis _data."""
+        self._updating = True
+        try:
+            if not self._current_video:
+                return
+            d = self._data.get(self._current_video, {})
+            s = self._current_sector_idx
+
+            for fkey, w in self._sv_widgets.items():
+                values = d.get(fkey, [0] * 6)
+                v = values[s] if s < len(values) else 0
+                if isinstance(w, _SectorComboBox):
+                    w.set_value(v or 0)
+                elif isinstance(w, _PresenceCheckBox):
+                    w.setChecked(bool(v))
+
+            if self._sv_recouvrement is not None:
+                rec_data: dict[str, int] = {}
+                for k, _ in _RECOUVREMENT_TYPES:
+                    vals = d.get(k, [0] * 6)
+                    v = vals[s] if s < len(vals) else 0
+                    if v:
+                        rec_data[k] = v
+                self._sv_recouvrement.set_data(rec_data)
+        finally:
+            self._updating = False
+        self._sv_refresh_totals()
+
+    def _sv_on_changed(self, field_key: str, value):
+        if self._updating or not self._current_video:
+            return
+        d = self._data.setdefault(self._current_video, {})
+        row = d.setdefault(field_key, [0] * 6)
+        row[self._current_sector_idx] = value
+        self._sv_refresh_totals()
+
+    def _sv_on_recouvrement_changed(self):
+        if self._updating or not self._current_video or self._sv_recouvrement is None:
+            return
+        cascade_data = self._sv_recouvrement.get_data()
+        d = self._data.setdefault(self._current_video, {})
+        for k, _ in _RECOUVREMENT_TYPES:
+            row = d.setdefault(k, [0] * 6)
+            row[self._current_sector_idx] = cascade_data.get(k, 0)
+        self._sv_refresh_totals()
+
+    def _sv_refresh_totals(self):
+        if not self._current_video:
+            return
+        d = self._data.get(self._current_video, {})
+        s = self._current_sector_idx
+        for total_key, sources in _TOTAL_SOURCES.items():
+            w = self._sv_widgets.get(total_key)
+            if not isinstance(w, _TotalLabel):
+                continue
+            total = sum((d.get(src, [0] * 6)[s] or 0) for src in sources)
+            color = "#e05050" if total > 100 else "#f0c040"
+            w.setText(str(total))
+            w.setStyleSheet(
+                f"color:{color}; font-weight:bold; font-size:11px;"
+                " background:#12253a; border:1px solid #2a3e50;"
+                " border-radius:3px; padding:2px;"
+            )
 
     def _build_analysis_panel(self) -> QtWidgets.QWidget:
         """Panneau 'Analyse vidéo' fixe — valeurs partagées entre toutes les vidéos."""
@@ -809,59 +1419,6 @@ class AnalyseHabitatController(QtCore.QObject):
             widget.setText(str(val) if val is not None else "")
             widget.blockSignals(False)
 
-    def _build_form(self, parent_lay: QtWidgets.QVBoxLayout):
-        row_bg_even = "#0d1825"
-        row_bg_odd  = "#0b1421"
-
-        for section_name, note, fields in _SCHEMA:
-            section = _CollapsibleSection(section_name, note)
-            grid = QtWidgets.QGridLayout()
-            grid.setContentsMargins(4, 4, 4, 4)
-            grid.setHorizontalSpacing(4)
-            grid.setVerticalSpacing(2)
-            grid.setColumnMinimumWidth(0, _LABEL_W)
-            for col in range(1, 7):
-                grid.setColumnMinimumWidth(col, _COL_W)
-
-            for row_idx, (fkey, flabel, ftype) in enumerate(fields):
-                bg = row_bg_even if row_idx % 2 == 0 else row_bg_odd
-
-                lbl = QtWidgets.QLabel(flabel)
-                lbl.setFixedWidth(_LABEL_W)
-                lbl.setStyleSheet(
-                    f"color:#a0b8c8; font-size:11px;"
-                    f" font-family:'Segoe UI',sans-serif;"
-                    f" background:{bg}; padding:3px 4px; border-radius:2px;"
-                )
-                if ftype == "total":
-                    lbl.setStyleSheet(
-                        f"color:#f0c040; font-size:11px; font-weight:bold;"
-                        f" font-family:'Segoe UI',sans-serif;"
-                        f" background:#12253a; padding:3px 4px; border-radius:2px;"
-                    )
-                grid.addWidget(lbl, row_idx, 0)
-
-                sector_widgets: list = []
-                for col_idx in range(6):
-                    if ftype == "total":
-                        w = _TotalLabel()
-                    elif ftype == "presence":
-                        w = _PresenceCheckBox(bg_empty=bg)
-                        w.stateChanged.connect(
-                            lambda v, k=fkey, c=col_idx: self._on_changed(k, c, int(bool(v))))
-                    else:
-                        w = _SectorComboBox(ftype, bg_empty=bg)
-                        w.currentIndexChanged.connect(
-                            lambda _, k=fkey, c=col_idx,
-                            wb=w: self._on_changed(k, c, wb.get_value()))
-                    sector_widgets.append(w)
-                    grid.addWidget(w, row_idx, col_idx + 1)
-
-                self._widgets[fkey] = sector_widgets
-
-            section.set_layout(grid)
-            parent_lay.addWidget(section)
-
     # ── Rotation moteur → timestamps secteurs ─────────────────────────────────
 
     def _load_rotation_timestamps(self, video_path: str):
@@ -948,7 +1505,7 @@ class AnalyseHabitatController(QtCore.QObject):
         self._sector_worker.start()
 
     def _on_frame_ready(self, sector_idx: int, frame_data):
-        """Appelé quand une frame est extraite — met à jour le thumbnail."""
+        """Appelé quand une frame est extraite — met à jour le thumbnail et le viewer."""
         if frame_data is None or sector_idx >= len(self._sector_photo_labels):
             return
         h_f, w_f, ch = frame_data.shape
@@ -968,78 +1525,34 @@ class AnalyseHabitatController(QtCore.QObject):
         )
         lbl.setText("")
         lbl.setPixmap(scaled)
-        lbl.setStyleSheet(
-            "background:#0b1520; border-radius:3px; border:none;")
+        lbl.setStyleSheet("background:#0b1520; border-radius:3px; border:none;")
+
+        # Si c'est le secteur courant et pas encore chargé via cv2, afficher la frame
+        if (sector_idx == self._current_sector_idx
+                and self._sector_viewer is not None
+                and self._sector_viewer._video_path is None):
+            self._sector_viewer.show_frame_rgb(frame_data)
 
     def _on_sector_clicked(self, sector_idx: int):
-        """Ouvre un lecteur vidéo restreint à la fenêtre temporelle du secteur."""
-        if not self._current_video:
-            return
-        bounds = self._sector_bounds[sector_idx] if sector_idx < len(self._sector_bounds) else None
-        if bounds is None:
-            return
-        clip_start_ms, clip_end_ms = bounds
-        win = _SectorVideoWindow(
-            video_path=self._current_video,
-            clip_start_ms=clip_start_ms,
-            clip_end_ms=clip_end_ms,
-            title=f"Secteur S{sector_idx + 1} — {(sector_idx + 1) * 60}°",
-            parent=self._page,
-        )
-        win.show()
-        win.raise_()
+        """Change le secteur courant (viewer + formulaire)."""
+        self._switch_sector(sector_idx)
 
     # ── Données formulaire ────────────────────────────────────────────────────
 
-    def _on_changed(self, field_key: str, sector_idx: int, value):
-        if self._updating or not self._current_video:
-            return
-        d = self._data.setdefault(self._current_video, {})
-        row = d.setdefault(field_key, [0] * 6)
-        row[sector_idx] = value
-        self._refresh_totals()
-
-    def _refresh_totals(self):
-        if not self._current_video:
-            return
-        d = self._data.get(self._current_video, {})
-        for total_key, sources in _TOTAL_SOURCES.items():
-            widgets = self._widgets.get(total_key, [])
-            for s_idx, lbl in enumerate(widgets):
-                total = sum(
-                    (d.get(src, [0]*6)[s_idx] or 0) for src in sources)
-                color = "#e05050" if total > 100 else "#f0c040"
-                lbl.setText(str(total))
-                lbl.setStyleSheet(
-                    f"color:{color}; font-weight:bold; font-size:11px;"
-                    " background:#12253a; border:1px solid #2a3e50;"
-                    " border-radius:3px; padding:2px;"
-                )
-
     def _load_station(self, video_path: str):
-        self._updating = True
-        d = self._data.get(video_path, {})
-        for fkey, widgets in self._widgets.items():
-            values = d.get(fkey, [0] * 6)
-            for s_idx, w in enumerate(widgets):
-                v = values[s_idx] if s_idx < len(values) else 0
-                if isinstance(w, _SectorComboBox):
-                    w.set_value(v or 0)
-                elif isinstance(w, _PresenceCheckBox):
-                    w.setChecked(bool(v))
-        self._updating = False
-        self._refresh_totals()
+        pass  # les données sont en mémoire dans _data ; _sv_reload_form fait le travail
 
     def _clear_form(self):
         self._updating = True
-        for widgets in self._widgets.values():
-            for w in widgets:
-                if isinstance(w, _SectorComboBox):
-                    w.setCurrentIndex(0)
-                elif isinstance(w, _PresenceCheckBox):
-                    w.setChecked(False)
-                elif isinstance(w, _TotalLabel):
-                    w.setText("—")
+        for w in self._sv_widgets.values():
+            if isinstance(w, _SectorComboBox):
+                w.setCurrentIndex(0)
+            elif isinstance(w, _PresenceCheckBox):
+                w.setChecked(False)
+            elif isinstance(w, _TotalLabel):
+                w.setText("—")
+        if self._sv_recouvrement is not None:
+            self._sv_recouvrement.set_data({})
         self._updating = False
 
     # ── Navigation ────────────────────────────────────────────────────────────
@@ -1047,23 +1560,36 @@ class AnalyseHabitatController(QtCore.QObject):
     def _on_row_changed(self, row: int):
         if row < 0:
             self._current_video = None
-            self._header_bar.setVisible(False)
+            self._sector_selector.setVisible(False)
+            self._sector_viewer.setVisible(False)
             self._scroll.setVisible(False)
             self._no_sel_label.setVisible(True)
-            self._clear_form()
             return
         list_item = self._list.item(row)
         vpath = list_item.data(QtCore.Qt.ItemDataRole.UserRole) if list_item else None
         if not vpath:
             return
         self._current_video = str(vpath)
-        self._header_bar.setVisible(True)
+        self._sector_selector.setVisible(True)
+        self._sector_viewer.setVisible(True)
         self._scroll.setVisible(True)
         self._no_sel_label.setVisible(False)
         self._load_av_fields(self._current_video)
-        self._load_station(self._current_video)
         self._load_rotation_timestamps(self._current_video)
         self._start_frame_extraction(self._current_video)
+        # Afficher secteur 0 par défaut
+        self._current_sector_idx = 0
+        self._highlight_sector(0)
+        self._sv_reload_form()
+        bounds = self._sector_bounds[0] if self._sector_bounds else None
+        if bounds:
+            mid_ts = self._sector_mid_ts[0]
+            self._sector_viewer.load_sector(
+                self._current_video, bounds[0], bounds[1],
+                mid_ms=int(mid_ts * 1000) if mid_ts is not None else None,
+            )
+        else:
+            self._sector_viewer.clear()
 
     # ── API publique ──────────────────────────────────────────────────────────
 
