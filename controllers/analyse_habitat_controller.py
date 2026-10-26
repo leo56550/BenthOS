@@ -183,23 +183,11 @@ class _SectorVideoWindow(QtWidgets.QWidget):
 
     def _load(self):
         p = self.player
-        p.load_video_and_events(
-            self._video_path, [],
-            is_stereo=False,
-            start_position_ms=self._clip_start,
-        )
-        csv_tel = find_video_csv(self._video_path)
-        if os.path.isfile(csv_tel):
-            p.load_dynamic_metadata(csv_tel)
-
-        # Contrainte de plage — appliquée après chargement
-        QtCore.QTimer.singleShot(300, self._apply_clip)
-
-    def _apply_clip(self):
-        p = self.player
         start, end = self._clip_start, self._clip_end
+        clip_dur = end - start
 
-        # Remplace jump_time_offset pour clamper dans [start, end]
+        # ── Tous les patches AVANT le chargement vidéo ──────────────────────
+        # jump_time_offset : boutons ±5s ±10s et raccourcis ← → (invoqués via lambda)
         def _clamped_jump(ms: int):
             target = max(start, min(p.player.position() + ms, end))
             p.player.setPosition(target)
@@ -209,16 +197,69 @@ class _SectorVideoWindow(QtWidgets.QWidget):
                 QtCore.QTimer.singleShot(80, lambda: p._step_frame_overlay(target))
         p.jump_time_offset = _clamped_jump
 
-        # "Début" = début du secteur, pas début de la vidéo
-        p._goto_start = lambda: p.player.setPosition(start)
+        # _step_frame : Shift+← →, image par image (invoqué via lambda → patchable)
+        def _clamped_step(direction: int):
+            fps = p.video_fps
+            if not fps or fps <= 0:
+                return
+            frame_ms = max(1, int(1000 / fps))
+            target = max(start, min(p.player.position() + direction * frame_ms, end))
+            p.player.setPosition(target)
+            if p.is_stereo:
+                p.player_R.setPosition(target)
+            if p.left_display.currentIndex() == 1:
+                QtCore.QTimer.singleShot(50, lambda: p._step_frame_overlay(target))
+        p._step_frame = _clamped_step
 
-        # Stoppe la lecture à la fin du secteur
-        p.player.positionChanged.connect(self._enforce_end)
+        # btn_goto_start : connecté directement à la méthode liée → reconnecter
+        try:
+            p.btn_goto_start.clicked.disconnect()
+        except Exception:
+            pass
+        p.btn_goto_start.clicked.connect(lambda: p.player.setPosition(start))
+        p.btn_goto_start.setToolTip("Retour au début du secteur")
 
-    def _enforce_end(self, pos_ms: int):
-        if pos_ms >= self._clip_end:
+        # Label de temps : affiche la position et la durée relatives au secteur
+        def _sector_time_label(pos_ms: int, _total_ms: int):
+            rel_ms = max(0, pos_ms - start)
+            pos_s  = rel_ms // 1000
+            dur_s  = clip_dur // 1000
+            p.lbl_top_time.setText(
+                f"{pos_s // 60:02d}:{pos_s % 60:02d} / {dur_s // 60:02d}:{dur_s % 60:02d}"
+            )
+        p.update_top_time_label = _sector_time_label
+
+        # Timer 100ms : filet de sécurité couvrant tout chemin non intercepté
+        self._clip_timer = QtCore.QTimer(self)
+        self._clip_timer.setInterval(100)
+        self._clip_timer.timeout.connect(self._poll_bounds)
+        self._clip_timer.start()
+
+        # ── Chargement de la vidéo ───────────────────────────────────────────
+        p.load_video_and_events(
+            self._video_path, [],
+            is_stereo=False,
+            start_position_ms=self._clip_start,
+        )
+        csv_tel = find_video_csv(self._video_path)
+        if os.path.isfile(csv_tel):
+            p.load_dynamic_metadata(csv_tel)
+
+    def _poll_bounds(self):
+        try:
+            pos = self.player.player.position()
+        except RuntimeError:
+            return
+        if pos < self._clip_start:
+            self.player.player.setPosition(self._clip_start)
+        elif pos > self._clip_end:
             self.player.player.pause()
             self.player.player.setPosition(self._clip_end)
+
+    def closeEvent(self, event):
+        if hasattr(self, '_clip_timer'):
+            self._clip_timer.stop()
+        super().closeEvent(event)
 
 
 # ── Widgets du formulaire ─────────────────────────────────────────────────────

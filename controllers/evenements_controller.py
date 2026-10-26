@@ -532,8 +532,8 @@ class EvenementsController:
     def _get_tree_headers(self):
         """Retourne les en-têtes de l'arbre événements selon la langue active."""
         if self.current_language == 'en':
-            return ["Start / Capture time", "End", "Event type", "Value", "Comment", "Preview"]
-        return ["Début / Heure Capture", "Fin", "Type d'événement", "Valeur", "Commentaire", "Aperçu"]
+            return ["Start / Capture time", "End", "Category", "Type", "Comment"]
+        return ["Début / Heure Capture", "Fin", "Catégorie", "Type", "Commentaire"]
 
     def set_language(self, language: str):
         """Met à jour la langue et rafraîchit les en-têtes de l'arbre."""
@@ -584,7 +584,7 @@ class EvenementsController:
             self.btn_finir.setText(self.translate("⏹ FIN D'ÉVÉNEMENT", "⏹ END EVENT"))
         self._rebuild_event_buttons()
         if hasattr(self, 'export_button'):
-            self.export_button.setText(self.translate("EXPORTER LES ÉVÉNEMENTS", "EXPORT EVENTS"))
+            self.export_button.setText(self.translate("EXPORTER VERS VIAME", "EXPORT TO VIAME"))
         if hasattr(self, '_lbl_batch_export'):
             self._lbl_batch_export.setText(
                 self.translate("Export campagne", "Campaign export"))
@@ -636,15 +636,14 @@ class EvenementsController:
             main_layout.setSpacing(0)
 
         self.tree_captures = QtWidgets.QTreeWidget()
-        self.tree_captures.setColumnCount(6)
+        self.tree_captures.setColumnCount(5)
         self.tree_captures.setHeaderLabels(self._get_tree_headers())
         self.tree_captures.setColumnWidth(0, 95)
         self.tree_captures.setColumnWidth(1, 60)
-        self.tree_captures.setColumnWidth(2, 100)
-        self.tree_captures.setColumnWidth(3, 80)
-        self.tree_captures.setColumnWidth(5, 68)
+        self.tree_captures.setColumnWidth(3, 120)
         header = self.tree_captures.header()
-        for col in (0, 1, 2, 3, 5):
+        header.hideSection(2)
+        for col in (0, 1, 3):
             header.setSectionResizeMode(col, QtWidgets.QHeaderView.ResizeMode.Fixed)
         header.setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeMode.Stretch)
         self.tree_captures.setAlternatingRowColors(True)
@@ -699,7 +698,7 @@ class EvenementsController:
         self._undo_shortcut.activated.connect(self._undo_last_event)
 
         self._event_type_delegate = _EventTypeDelegate(lambda: list(self.event_dictionary.keys()))
-        self.tree_captures.setItemDelegateForColumn(2, self._event_type_delegate)
+        self.tree_captures.setItemDelegateForColumn(3, self._event_type_delegate)
 
         main_layout.addWidget(self.tree_captures)
 
@@ -725,6 +724,8 @@ class EvenementsController:
                     found_event = evt
                     break
             self.event_player.timeline.set_selected_event(found_event)
+            if found_event is not None:
+                self.event_player.player.setPosition(int(found_event.get("start", 0)))
         finally:
             self.event_player.timeline.blockSignals(False)
 
@@ -911,11 +912,11 @@ class EvenementsController:
                     if it.text(3) == label:
                         self.tree_captures.takeTopLevelItem(i)
                 txt_tc = self.event_player.timeline._format_ms(pos_ms) if hasattr(self.event_player, 'timeline') else timecode
-                tree_item = QtWidgets.QTreeWidgetItem([txt_tc, "-", "Déploiement", label, "", ""])
+                tree_item = QtWidgets.QTreeWidgetItem([txt_tc, "-", "Déploiement", label, ""])
                 tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                 tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778A2")))
+                tree_item.setForeground(3, QtGui.QBrush(QtGui.QColor("#2778A2")))
                 self.tree_captures.addTopLevelItem(tree_item)
-                self.add_tree_thumbnail(tree_item, pos_ms)
             # Flash visuel de confirmation
             s_dep = self._ZONE_STYLES[0]
             self._apply_evt_btn_style(btn, s_dep, "selected")
@@ -963,11 +964,11 @@ class EvenementsController:
                     if it.text(3) == label:
                         self.tree_captures.takeTopLevelItem(i)
                 txt_tc = self.event_player.timeline._format_ms(pos_ms) if hasattr(self.event_player, 'timeline') else timecode
-                tree_item = QtWidgets.QTreeWidgetItem([txt_tc, "-", "Déploiement", label, "", ""])
+                tree_item = QtWidgets.QTreeWidgetItem([txt_tc, "-", "Déploiement", label, ""])
                 tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                 tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778A2")))
+                tree_item.setForeground(3, QtGui.QBrush(QtGui.QColor("#2778A2")))
                 self.tree_captures.addTopLevelItem(tree_item)
-                self.add_tree_thumbnail(tree_item, pos_ms)
             if btn:
                 s_dep = self._ZONE_STYLES[0]
                 self._apply_evt_btn_style(btn, s_dep, "selected")
@@ -1193,11 +1194,11 @@ class EvenementsController:
             if hasattr(self, 'tree_captures') and self.tree_captures:
                 txt_start = tl._format_ms(start_ms)
                 _ti = QtWidgets.QTreeWidgetItem(
-                    [txt_start, "-", category_name, value, json_comment, ""])
+                    [txt_start, "-", category_name, value, json_comment])
                 _ti.setFlags(_ti.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                 _ti.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778A2")))
+                _ti.setForeground(3, QtGui.QBrush(QtGui.QColor("#2778A2")))
                 self.tree_captures.addTopLevelItem(_ti)
-                self.add_tree_thumbnail(_ti, start_ms)
 
         tl.update()
         if self._on_events_changed:
@@ -1627,11 +1628,11 @@ class EvenementsController:
                         "Rotation moteur",
                     )
                     tree_item = QtWidgets.QTreeWidgetItem(
-                        [txt_start, "-", category_name, label, "", ""])
+                        [txt_start, "-", category_name, label, ""])
                     tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                     tree_item.setForeground(0, QtGui.QBrush(self._zone_color(zone_index)))
+                    tree_item.setForeground(3, QtGui.QBrush(self._zone_color(zone_index)))
                     self.tree_captures.addTopLevelItem(tree_item)
-                    self.add_tree_thumbnail(tree_item, start_ms)
                 self._thumb_bulkload = False
                 self._start_thumb_loader()
 
@@ -1714,11 +1715,11 @@ class EvenementsController:
                 label = (matching_ev or {}).get("description_fr", "Rotation moteur")
                 txt_start = tl._format_ms(start_ms)
                 tree_item = QtWidgets.QTreeWidgetItem(
-                    [txt_start, "-", category_name, label, "", ""])
+                    [txt_start, "-", category_name, label, ""])
                 tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                 tree_item.setForeground(0, QtGui.QBrush(self._zone_color(zone_index)))
+                tree_item.setForeground(3, QtGui.QBrush(self._zone_color(zone_index)))
                 self.tree_captures.addTopLevelItem(tree_item)
-                self.add_tree_thumbnail(tree_item, start_ms)
             self._thumb_bulkload = False
             self._start_thumb_loader()
 
@@ -1905,11 +1906,11 @@ class EvenementsController:
                 tl.update()
 
             if hasattr(self, 'tree_captures') and self.tree_captures:
-                tree_item = QtWidgets.QTreeWidgetItem([timecode, "-", "Déploiement", updated_label, "", ""])
+                tree_item = QtWidgets.QTreeWidgetItem([timecode, "-", "Déploiement", updated_label, ""])
                 tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                 tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778A2")))
+                tree_item.setForeground(3, QtGui.QBrush(QtGui.QColor("#2778A2")))
                 self.tree_captures.addTopLevelItem(tree_item)
-                self.add_tree_thumbnail(tree_item, pos_ms)
             s_dep = self._ZONE_STYLES[0]
             self._apply_evt_btn_style(btn, s_dep, "selected")
             QtCore.QTimer.singleShot(600, lambda: self._apply_evt_btn_style(btn, s_dep, "normal"))
@@ -2402,7 +2403,7 @@ class EvenementsController:
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
 
-        self.export_button = QtWidgets.QPushButton("EXPORTER LES ÉVÉNEMENTS", self.export_container)
+        self.export_button = QtWidgets.QPushButton("EXPORTER VERS VIAME", self.export_container)
         self.export_button.setStyleSheet(
             "QPushButton { background-color: #e68c14; color: white; font-weight: bold; "
             "font-size: 13px; border: 1px solid #f09624; border-radius: 6px; padding: 8px 10px; }"
@@ -2630,12 +2631,12 @@ class EvenementsController:
 
             if hasattr(self, 'tree_captures') and self.tree_captures:
                 tree_item = QtWidgets.QTreeWidgetItem(
-                    [time_str, "-", clean_category_name, current_value, "", ""]
+                    [time_str, "-", clean_category_name, current_value, ""]
                 )
                 tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                 tree_item.setForeground(0, QtGui.QBrush(self._zone_color(new_evt["zone"])))
+                tree_item.setForeground(3, QtGui.QBrush(self._zone_color(new_evt["zone"])))
                 self.tree_captures.addTopLevelItem(tree_item)
-                self.add_tree_thumbnail(tree_item, pos_ms)
 
             self.save_event_to_json(new_evt, current_type)
             tree_item = self.tree_captures.topLevelItem(self.tree_captures.topLevelItemCount() - 1)
@@ -2682,12 +2683,12 @@ class EvenementsController:
 
         if hasattr(self, 'tree_captures') and self.tree_captures:
             tree_item = QtWidgets.QTreeWidgetItem(
-                [start_str, end_str, clean_category, current_value, "", ""]
+                [start_str, end_str, clean_category, current_value, ""]
             )
             tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
             tree_item.setForeground(0, QtGui.QBrush(self._zone_color(new_evt["zone"])))
+            tree_item.setForeground(3, QtGui.QBrush(self._zone_color(new_evt["zone"])))
             self.tree_captures.addTopLevelItem(tree_item)
-            self.add_tree_thumbnail(tree_item, t_start)
 
         self.save_event_to_json(new_evt, current_type)
         tree_item = self.tree_captures.topLevelItem(self.tree_captures.topLevelItemCount() - 1)
@@ -2722,12 +2723,12 @@ class EvenementsController:
         if hasattr(self, 'tree_captures') and self.tree_captures:
             clean_cat = deploy_label.split(' ')[0]
             tree_item = QtWidgets.QTreeWidgetItem(
-                [time_str, "-", clean_cat, value, "", ""]
+                [time_str, "-", clean_cat, value, ""]
             )
             tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
             tree_item.setForeground(0, QtGui.QBrush(self._zone_color(new_evt["zone"])))
+            tree_item.setForeground(3, QtGui.QBrush(self._zone_color(new_evt["zone"])))
             self.tree_captures.addTopLevelItem(tree_item)
-            self.add_tree_thumbnail(tree_item, pos_ms)
         self.save_event_to_json(new_evt, deploy_label)
 
     def _saisir_debut_annotation(self):
@@ -2801,11 +2802,11 @@ class EvenementsController:
                         self.tree_captures.takeTopLevelItem(i)
                 txt_tc = self.event_player.timeline._format_ms(pos_ms) \
                          if hasattr(self.event_player, 'timeline') else timecode
-                tree_item = QtWidgets.QTreeWidgetItem([txt_tc, "-", "Annotation", label, "", ""])
+                tree_item = QtWidgets.QTreeWidgetItem([txt_tc, "-", "Annotation", label, ""])
                 tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                 tree_item.setForeground(0, QtGui.QBrush(self._zone_color(0)))
+                tree_item.setForeground(3, QtGui.QBrush(self._zone_color(0)))
                 self.tree_captures.addTopLevelItem(tree_item)
-                self.add_tree_thumbnail(tree_item, pos_ms)
             if btn is not None:
                 orig_text = btn.text()
                 btn.setText(f"✓ {timecode}")
@@ -2969,11 +2970,11 @@ class EvenementsController:
                             if hasattr(self, 'tree_captures') and self.tree_captures:
                                 category_name_local = self._get_label_from_json_key(json_key)
                                 _ti = QtWidgets.QTreeWidgetItem(
-                                    [txt_start, "-", category_name_local, value, json_comment, ""])
+                                    [txt_start, "-", category_name_local, value, json_comment])
                                 _ti.setFlags(_ti.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                                 _ti.setForeground(0, QtGui.QBrush(self._zone_color(zone_index)))
+                                _ti.setForeground(3, QtGui.QBrush(self._zone_color(zone_index)))
                                 self.tree_captures.addTopLevelItem(_ti)
-                            self.add_tree_thumbnail(_ti, start_ms) if hasattr(self, 'tree_captures') and self.tree_captures else None
                             continue
 
                         is_duplicate = any(
@@ -2998,12 +2999,12 @@ class EvenementsController:
 
                             if hasattr(self, 'tree_captures') and self.tree_captures:
                                 tree_item = QtWidgets.QTreeWidgetItem(
-                                    [txt_start, txt_end, category_name, value, json_comment, ""]
+                                    [txt_start, txt_end, category_name, value, json_comment]
                                 )
                                 tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                                 tree_item.setForeground(0, QtGui.QBrush(self._zone_color(zone_index)))
+                                tree_item.setForeground(3, QtGui.QBrush(self._zone_color(zone_index)))
                                 self.tree_captures.addTopLevelItem(tree_item)
-                                self.add_tree_thumbnail(tree_item, start_ms)
                 # --- Marqueurs timecode scalaires (atterrissage/décollage + annotation) ---
                 _TC_MARKERS = {
                     "timecode_landing":  self.translate("Atterrissage",    "Landing"),
@@ -3034,12 +3035,12 @@ class EvenementsController:
                         if hasattr(self, 'tree_captures') and self.tree_captures:
                             txt_tc = self.event_player.timeline._format_ms(tc_ms)
                             tree_item = QtWidgets.QTreeWidgetItem(
-                                [txt_tc, "-", "Déploiement", tc_label, "", ""]
+                                [txt_tc, "-", "Déploiement", tc_label, ""]
                             )
                             tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                             tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778A2")))
+                            tree_item.setForeground(3, QtGui.QBrush(QtGui.QColor("#2778A2")))
                             self.tree_captures.addTopLevelItem(tree_item)
-                            self.add_tree_thumbnail(tree_item, tc_ms)
                     except Exception:
                         pass
 
@@ -4190,11 +4191,12 @@ class EvenementsController:
                 value = evt.get("title", "").replace("Pic: ", "")
                 comment = evt.get("comment", "")
                 tree_item = QtWidgets.QTreeWidgetItem(
-                    [start_str, end_str, category, value, comment, ""]
+                    [start_str, end_str, category, value, comment]
                 )
                 tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
+                zone = evt.get("zone", 0)
+                tree_item.setForeground(3, QtGui.QBrush(self._zone_color(zone)))
                 self.tree_captures.addTopLevelItem(tree_item)
-                self.add_tree_thumbnail(tree_item, evt["start"])
                 self.save_event_to_json(evt, entry.get("display_type", ""))
             finally:
                 self._undo_in_progress = False
@@ -4265,26 +4267,8 @@ class EvenementsController:
     # --- Thumbnails ---
 
     def add_tree_thumbnail(self, tree_item: QtWidgets.QTreeWidgetItem, timestamp_ms: int):
-        """Insère une miniature placeholder et lance l'extraction asynchrone."""
-        _placeholder = (
-            "background-color: #0c141c; margin: 3px; border: 1px solid #2a4057;"
-            " border-radius: 4px; color: #4a6478; font-size: 10px; font-weight: bold;"
-        )
-        lbl = QtWidgets.QLabel("…")
-        lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        lbl.setStyleSheet(_placeholder)
-        self.tree_captures.setItemWidget(tree_item, 5, lbl)
-
-        if not self.current_video_path or not os.path.exists(self.current_video_path):
-            lbl.setText("—")
-            return
-
-        if not hasattr(self, '_thumb_queue'):
-            self._thumb_queue = []
-        self._thumb_queue.append((lbl, self.current_video_path, timestamp_ms / 1000.0))
-
-        if not getattr(self, '_thumb_bulkload', False):
-            self._start_thumb_loader()
+        """Miniature désactivée — colonne Aperçu supprimée."""
+        pass
 
     def _start_thumb_loader(self):
         """Démarre le chargement asynchrone des miniatures en attente."""

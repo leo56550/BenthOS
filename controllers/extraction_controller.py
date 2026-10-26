@@ -78,6 +78,7 @@ class ExtractionController:
             else:
                 self.show_no_campaign_message()
             self._bar_delegate = VideoBarDelegate(self.tree_videos_2)
+            self._bar_delegate.show_time_info = False
             self.tree_videos_2.setItemDelegateForColumn(0, self._bar_delegate)
 
         self.video_player.btn_ardoise.setVisible(False)
@@ -86,7 +87,7 @@ class ExtractionController:
             self._fill_param_container()
 
         if self.tree_segment_capture_container:
-            self.show_no_cap_seg_message()
+            self.tree_segment_capture_container.setVisible(False)
 
         self.video_player.timeline.markersChanged.connect(self.on_timeline_markers_moved)
         self.video_player.timeline.eventSelected.connect(self._seek_on_event_select)

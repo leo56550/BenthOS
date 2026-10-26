@@ -39,6 +39,8 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
         # Désactivable sur les pages au panneau étroit (ex. Événements) où "Taille"
         # n'aurait de toute façon jamais la place de s'afficher utilement.
         self.show_size = True
+        # Désactivable sur Extraction : seul le codestation suffit, pas besoin de heure/durée.
+        self.show_time_info = True
         # Résultats ArUco : {video_path: {"score": int, ...} | None}
         # None signifie « scanné mais non détecté », clé absente = « pas encore scanné »
         self._aruco_results: dict = {}
@@ -280,9 +282,9 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
         _WARNING_COLOR = QtGui.QColor("#FF3B30")  # rouge vif : vidéo courte (<9 min) ET légère (<500 Mo)
 
         segments = []
-        if station_time:
+        if station_time and self.show_time_info:
             segments.append((self.translate(f"Heure : {station_time}", f"Time: {station_time}"), _NORMAL_COLOR))
-        if duration:
+        if duration and self.show_time_info:
             segments.append((self.translate(f"Durée : {duration}", f"Duration: {duration}"),
                               _WARNING_COLOR if is_short_or_light else _NORMAL_COLOR))
         if size_text and self.show_size:

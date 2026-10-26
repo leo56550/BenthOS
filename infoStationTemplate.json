@@ -937,6 +937,7 @@
           "mammal",
           "crustacean",
           "cephalopod",
+          "echinoderm",
           "turtle",
           "bird",
           "other"
@@ -944,8 +945,9 @@
         "authorized_values_fr": [
           "poisson",
           "mammifère",
-          "crustacean",
-          "cephalopod",
+          "crustacé",
+          "céphalopode",
+          "échinoderme",
           "tortue",
           "oiseau",
           "autre"

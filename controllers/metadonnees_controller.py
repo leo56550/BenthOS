@@ -663,13 +663,9 @@ class MetadonneesController:
         tb_row.addWidget(lbl_title)
 
         self.lbl_video_count = QtWidgets.QLabel("—")
-        self.lbl_video_count.setStyleSheet(
-            "color: #2778A2; font-size: 10px; border: none; font-family: 'Segoe UI', sans-serif;")
+        self.lbl_video_count.setVisible(False)
         self.lbl_trash_count = QtWidgets.QLabel("—")
-        self.lbl_trash_count.setStyleSheet(
-            "color: #D94F38; font-size: 10px; border: none; font-family: 'Segoe UI', sans-serif;")
-        tb_row.addWidget(self.lbl_video_count)
-        tb_row.addWidget(self.lbl_trash_count)
+        self.lbl_trash_count.setVisible(False)
 
         _btn_style_fill = (
             "QPushButton{background:#3a2a1a;color:#e8c080;border:1px solid #8a5a2a;"

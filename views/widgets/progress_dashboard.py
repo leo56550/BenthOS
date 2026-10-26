@@ -419,24 +419,32 @@ class _DonutBiColor(_DonutBase):
         self._paint_arc(p, rect,  90.0,               -kept_drawn,    self._C_KEPT)
         self._paint_arc(p, rect,  90.0 - kept_drawn,  -trashed_drawn, self._C_TRASHED)
 
-        # Centre : % gardées (métrique principale)
-        pct = int(self._kept / total * 100) if total > 0 else 0
-        cy  = top + _DS / 2.0
+        cy = top + _DS / 2.0
 
-        p.setFont(QtGui.QFont("Segoe UI", 19, QtGui.QFont.Weight.Bold))
+        # Centre : nb gardées (grand, vert)
+        p.setFont(QtGui.QFont("Segoe UI", 22, QtGui.QFont.Weight.Bold))
         p.setPen(self._C_KEPT)
-        p.drawText(QtCore.QRectF(cx - _DS/2, cy - 23, _DS, 26),
-                   QtCore.Qt.AlignmentFlag.AlignCenter, f"{pct}%")
+        p.drawText(QtCore.QRectF(cx - _DS/2, cy - 30, _DS, 28),
+                   QtCore.Qt.AlignmentFlag.AlignCenter, str(self._kept))
 
-        # Sous-ligne : kept · trashed en couleur
+        # Sous-ligne : nb jetées (rouge)
+        p.setFont(QtGui.QFont("Segoe UI", 12, QtGui.QFont.Weight.Bold))
+        p.setPen(self._C_TRASHED)
+        p.drawText(QtCore.QRectF(cx - _DS/2, cy + 2, _DS, 20),
+                   QtCore.Qt.AlignmentFlag.AlignCenter, str(self._trashed))
+
+        # Légende en dessous
         frag = QtGui.QFont("Segoe UI", 7)
         p.setFont(frag)
-        label = f"{self._kept} gard.  ·  {self._trashed} jet."
-        p.setPen(QtGui.QColor("#2e4a5e"))
-        p.drawText(QtCore.QRectF(cx - _DS/2, cy + 5, _DS, 14),
-                   QtCore.Qt.AlignmentFlag.AlignCenter, label)
+        y_leg = top + _DS + 6
+        p.setPen(self._C_KEPT)
+        p.drawText(QtCore.QRectF(0, y_leg, w, 13),
+                   QtCore.Qt.AlignmentFlag.AlignCenter, f"● Gardées  {self._kept}")
+        p.setPen(self._C_TRASHED)
+        p.drawText(QtCore.QRectF(0, y_leg + 14, w, 13),
+                   QtCore.Qt.AlignmentFlag.AlignCenter, f"● Jetées  {self._trashed}")
 
-        self._paint_title(p, self._title, w, top + _DS + 10)
+        self._paint_title(p, self._title, w, y_leg + 30)
         p.end()
 
 
@@ -775,19 +783,11 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
 
     def _setup_ui(self):
         root = QtWidgets.QVBoxLayout(self)
-        root.setContentsMargins(18, 14, 18, 14)
-        root.setSpacing(8)
+        root.setContentsMargins(8, 8, 8, 8)
+        root.setSpacing(4)
 
-        # En-tête
-        self._title_lbl = QtWidgets.QLabel("Avancement de la campagne")
-        self._title_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self._title_lbl.setStyleSheet(
-            "color: #3a607c; font-size: 9px; font-weight: bold; letter-spacing: 1.8px;")
-        root.addWidget(self._title_lbl)
-
-        # Stack
+        # Stack principal : spinner (0) ou onglets (1)
         self._stack = QtWidgets.QStackedWidget()
-        self._stack.setFixedHeight(182)
         root.addWidget(self._stack)
 
         # Page 0 — spinner
@@ -802,33 +802,47 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
         sp.addWidget(lbl)
         self._stack.addWidget(spinner_page)
 
-        # Page 1 — donuts
-        donuts_page = QtWidgets.QWidget()
-        dl = QtWidgets.QHBoxLayout(donuts_page)
-        dl.setContentsMargins(0, 0, 0, 0)
-        dl.setSpacing(0)
+        # Page 1 — onglets, un donut par onglet
+        self._tabs = QtWidgets.QTabWidget()
+        self._tabs.setStyleSheet("""
+            QTabWidget::pane { border: none; background: transparent; }
+            QTabBar::tab {
+                background: #0d1825; color: #3a607c;
+                padding: 4px 10px; font-size: 9px; font-weight: bold;
+                letter-spacing: 1.2px; border: none;
+                border-bottom: 2px solid transparent;
+            }
+            QTabBar::tab:selected { color: #7ec8e3; border-bottom: 2px solid #2778a2; }
+            QTabBar::tab:hover    { color: #a0d0e8; }
+        """)
 
-        self._card_kept    = _DonutBiColor("Gardées / Jetées")
+        self._card_kept    = _DonutBiColor("Qualification")
         self._card_ardoise = _DonutCard("Validation", "#fbbf24")
         self._card_meta    = _DonutMetaSplit("Métadonnées")
-        self._card_derush  = _DonutDerushSplit("Dérushé")
-        self._card_analyse = _DonutCard("Analyse", "#34d399")
+        self._card_derush  = _DonutDerushSplit("Évènements")
+        self._card_habitat = _DonutCard("Habitat", "#34d399")
 
         self._card_ardoise.double_clicked.connect(self._show_expl_popup)
         self._card_ardoise.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self._card_ardoise.setToolTip(
             "Double-cliquer pour voir la répartition par statut d'exploitabilité")
-        self._card_analyse.setToolTip(
-            "Vidéos avec exploitabilité 'oui' ou 'habitat'")
 
-        cards = (self._card_kept, self._card_ardoise,
-                 self._card_meta, self._card_derush, self._card_analyse)
-        for i, card in enumerate(cards):
-            dl.addWidget(card, 1)
-            if i < len(cards) - 1:
-                dl.addWidget(_VSep())
+        tab_defs = [
+            ("QUALIFICATION", self._card_kept),
+            ("VALIDATION",    self._card_ardoise),
+            ("MÉTADONNÉES",   self._card_meta),
+            ("ÉVÈNEMENTS",    self._card_derush),
+            ("HABITAT",       self._card_habitat),
+        ]
+        for tab_name, card in tab_defs:
+            wrapper = QtWidgets.QWidget()
+            wl = QtWidgets.QVBoxLayout(wrapper)
+            wl.setContentsMargins(0, 4, 0, 0)
+            wl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            wl.addWidget(card, 0, QtCore.Qt.AlignmentFlag.AlignCenter)
+            self._tabs.addTab(wrapper, tab_name)
 
-        self._stack.addWidget(donuts_page)
+        self._stack.addWidget(self._tabs)
 
     def refresh(self, video_paths: list, trash_count: int):
         if self._worker and self._worker.isRunning():
@@ -844,16 +858,16 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
         self._spinner.stop()
         self._expl_breakdown = stats.get("expl_breakdown", {})
         total = stats["total"]
+        kept = total - stats["trashed"]
 
-        # Entrée en cascade
-        self._card_kept.set_data(total, stats["trashed"],                              delay_ms=0)
+        self._card_kept.set_data(kept, stats["trashed"],                               delay_ms=0)
         self._card_ardoise.set_data(stats["ardoise"],   total,                         delay_ms=160)
         self._card_meta.set_data(
             stats["essential_filled"], max(stats["essential_total"], 1),
             stats["optional_filled"],  max(stats["optional_total"],  1),
             delay_ms=320)
         self._card_derush.set_data(stats["derushees"], stats["annotations"], total,    delay_ms=480)
-        self._card_analyse.set_data(stats.get("analyse_eligible", 0), max(total, 1),   delay_ms=640)
+        self._card_habitat.set_data(0, max(total, 1),                                  delay_ms=640)
 
         self._stack.setCurrentIndex(1)
 
@@ -863,27 +877,32 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
 
     def set_language(self, lang: str):
         if lang == 'en':
-            self._card_kept._title    = "Kept / Trashed"
+            self._card_kept._title    = "Qualification"
             self._card_ardoise._title = "Validation"
             self._card_ardoise.setToolTip("Double-click to see breakdown by exploitability status")
             self._card_meta._title    = "Metadata"
-            self._card_derush._title  = "Derush"
-            self._title_lbl.setText("Campaign progress")
+            self._card_derush._title  = "Events"
+            self._card_habitat._title = "Habitat"
+            self._tabs.setTabText(0, "QUALIFICATION")
+            self._tabs.setTabText(1, "VALIDATION")
+            self._tabs.setTabText(2, "METADATA")
+            self._tabs.setTabText(3, "EVENTS")
+            self._tabs.setTabText(4, "HABITAT")
         else:
-            self._card_kept._title    = "Gardées / Jetées"
+            self._card_kept._title    = "Qualification"
             self._card_ardoise._title = "Validation"
             self._card_ardoise.setToolTip(
                 "Double-cliquer pour voir la répartition par statut d'exploitabilité")
             self._card_meta._title    = "Métadonnées"
-            self._card_derush._title  = "Dérushé"
-            self._title_lbl.setText("Avancement de la campagne")
-        if lang == 'en':
-            self._card_analyse._title = "Analysis"
-        else:
-            self._card_analyse._title = "Analyse"
-        self._card_meta.update()
+            self._card_derush._title  = "Évènements"
+            self._card_habitat._title = "Habitat"
+            self._tabs.setTabText(0, "QUALIFICATION")
+            self._tabs.setTabText(1, "VALIDATION")
+            self._tabs.setTabText(2, "MÉTADONNÉES")
+            self._tabs.setTabText(3, "ÉVÈNEMENTS")
+            self._tabs.setTabText(4, "HABITAT")
         for card in (self._card_kept, self._card_ardoise,
-                     self._card_meta, self._card_derush, self._card_analyse):
+                     self._card_meta, self._card_derush, self._card_habitat):
             card.update()
 
 

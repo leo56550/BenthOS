@@ -470,6 +470,7 @@ class AppController(QtCore.QObject):
         if vp:
             self.qualif_ctrl.refresh_completion_color_for_video(vp)
             self._refresh_point_name_for_video(vp)
+        self._refresh_dashboard()
 
     def _on_map_marker_coords_updated(self, video_name: str, lat: float, lon: float):
         """Appelé quand un marqueur est déplacé sans _temp.json disponible (mode historique).
@@ -1615,6 +1616,7 @@ class AppController(QtCore.QObject):
         w.actionEvenements.setEnabled(not locked)
         w.actionMetadonnees.setEnabled(not locked)
         w.actionA_propos.setEnabled(not locked)
+        w.actionAnalyseHabitat.setEnabled(not locked)
 
     def _release_file_in_all_players(self, path: str):
         """Libère le verrou Windows sur un fichier vidéo dans tous les players embarqués."""
@@ -1636,8 +1638,7 @@ class AppController(QtCore.QObject):
     def switch_page(self, page):
         """Bascule vers page si le workflow le permet, arrête les lecteurs de la page courante."""
         w = self.window
-        free_pages = [w.page_accueil, w.page_apropos, w.page_extraction, w.page_metadonnees,
-                      w.page_analyse_habitat]
+        free_pages = [w.page_accueil, w.page_apropos]
 
         self._stop_background_players(page)
 
