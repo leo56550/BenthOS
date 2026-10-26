@@ -453,7 +453,7 @@ class AnalyseHabitatController(QtCore.QObject):
     def _build_left_panel(self) -> QtWidgets.QWidget:
         panel = QtWidgets.QWidget()
         panel.setMinimumWidth(220)
-        panel.setMaximumWidth(340)
+        panel.setMaximumWidth(360)
         panel.setStyleSheet("background:#111f2e;")
         vlay = QtWidgets.QVBoxLayout(panel)
         vlay.setContentsMargins(0, 0, 0, 0)
@@ -472,22 +472,111 @@ class AnalyseHabitatController(QtCore.QObject):
         self._list.setStyleSheet(
             "QListWidget { background:#111f2e; color:#a0c8e0; border:none;"
             " font-family:'Segoe UI',sans-serif; font-size:11px; }"
-            "QListWidget::item { padding:6px 12px; border-bottom:1px solid #1a2e40; }"
+            "QListWidget::item { padding:5px 10px; border-bottom:1px solid #1a2e40; }"
             "QListWidget::item:selected { background:#20415d; color:#ffffff; }"
             "QListWidget::item:hover { background:#162438; }"
         )
         self._list.currentRowChanged.connect(self._on_row_changed)
-        vlay.addWidget(self._list)
+        vlay.addWidget(self._list, 1)
+
+        # ── Panneau Analyse vidéo replié par défaut ────────────────────────
+        vlay.addWidget(self._build_analysis_panel_compact())
         return panel
+
+    def _build_analysis_panel_compact(self) -> QtWidgets.QWidget:
+        """Panneau 'Analyse vidéo' compact placé en bas du panneau gauche."""
+        outer = QtWidgets.QWidget()
+        outer.setStyleSheet("background:#0d1825; border-top:1px solid #1e3448;")
+        outer_lay = QtWidgets.QVBoxLayout(outer)
+        outer_lay.setContentsMargins(0, 0, 0, 0)
+        outer_lay.setSpacing(0)
+
+        # Bouton repliable
+        self._av_toggle_btn = QtWidgets.QToolButton()
+        self._av_toggle_btn.setText("  ▶  Analyse vidéo")
+        self._av_toggle_btn.setCheckable(True)
+        self._av_toggle_btn.setChecked(False)
+        self._av_toggle_btn.setToolButtonStyle(
+            QtCore.Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self._av_toggle_btn.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed)
+        self._av_toggle_btn.setStyleSheet(
+            "QToolButton { background:#0d1825; color:#7ec8e3;"
+            " font-weight:bold; font-size:11px;"
+            " font-family:'Segoe UI',sans-serif;"
+            " border:none; padding:7px 12px; text-align:left; }"
+            "QToolButton:checked { color:#aee8ff; }")
+        outer_lay.addWidget(self._av_toggle_btn)
+
+        # Contenu (caché par défaut)
+        self._av_panel_content = QtWidgets.QWidget()
+        self._av_panel_content.setStyleSheet("background:#0d1825;")
+        self._av_panel_content.setVisible(False)
+        content_lay = QtWidgets.QVBoxLayout(self._av_panel_content)
+        content_lay.setContentsMargins(10, 4, 10, 10)
+        content_lay.setSpacing(5)
+
+        _lbl_s = ("color:#7ec8e3; font-size:11px;"
+                  " font-family:'Segoe UI',sans-serif; background:transparent;")
+        _inp_s = ("QLineEdit { background:#162433; color:#F2BFB4;"
+                  " border:1px solid #2a4057; border-radius:4px;"
+                  " padding:3px 6px; font-size:11px; }"
+                  "QLineEdit:focus { border-color:#2778a2; }")
+
+        def _lbl(text):
+            w = QtWidgets.QLabel(text)
+            w.setStyleSheet(_lbl_s)
+            return w
+
+        def _inp(key, placeholder=""):
+            w = QtWidgets.QLineEdit()
+            w.setPlaceholderText(placeholder)
+            w.setStyleSheet(_inp_s)
+            w.setMinimumHeight(24)
+            w.editingFinished.connect(lambda k=key, wi=w: self._save_av_field(k, wi.text()))
+            self._av_widgets[key] = w
+            return w
+
+        rows = [
+            ("Analyseur poisson",     "fish_annotator",         "Jean Dupont"),
+            ("Analyseur habitat",     "habitat_annotator",      "Marie Martin"),
+            ("Substrat",              "substrat",               "Sable, Roche…"),
+            ("Visibilité (m)",        "estimated_visibility",   "ex : 5"),
+        ]
+        for label, key, ph in rows:
+            content_lay.addWidget(_lbl(label))
+            content_lay.addWidget(_inp(key, ph))
+
+        # Distance min/max
+        content_lay.addWidget(_lbl("Distance analysable (m)"))
+        dist_row = QtWidgets.QWidget()
+        dist_row.setStyleSheet("background:transparent;")
+        dist_lay = QtWidgets.QHBoxLayout(dist_row)
+        dist_lay.setContentsMargins(0, 0, 0, 0)
+        dist_lay.setSpacing(6)
+        dist_lay.addWidget(_lbl("min"))
+        dist_lay.addWidget(_inp("distance_min", "0"))
+        dist_lay.addWidget(_lbl("max"))
+        dist_lay.addWidget(_inp("distance_max", "5"))
+        dist_lay.addStretch()
+        content_lay.addWidget(dist_row)
+
+        outer_lay.addWidget(self._av_panel_content)
+
+        def _toggle(checked):
+            self._av_panel_content.setVisible(checked)
+            self._av_toggle_btn.setText(
+                f"  {'▼' if checked else '▶'}  Analyse vidéo")
+
+        self._av_toggle_btn.toggled.connect(_toggle)
+        return outer
 
     def _build_right_panel(self) -> QtWidgets.QWidget:
         panel = QtWidgets.QWidget()
         vlay = QtWidgets.QVBoxLayout(panel)
         vlay.setContentsMargins(0, 0, 0, 0)
         vlay.setSpacing(0)
-
-        # Panneau "Analyse vidéo" fixe, partagé entre toutes les vidéos
-        vlay.addWidget(self._build_analysis_panel())
 
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
@@ -1010,8 +1099,11 @@ class AnalyseHabitatController(QtCore.QObject):
             code = _get_codestation(vpath_str)
             display = code or item.text() or "—"
             list_item = QtWidgets.QListWidgetItem(display)
-            # Stocker le chemin réel pour _on_row_changed
             list_item.setData(QtCore.Qt.ItemDataRole.UserRole, vpath_str)
+            if code:
+                list_item.setForeground(QtGui.QBrush(QtGui.QColor("#4ade80")))  # vert
+            else:
+                list_item.setForeground(QtGui.QBrush(QtGui.QColor("#fb923c")))  # orange
             self._list.addItem(list_item)
         self._list.blockSignals(False)
 

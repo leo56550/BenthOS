@@ -471,6 +471,7 @@ class AppController(QtCore.QObject):
             self.qualif_ctrl.refresh_completion_color_for_video(vp)
             self._refresh_point_name_for_video(vp)
         self._refresh_dashboard()
+        self.analyse_habitat_ctrl._rebuild_list()
 
     def _on_map_marker_coords_updated(self, video_name: str, lat: float, lon: float):
         """Appelé quand un marqueur est déplacé sans _temp.json disponible (mode historique).
@@ -805,6 +806,7 @@ class AppController(QtCore.QObject):
         self.metadonnees_ctrl._rebuild_ft_table()
         self.qualif_ctrl.refresh_map_marker_colors()
         self.evenements_ctrl.proxy_model.invalidateFilter()
+        self.analyse_habitat_ctrl._rebuild_list()
 
     def _on_events_changed(self, *_):
         """Callback déclenché quand des événements sont ajoutés/supprimés/modifiés."""
