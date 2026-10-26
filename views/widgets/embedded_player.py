@@ -763,11 +763,22 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             return img
 
     def _grab_frame_opencv(self) -> np.ndarray | None:
-        """Lit la frame courante via OpenCV (uniquement en pause, pour les corrections)."""
+        """Lit la frame courante via OpenCV (uniquement en pause, pour les corrections).
+
+        On utilise CAP_PROP_POS_FRAMES (numéro de frame exact) plutôt que
+        CAP_PROP_POS_MSEC : ce dernier seek au keyframe le plus proche, ce qui
+        peut renvoyer une frame différente de celle affichée par le lecteur Qt
+        et provoquer un saut visuel au moment de l'activation HE/DH.
+        """
         if not self.current_video_path or not os.path.exists(self.current_video_path):
             return None
         cap = cv2.VideoCapture(self.current_video_path)
-        cap.set(cv2.CAP_PROP_POS_MSEC, self.player.position())
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        if fps <= 0:
+            fps = 25.0
+        pos_ms = self.player.position()
+        frame_number = round(pos_ms * fps / 1000.0)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
         ret, frame = cap.read()
         cap.release()
         return frame if ret else None
