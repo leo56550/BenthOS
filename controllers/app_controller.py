@@ -1638,7 +1638,7 @@ class AppController(QtCore.QObject):
     def switch_page(self, page):
         """Bascule vers page si le workflow le permet, arrête les lecteurs de la page courante."""
         w = self.window
-        free_pages = [w.page_accueil, w.page_apropos]
+        free_pages = [w.page_accueil, w.page_apropos, w.page_extraction, w.page_metadonnees]
 
         self._stop_background_players(page)
 

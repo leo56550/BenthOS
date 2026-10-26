@@ -804,6 +804,25 @@ class EvenementsController:
             event_dict["_event_uid"] = self._generate_event_uid()
         return event_dict["_event_uid"]
 
+    @staticmethod
+    def _load_template_authorized_values() -> dict:
+        """Charge les authorized_values depuis infoStationTemplate.json (source de vérité)."""
+        tpl_path = os.path.join(os.path.dirname(__file__), '..', 'infoStationTemplate.json')
+        try:
+            with open(tpl_path, 'r', encoding='utf-8') as f:
+                tpl = json.load(f)
+            result = {}
+            for key, val in tpl.get("video_observation", {}).items():
+                if key.startswith("events_") and isinstance(val, list) and val:
+                    first = val[0]
+                    result[key] = {
+                        "fr": first.get("authorized_values_fr") or [],
+                        "en": first.get("authorized_values_en") or [],
+                    }
+            return result
+        except Exception:
+            return {}
+
     def _build_event_categories_from_json(self, data: dict):
         """Peuple event_dictionary et les tables de correspondance label↔clé depuis le JSON vidéo."""
         self.event_category_labels = {}
@@ -814,6 +833,8 @@ class EvenementsController:
         video_obs = data.get("video_observation", {})
         if not isinstance(video_obs, dict):
             return
+        # Source de vérité pour les valeurs autorisées : le template (pas le _temp.json)
+        tpl_values = self._load_template_authorized_values()
         for json_key_raw, value in video_obs.items():
             if not isinstance(json_key_raw, str) or not json_key_raw.startswith("events_"):
                 continue
@@ -826,11 +847,15 @@ class EvenementsController:
                 continue
             _RENAME = {"tableau blanc": "ardoise", "whiteboard": "slate"}
             _ARDOISE_VALS = {"ardoise", "slate"}
+            # Priorité : template → sinon fallback sur le _temp.json
+            tpl_entry = tpl_values.get(json_key, {})
             if self.current_language == 'en':
-                authorized_values = (first_object.get("authorized_values_en")
+                authorized_values = (tpl_entry.get("en")
+                                     or first_object.get("authorized_values_en")
                                      or first_object.get("authorized_values_fr") or [])
             else:
-                authorized_values = (first_object.get("authorized_values_fr")
+                authorized_values = (tpl_entry.get("fr")
+                                     or first_object.get("authorized_values_fr")
                                      or first_object.get("authorized_values_en") or [])
             # events_motor n'a pas de authorized_values dans le template : valeurs fixes
             if json_key == "events_motor" and not authorized_values:
