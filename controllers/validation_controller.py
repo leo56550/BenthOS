@@ -139,7 +139,13 @@ class ValidationController:
             layout = self.player_container.layout() or QtWidgets.QVBoxLayout(self.player_container)
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(0)
-            self.player = EmbeddedVideoPlayer(parent=self.player_container)
+            _zones = [
+                {"label": "Deployment",     "color": QtGui.QColor(39, 120, 162, 180)},
+                {"label": "Fauna / Animal", "color": QtGui.QColor(217, 79,  56, 180)},
+                {"label": "Images",         "color": QtGui.QColor(200, 168,   0, 180)},
+            ]
+            self.player = EmbeddedVideoPlayer(parent=self.player_container, zone_definitions=_zones)
+            self.player.timeline.read_only = True
             layout.addWidget(self.player)
             self.player_container.setSizePolicy(
                 QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding

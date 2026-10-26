@@ -51,7 +51,13 @@ class ExtractionController:
             self.tree_segment_capture_container.setIconSize(QtCore.QSize(64, 48))
 
         self.current_json_path = None
-        self.video_player = EmbeddedVideoPlayer(zone_definitions=None)
+        _zones = [
+            {"label": "Deployment",     "color": QtGui.QColor(39, 120, 162, 180)},
+            {"label": "Fauna / Animal", "color": QtGui.QColor(217, 79,  56, 180)},
+            {"label": "Images",         "color": QtGui.QColor(200, 168,   0, 180)},
+        ]
+        self.video_player = EmbeddedVideoPlayer(zone_definitions=_zones)
+        self.video_player.timeline.read_only = True
         self._setup_ui()
 
     def _setup_ui(self):
@@ -225,11 +231,13 @@ class ExtractionController:
                         event_dict["_event_uid"] = val["event_id"]
                     timeline_events.append(event_dict)
                 # Autres événements JSON (animaux, images)
+                _json_key_zone = {"events_animal": 1, "events_interesting_images": 2}
                 for json_key in ["events_animal", "events_interesting_images"]:
                     raw = video_obs.get(json_key)
                     if not isinstance(raw, list) or not raw:
                         continue
                     values_list = raw[0].get("values", []) if isinstance(raw[0], dict) else []
+                    zone = _json_key_zone.get(json_key, 0)
                     for val in values_list:
                         frame_start = val.get("frame_number_start", 0)
                         frame_end = val.get("frame_number_end", 0)
@@ -240,7 +248,7 @@ class ExtractionController:
                         event_dict = {
                             "start": start_ms, "end": end_ms,
                             "title": f"Pic: {value}" if is_pic else value,
-                            "type": "custom_event", "zone": 0, "_json_key": json_key,
+                            "type": "custom_event", "zone": zone, "_json_key": json_key,
                         }
                         if val.get("event_id"):
                             event_dict["_event_uid"] = val["event_id"]
@@ -314,11 +322,13 @@ class ExtractionController:
                             event_dict["_event_uid"] = val["event_id"]
                         timeline_events.append(event_dict)
                     # Autres événements JSON (animaux, images)
+                    _json_key_zone = {"events_animal": 1, "events_interesting_images": 2}
                     for json_key in ["events_animal", "events_interesting_images"]:
                         raw = video_obs.get(json_key)
                         if not isinstance(raw, list) or not raw:
                             continue
                         values_list = raw[0].get("values", []) if isinstance(raw[0], dict) else []
+                        zone = _json_key_zone.get(json_key, 0)
                         for val in values_list:
                             frame_start = val.get("frame_number_start", 0)
                             frame_end = val.get("frame_number_end", 0)
@@ -329,7 +339,7 @@ class ExtractionController:
                             event_dict = {
                                 "start": start_ms, "end": end_ms,
                                 "title": f"Pic: {value}" if is_pic else value,
-                                "type": "custom_event", "zone": 0, "_json_key": json_key,
+                                "type": "custom_event", "zone": zone, "_json_key": json_key,
                             }
                             if val.get("event_id"):
                                 event_dict["_event_uid"] = val["event_id"]

@@ -44,6 +44,9 @@ class VideoTimeline(QtWidgets.QWidget):
         self.drag_marker_mouse_x = 0.0
         self.drag_marker_start_ms = 0
 
+        # Mode lecture seule : navigation possible, édition (Ctrl+drag) désactivée
+        self.read_only = False
+
         self.rects_evenements = {}
 
         self._depth_profile: list = []   # [(time_ms, depth_m), ...]
@@ -665,7 +668,7 @@ class VideoTimeline(QtWidgets.QWidget):
             self.active_resize_marker = "end"
             return
 
-        ctrl = bool(event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier)
+        ctrl = bool(event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier) and not self.read_only
 
         MIN_HIT_W = 10  # largeur minimale de clic pour les rects courts
         for idx, (evt, rect) in self.rects_evenements.items():
