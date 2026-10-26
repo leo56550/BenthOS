@@ -532,8 +532,8 @@ class EvenementsController:
     def _get_tree_headers(self):
         """Retourne les en-têtes de l'arbre événements selon la langue active."""
         if self.current_language == 'en':
-            return ["Start / Capture time", "End", "Category", "Type", "Comment"]
-        return ["Début / Heure Capture", "Fin", "Catégorie", "Type", "Commentaire"]
+            return ["Start", "End", "", "", "Comment"]
+        return ["Début", "Fin", "", "", "Commentaire"]
 
     def set_language(self, language: str):
         """Met à jour la langue et rafraîchit les en-têtes de l'arbre."""
