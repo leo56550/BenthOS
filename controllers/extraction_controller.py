@@ -85,6 +85,7 @@ class ExtractionController:
                 self.show_no_campaign_message()
             self._bar_delegate = VideoBarDelegate(self.tree_videos_2)
             self._bar_delegate.show_time_info = False
+            self._bar_delegate.show_size = False
             self.tree_videos_2.setItemDelegateForColumn(0, self._bar_delegate)
 
         self.video_player.btn_ardoise.setVisible(False)
