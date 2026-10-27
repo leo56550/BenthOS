@@ -1283,6 +1283,21 @@ class AnalyseHabitatController(QtCore.QObject):
             "color:#3a5568; font-size:14px; font-family:'Segoe UI',sans-serif;")
         left_vlay.addWidget(self._no_sel_label)
 
+        self._lock_label = QtWidgets.QLabel(
+            "⚠  Atterrissage + Décollage\n"
+            "ou\n"
+            "Début + Fin annotation\n\n"
+            "requis dans la page Évènements\n"
+            "avant de saisir l'analyse habitat."
+        )
+        self._lock_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self._lock_label.setStyleSheet(
+            "color:#f0a030; font-size:13px; font-family:'Segoe UI',sans-serif;"
+            " line-height:160%;")
+        self._lock_label.setWordWrap(True)
+        self._lock_label.setVisible(False)
+        left_vlay.addWidget(self._lock_label)
+
         hlay.addWidget(left_col, 1)  # stretch = 1 → prend toute la largeur disponible
 
         # ── Séparateur vertical ──
@@ -1344,6 +1359,7 @@ class AnalyseHabitatController(QtCore.QObject):
 
         self._sector_btn_list = []
         self._sector_photo_labels = []
+        self._sector_num_labels: list[QtWidgets.QLabel] = []
 
         for i in range(6):
             cell = QtWidgets.QFrame()
@@ -1370,6 +1386,7 @@ class AnalyseHabitatController(QtCore.QObject):
                 " font-family:'Segoe UI',sans-serif;"
                 " background:transparent; border:none;")
             cell_lay.addWidget(lbl)
+            self._sector_num_labels.append(lbl)
 
             cell.mousePressEvent = lambda e, idx=i: self._on_sector_clicked(idx)
             self._sector_btn_list.append(cell)
@@ -1455,17 +1472,34 @@ class AnalyseHabitatController(QtCore.QObject):
 
     # ── Gestion secteur courant ───────────────────────────────────────────────
 
+    def _initial_ms_for_sector(self, idx: int) -> int | None:
+        """Retourne le ms de la frame initiale : atterrissage pour S1, début du clip sinon."""
+        bounds = self._sector_bounds[idx] if idx < len(self._sector_bounds) else None
+        if bounds is None:
+            return None
+        clip_start = bounds[0]
+        if self._landing_ms is not None:
+            # On prend la position d'atterrissage si elle est dans le clip courant
+            lms = self._landing_ms
+            if clip_start <= lms <= bounds[1]:
+                return lms
+            # Si le landing est avant ce clip, on prend le début du clip
+            if lms < clip_start:
+                return clip_start
+        # Fallback : milieu du clip
+        mid_ts = self._sector_mid_ts[idx] if idx < len(self._sector_mid_ts) else None
+        return int(mid_ts * 1000) if mid_ts is not None else None
+
     def _switch_sector(self, idx: int):
         """Change le secteur affiché dans le viewer et recharge le formulaire."""
         self._current_sector_idx = idx
         self._highlight_sector(idx)
         if self._current_video and self._sector_viewer is not None:
             bounds = self._sector_bounds[idx] if idx < len(self._sector_bounds) else None
-            mid_ts = self._sector_mid_ts[idx] if idx < len(self._sector_mid_ts) else None
             if bounds:
                 self._sector_viewer.load_sector(
                     self._current_video, bounds[0], bounds[1],
-                    mid_ms=int(mid_ts * 1000) if mid_ts is not None else None,
+                    mid_ms=self._initial_ms_for_sector(idx),
                 )
             else:
                 pixmap = self._sector_pixmaps[idx] if idx < len(self._sector_pixmaps) else None
@@ -1503,6 +1537,7 @@ class AnalyseHabitatController(QtCore.QObject):
         finally:
             self._updating = False
         self._sv_refresh_totals()
+        self._sv_update_badges()
 
     def _sv_on_changed(self, field_key: str, value):
         if self._updating or not self._current_video:
@@ -1511,6 +1546,7 @@ class AnalyseHabitatController(QtCore.QObject):
         row = d.setdefault(field_key, [0] * 6)
         row[self._current_sector_idx] = value
         self._sv_refresh_totals()
+        self._sv_update_badges()
 
     def _sv_on_recouvrement_changed(self):
         if self._updating or not self._current_video or self._sv_recouvrement is None:
@@ -1521,6 +1557,37 @@ class AnalyseHabitatController(QtCore.QObject):
             row = d.setdefault(k, [0] * 6)
             row[self._current_sector_idx] = cascade_data.get(k, 0)
         self._sv_refresh_totals()
+        self._sv_update_badges()
+
+    def _sv_sector_is_complete(self, sector_idx: int) -> bool:
+        """Retourne True si topo, complexité et recouvrement (=100%) sont renseignés."""
+        if not self._current_video:
+            return False
+        d = self._data.get(self._current_video, {})
+        s = sector_idx
+        topo = (d.get("topographie") or [0] * 6)[s]
+        compl = (d.get("complexite") or [0] * 6)[s]
+        if not topo or not compl:
+            return False
+        total_rec = sum(
+            (d.get(k) or [0] * 6)[s]
+            for k, _ in _RECOUVREMENT_TYPES
+        )
+        return total_rec == 100
+
+    def _sv_update_badges(self):
+        """Met à jour la couleur des labels S1-S6 selon la complétion de chaque secteur."""
+        for i, lbl in enumerate(self._sector_num_labels):
+            if self._sv_sector_is_complete(i):
+                lbl.setStyleSheet(
+                    "color:#22c55e; font-weight:bold; font-size:11px;"
+                    " font-family:'Segoe UI',sans-serif;"
+                    " background:transparent; border:none;")
+            else:
+                lbl.setStyleSheet(
+                    "color:#2778a2; font-weight:bold; font-size:11px;"
+                    " font-family:'Segoe UI',sans-serif;"
+                    " background:transparent; border:none;")
 
     def _sv_refresh_totals(self):
         if not self._current_video:
@@ -1667,11 +1734,25 @@ class AnalyseHabitatController(QtCore.QObject):
 
     # ── Rotation moteur → timestamps secteurs ─────────────────────────────────
 
+    @staticmethod
+    def _tc_to_ms(tc: str) -> int | None:
+        """Convertit 'MM:SS' ou 'HH:MM:SS' en millisecondes, None si invalide."""
+        try:
+            parts = [int(p) for p in tc.strip().split(':')]
+            if len(parts) == 2:
+                return (parts[0] * 60 + parts[1]) * 1000
+            if len(parts) == 3:
+                return (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000
+        except (ValueError, AttributeError):
+            pass
+        return None
+
     def _load_rotation_timestamps(self, video_path: str):
         """Extrait les 6 timestamps de milieu de secteur depuis le JSON de la vidéo."""
         self._sector_mid_ts = [None] * 6
         self._sector_bounds = [None] * 6
         self._sector_pixmaps = [None] * 6
+        self._landing_ms: int | None = None  # timecode atterrissage pour cadrage initial
 
         # Réinitialise les thumbnails
         for lbl in self._sector_photo_labels:
@@ -1687,6 +1768,12 @@ class AnalyseHabitatController(QtCore.QObject):
                 return
             with open(json_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
+
+            # Timecode atterrissage → frame initiale de S1
+            vobs = data.get("video_observation", {})
+            landing_tc = str((vobs.get("timecode_landing") or {}).get("value") or "").strip()
+            if landing_tc:
+                self._landing_ms = self._tc_to_ms(landing_tc)
             raw = data.get("video_observation", {}).get("events_motor") or []
 
             events = []
@@ -1803,6 +1890,43 @@ class AnalyseHabitatController(QtCore.QObject):
 
     # ── Navigation ────────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _video_has_bounds(video_path: str) -> bool:
+        """Retourne True si le JSON de la vidéo contient atterrissage+décollage OU début+fin annotation."""
+        try:
+            json_path = _find_json(video_path)
+            if not json_path or not os.path.isfile(json_path):
+                return False
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            vobs = data.get("video_observation", {})
+
+            # Option 1 : timecode_landing + timecode_takeoff
+            landing = str((vobs.get("timecode_landing") or {}).get("value") or "").strip()
+            takeoff = str((vobs.get("timecode_takeoff") or {}).get("value") or "").strip()
+            if landing and takeoff:
+                return True
+
+            # Option 2 : début annotation + fin annotation dans events_motor
+            _ANNOT_START_KW = ("début annotation", "debut annotation",
+                               "annotation start", "debut_analyse", "analysis_start")
+            _ANNOT_END_KW   = ("fin annotation", "annotation end",
+                               "fin_analyse", "analysis_end")
+            has_start = has_end = False
+            for item in (vobs.get("events_motor") or []):
+                if not isinstance(item, dict):
+                    continue
+                val = str(item.get("description_fr") or item.get("value", "")).strip().lower()
+                if not has_start and any(kw in val for kw in _ANNOT_START_KW):
+                    has_start = True
+                if not has_end and any(kw in val for kw in _ANNOT_END_KW):
+                    has_end = True
+                if has_start and has_end:
+                    return True
+        except Exception:
+            pass
+        return False
+
     def _on_row_changed(self, row: int):
         if row < 0:
             self._current_video = None
@@ -1810,16 +1934,27 @@ class AnalyseHabitatController(QtCore.QObject):
             self._sector_viewer.setVisible(False)
             self._scroll.setVisible(False)
             self._no_sel_label.setVisible(True)
+            self._lock_label.setVisible(False)
             return
         list_item = self._list.item(row)
         vpath = list_item.data(QtCore.Qt.ItemDataRole.UserRole) if list_item else None
         if not vpath:
             return
         self._current_video = str(vpath)
+        self._no_sel_label.setVisible(False)
+
+        # Vérification prérequis : atterrissage/décollage ou début/fin annotation
+        if not self._video_has_bounds(self._current_video):
+            self._sector_selector.setVisible(False)
+            self._sector_viewer.setVisible(False)
+            self._scroll.setVisible(False)
+            self._lock_label.setVisible(True)
+            return
+
+        self._lock_label.setVisible(False)
         self._sector_selector.setVisible(True)
         self._sector_viewer.setVisible(True)
         self._scroll.setVisible(True)
-        self._no_sel_label.setVisible(False)
         self._load_av_fields(self._current_video)
         self._load_rotation_timestamps(self._current_video)
         self._start_frame_extraction(self._current_video)
@@ -1829,10 +1964,9 @@ class AnalyseHabitatController(QtCore.QObject):
         self._sv_reload_form()
         bounds = self._sector_bounds[0] if self._sector_bounds else None
         if bounds:
-            mid_ts = self._sector_mid_ts[0]
             self._sector_viewer.load_sector(
                 self._current_video, bounds[0], bounds[1],
-                mid_ms=int(mid_ts * 1000) if mid_ts is not None else None,
+                mid_ms=self._initial_ms_for_sector(0),
             )
         else:
             self._sector_viewer.clear()

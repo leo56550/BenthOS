@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import json; d=json.load\\(open\\('C:/KOSMOS-IHM/infoStationTemplate.json', encoding='utf-8'\\)\\); [print\\(k\\) for k in d if 'annot' in k.lower\\(\\) or 'debut' in k.lower\\(\\) or 'fin' in k.lower\\(\\)]\")",
+      "Bash(python -c ' *)"
+    ]
+  }
+}
