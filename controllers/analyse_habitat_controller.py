@@ -1269,6 +1269,22 @@ class AnalyseHabitatController(QtCore.QObject):
 
         # ── Panneau Analyse vidéo collé sous la liste ─────────────────────
         vlay.addWidget(self._build_analysis_panel_compact())
+
+        # ── Bouton export CSV masque saisie ───────────────────────────────
+        self._btn_export_csv = QtWidgets.QPushButton()
+        self._btn_export_csv.setText(
+            "Générer masque saisie (CSV)" if self._language == 'fr' else "Generate entry template (CSV)"
+        )
+        self._btn_export_csv.setStyleSheet(
+            "QPushButton { background:#0d2a3e; color:#7ec8e3; border:1px solid #2778a2;"
+            " border-radius:4px; font-size:10px; font-family:'Segoe UI',sans-serif;"
+            " padding:5px 10px; margin:6px 8px; }"
+            "QPushButton:hover { background:#1a3a52; }"
+            "QPushButton:pressed { background:#0a1e2d; }"
+        )
+        self._btn_export_csv.clicked.connect(self._export_saisie_csv)
+        vlay.addWidget(self._btn_export_csv)
+
         vlay.addStretch(1)  # espace vide en bas, hors des zones utiles
         return panel
 
@@ -2175,6 +2191,99 @@ class AnalyseHabitatController(QtCore.QObject):
     def set_language(self, language: str):
         self._language = language
         self._retranslate_ui()
+        if hasattr(self, '_btn_export_csv'):
+            self._btn_export_csv.setText(
+                "Générer masque saisie (CSV)" if language == 'fr' else "Generate entry template (CSV)"
+            )
+
+    # ── Export CSV masque saisie ──────────────────────────────────────────────
+
+    def _export_saisie_csv(self):
+        """Génère un CSV avec une ligne par secteur par station, colonnes = tous les champs habitat."""
+        import csv
+
+        if not self._video_model:
+            QtWidgets.QMessageBox.warning(
+                self._page,
+                "Aucune campagne" if self._language == 'fr' else "No campaign",
+                "Aucune campagne chargée." if self._language == 'fr' else "No campaign loaded.",
+            )
+            return
+
+        # Collecte des stations éligibles (oui ou habitat), triées par codestation
+        entries: list[tuple[str, str]] = []
+        for row in range(self._video_model.rowCount()):
+            item = self._video_model.item(row, 0)
+            if not item:
+                continue
+            vpath = str(item.data(QtCore.Qt.ItemDataRole.UserRole) or "")
+            if not vpath:
+                continue
+            expl = _get_exploitability_value(vpath)
+            if expl not in {"oui", "habitat"}:
+                continue
+            code = _get_codestation(vpath) or item.text() or vpath
+            entries.append((code, vpath))
+        entries.sort(key=lambda e: e[0].lower())
+
+        if not entries:
+            QtWidgets.QMessageBox.information(
+                self._page,
+                "Aucune station" if self._language == 'fr' else "No station",
+                "Aucune vidéo exploitable trouvée." if self._language == 'fr' else "No exploitable video found.",
+            )
+            return
+
+        # Colonnes : tous les champs de _SCHEMA sauf les totaux auto-calculés
+        _AUTO_TOTAL = set(_TOTAL_SOURCES.keys())
+        field_keys: list[str] = []
+        field_labels: list[str] = []
+        for _, _, fields in _SCHEMA:
+            for key, label, _ in fields:
+                if key not in _AUTO_TOTAL and key not in field_keys:
+                    field_keys.append(key)
+                    field_labels.append(label if self._language == 'fr' else _EN.get(label, label))
+
+        header = (
+            ["codestation", "secteur"] + field_labels
+            if self._language == 'fr'
+            else ["station", "sector"] + field_labels
+        )
+
+        out_path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self._page,
+            "Enregistrer le masque saisie" if self._language == 'fr' else "Save entry template",
+            "masque_saisie_habitat.csv",
+            "CSV (*.csv)",
+        )
+        if not out_path:
+            return
+
+        try:
+            with open(out_path, 'w', newline='', encoding='utf-8-sig') as fh:
+                writer = csv.writer(fh, delimiter=';')
+                writer.writerow(header)
+                for code, vpath in entries:
+                    d = self._data.get(vpath, {})
+                    for s in range(6):
+                        row_vals = [code, s + 1]
+                        for key in field_keys:
+                            vals = d.get(key)
+                            v = vals[s] if vals and s < len(vals) else ""
+                            row_vals.append("" if not v else v)
+                        writer.writerow(row_vals)
+
+            QtWidgets.QMessageBox.information(
+                self._page,
+                "Export réussi" if self._language == 'fr' else "Export successful",
+                f"Fichier enregistré :\n{out_path}",
+            )
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(
+                self._page,
+                "Erreur" if self._language == 'fr' else "Error",
+                str(exc),
+            )
 
 
 # ── Utilitaires ───────────────────────────────────────────────────────────────
