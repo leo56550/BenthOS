@@ -802,11 +802,18 @@ class AppController(QtCore.QObject):
         """Appelé quand l'exploitabilité ou les propriétés campagne changent."""
         self.refresh_status_bar()
         self._refresh_dashboard()
-        self.metadonnees_ctrl.refresh_feuille_terrain()
-        self.metadonnees_ctrl._rebuild_ft_table()
+        current_page = self.window.stackedWidget.currentWidget()
+        if current_page == self.window.page_metadonnees:
+            self.metadonnees_ctrl.refresh_feuille_terrain()
+            self.metadonnees_ctrl._rebuild_ft_table()
+        else:
+            self._metadonnees_dirty = True
         self.qualif_ctrl.refresh_map_marker_colors()
         self.evenements_ctrl.proxy_model.invalidateFilter()
-        self.analyse_habitat_ctrl._rebuild_list()
+        if current_page == self.window.page_analyse_habitat:
+            self.analyse_habitat_ctrl._rebuild_list()
+        else:
+            self._habitat_list_dirty = True
 
     def _on_events_changed(self, *_):
         """Callback déclenché quand des événements sont ajoutés/supprimés/modifiés."""
@@ -1656,6 +1663,10 @@ class AppController(QtCore.QObject):
                     p.updateGeometry()
                     p.update()
                 QtCore.QTimer.singleShot(0, _refresh_meta_layout)
+                if getattr(self, '_metadonnees_dirty', False):
+                    self.metadonnees_ctrl.refresh_feuille_terrain()
+                    self.metadonnees_ctrl._rebuild_ft_table()
+                    self._metadonnees_dirty = False
             self._focus_page_player(page)
             self._refresh_generate_temp_visibility(page)
             return
@@ -1665,6 +1676,10 @@ class AppController(QtCore.QObject):
 
         if page == w.page_extraction:
             self.extraction_ctrl.refresh_video_list()
+
+        if page == w.page_analyse_habitat and getattr(self, '_habitat_list_dirty', False):
+            self.analyse_habitat_ctrl._rebuild_list()
+            self._habitat_list_dirty = False
 
         w.stackedWidget.setCurrentWidget(page)
         w.update_nav_highlight(page)
