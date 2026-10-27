@@ -660,7 +660,7 @@ class EvenementsController:
                 outline: none;
             }
             QTreeWidget::item {
-                height: 42px;
+                height: 24px;
                 border-bottom: 1px solid #1e3448;
             }
             QTreeWidget::item:hover {
@@ -941,7 +941,7 @@ class EvenementsController:
                 tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                 tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778A2")))
                 tree_item.setForeground(3, QtGui.QBrush(QtGui.QColor("#2778A2")))
-                self.tree_captures.addTopLevelItem(tree_item)
+                self._insert_tree_item_sorted(tree_item)
             # Flash visuel de confirmation
             s_dep = self._ZONE_STYLES[0]
             self._apply_evt_btn_style(btn, s_dep, "selected")
@@ -993,7 +993,7 @@ class EvenementsController:
                 tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                 tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778A2")))
                 tree_item.setForeground(3, QtGui.QBrush(QtGui.QColor("#2778A2")))
-                self.tree_captures.addTopLevelItem(tree_item)
+                self._insert_tree_item_sorted(tree_item)
             if btn:
                 s_dep = self._ZONE_STYLES[0]
                 self._apply_evt_btn_style(btn, s_dep, "selected")
@@ -1223,7 +1223,7 @@ class EvenementsController:
                 _ti.setFlags(_ti.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                 _ti.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778A2")))
                 _ti.setForeground(3, QtGui.QBrush(QtGui.QColor("#2778A2")))
-                self.tree_captures.addTopLevelItem(_ti)
+                self._insert_tree_item_sorted(_ti)
 
         tl.update()
         if self._on_events_changed:
@@ -1657,7 +1657,7 @@ class EvenementsController:
                     tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                     tree_item.setForeground(0, QtGui.QBrush(self._zone_color(zone_index)))
                     tree_item.setForeground(3, QtGui.QBrush(self._zone_color(zone_index)))
-                    self.tree_captures.addTopLevelItem(tree_item)
+                    self._insert_tree_item_sorted(tree_item)
                 self._thumb_bulkload = False
                 self._start_thumb_loader()
 
@@ -1744,7 +1744,7 @@ class EvenementsController:
                 tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                 tree_item.setForeground(0, QtGui.QBrush(self._zone_color(zone_index)))
                 tree_item.setForeground(3, QtGui.QBrush(self._zone_color(zone_index)))
-                self.tree_captures.addTopLevelItem(tree_item)
+                self._insert_tree_item_sorted(tree_item)
             self._thumb_bulkload = False
             self._start_thumb_loader()
 
@@ -1935,7 +1935,7 @@ class EvenementsController:
                 tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                 tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778A2")))
                 tree_item.setForeground(3, QtGui.QBrush(QtGui.QColor("#2778A2")))
-                self.tree_captures.addTopLevelItem(tree_item)
+                self._insert_tree_item_sorted(tree_item)
             s_dep = self._ZONE_STYLES[0]
             self._apply_evt_btn_style(btn, s_dep, "selected")
             QtCore.QTimer.singleShot(600, lambda: self._apply_evt_btn_style(btn, s_dep, "normal"))
@@ -2661,7 +2661,7 @@ class EvenementsController:
                 tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                 tree_item.setForeground(0, QtGui.QBrush(self._zone_color(new_evt["zone"])))
                 tree_item.setForeground(3, QtGui.QBrush(self._zone_color(new_evt["zone"])))
-                self.tree_captures.addTopLevelItem(tree_item)
+                self._insert_tree_item_sorted(tree_item)
 
             self.save_event_to_json(new_evt, current_type)
             tree_item = self.tree_captures.topLevelItem(self.tree_captures.topLevelItemCount() - 1)
@@ -2713,7 +2713,7 @@ class EvenementsController:
             tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
             tree_item.setForeground(0, QtGui.QBrush(self._zone_color(new_evt["zone"])))
             tree_item.setForeground(3, QtGui.QBrush(self._zone_color(new_evt["zone"])))
-            self.tree_captures.addTopLevelItem(tree_item)
+            self._insert_tree_item_sorted(tree_item)
 
         self.save_event_to_json(new_evt, current_type)
         tree_item = self.tree_captures.topLevelItem(self.tree_captures.topLevelItemCount() - 1)
@@ -2753,7 +2753,7 @@ class EvenementsController:
             tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
             tree_item.setForeground(0, QtGui.QBrush(self._zone_color(new_evt["zone"])))
             tree_item.setForeground(3, QtGui.QBrush(self._zone_color(new_evt["zone"])))
-            self.tree_captures.addTopLevelItem(tree_item)
+            self._insert_tree_item_sorted(tree_item)
         self.save_event_to_json(new_evt, deploy_label)
 
     def _saisir_debut_annotation(self):
@@ -2831,7 +2831,7 @@ class EvenementsController:
                 tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                 tree_item.setForeground(0, QtGui.QBrush(self._zone_color(0)))
                 tree_item.setForeground(3, QtGui.QBrush(self._zone_color(0)))
-                self.tree_captures.addTopLevelItem(tree_item)
+                self._insert_tree_item_sorted(tree_item)
             if btn is not None:
                 orig_text = btn.text()
                 btn.setText(f"✓ {timecode}")
@@ -2999,7 +2999,7 @@ class EvenementsController:
                                 _ti.setFlags(_ti.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                                 _ti.setForeground(0, QtGui.QBrush(self._zone_color(zone_index)))
                                 _ti.setForeground(3, QtGui.QBrush(self._zone_color(zone_index)))
-                                self.tree_captures.addTopLevelItem(_ti)
+                                self._insert_tree_item_sorted(_ti)
                             continue
 
                         is_duplicate = any(
@@ -3029,7 +3029,7 @@ class EvenementsController:
                                 tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                                 tree_item.setForeground(0, QtGui.QBrush(self._zone_color(zone_index)))
                                 tree_item.setForeground(3, QtGui.QBrush(self._zone_color(zone_index)))
-                                self.tree_captures.addTopLevelItem(tree_item)
+                                self._insert_tree_item_sorted(tree_item)
                 # --- Marqueurs timecode scalaires (atterrissage/décollage + annotation) ---
                 _TC_MARKERS = {
                     "timecode_landing":  self.translate("Atterrissage",    "Landing"),
@@ -3065,7 +3065,7 @@ class EvenementsController:
                             tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                             tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778A2")))
                             tree_item.setForeground(3, QtGui.QBrush(QtGui.QColor("#2778A2")))
-                            self.tree_captures.addTopLevelItem(tree_item)
+                            self._insert_tree_item_sorted(tree_item)
                     except Exception:
                         pass
 
@@ -4221,7 +4221,7 @@ class EvenementsController:
                 tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
                 zone = evt.get("zone", 0)
                 tree_item.setForeground(3, QtGui.QBrush(self._zone_color(zone)))
-                self.tree_captures.addTopLevelItem(tree_item)
+                self._insert_tree_item_sorted(tree_item)
                 self.save_event_to_json(evt, entry.get("display_type", ""))
             finally:
                 self._undo_in_progress = False
@@ -4288,6 +4288,32 @@ class EvenementsController:
                 json.dump(data, f, indent=4, ensure_ascii=False)
         except Exception as e:
             print(f"[EvenementsCtrl] erreur sauvegarde commentaire vidéo : {e}")
+
+    # --- Insertion triée ---
+
+    @staticmethod
+    def _ms_from_tc(timecode: str) -> int:
+        """Parse 'MM:SS' ou 'HH:MM:SS' → millisecondes (pour le tri chronologique)."""
+        try:
+            parts = timecode.split(':')
+            if len(parts) == 2:
+                return (int(parts[0]) * 60 + int(parts[1])) * 1000
+            if len(parts) == 3:
+                return (int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])) * 1000
+        except (ValueError, IndexError):
+            pass
+        return 0
+
+    def _insert_tree_item_sorted(self, item: QtWidgets.QTreeWidgetItem):
+        """Insère l'item à la bonne position chronologique (colonne 0 = timecode début)."""
+        start_ms = self._ms_from_tc(item.text(0))
+        count = self.tree_captures.topLevelItemCount()
+        pos = count
+        for i in range(count):
+            if start_ms < self._ms_from_tc(self.tree_captures.topLevelItem(i).text(0)):
+                pos = i
+                break
+        self.tree_captures.insertTopLevelItem(pos, item)
 
     # --- Thumbnails ---
 
