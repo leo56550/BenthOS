@@ -134,8 +134,11 @@ class _StatsWorker(QtCore.QThread):
             expl = obs.get("exploitable", {})
             expl_val = expl.get("value", "") if isinstance(expl, dict) else str(expl or "")
             expl_val = str(expl_val or "").strip()
-            code_obs_val = str((obs.get("codeObs") or {}).get("value") or "").strip()
-            if code_obs_val and expl_val and expl_val != "?":
+            point_name_val = (
+                str((obs.get("point_name")     or {}).get("value") or "").strip()
+                or str((obs.get("station_number") or {}).get("value") or "").strip()
+            )
+            if point_name_val and expl_val and expl_val != "?":
                 ardoise += 1
 
             if expl_val and expl_val != "?":
@@ -802,20 +805,7 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
         sp.addWidget(lbl)
         self._stack.addWidget(spinner_page)
 
-        # Page 1 — onglets, un donut par onglet
-        self._tabs = QtWidgets.QTabWidget()
-        self._tabs.setStyleSheet("""
-            QTabWidget::pane { border: none; background: transparent; }
-            QTabBar::tab {
-                background: #0d1825; color: #3a607c;
-                padding: 4px 10px; font-size: 9px; font-weight: bold;
-                letter-spacing: 1.2px; border: none;
-                border-bottom: 2px solid transparent;
-            }
-            QTabBar::tab:selected { color: #7ec8e3; border-bottom: 2px solid #2778a2; }
-            QTabBar::tab:hover    { color: #a0d0e8; }
-        """)
-
+        # Page 1 — tous les donuts côte à côte
         self._card_kept    = _DonutBiColor("Qualification")
         self._card_ardoise = _DonutCard("Validation", "#fbbf24")
         self._card_meta    = _DonutMetaSplit("Métadonnées")
@@ -827,22 +817,20 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
         self._card_ardoise.setToolTip(
             "Double-cliquer pour voir la répartition par statut d'exploitabilité")
 
-        tab_defs = [
-            ("QUALIFICATION", self._card_kept),
-            ("VALIDATION",    self._card_ardoise),
-            ("MÉTADONNÉES",   self._card_meta),
-            ("ÉVÈNEMENTS",    self._card_derush),
-            ("HABITAT",       self._card_habitat),
-        ]
-        for tab_name, card in tab_defs:
-            wrapper = QtWidgets.QWidget()
-            wl = QtWidgets.QVBoxLayout(wrapper)
-            wl.setContentsMargins(0, 4, 0, 0)
-            wl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-            wl.addWidget(card, 0, QtCore.Qt.AlignmentFlag.AlignCenter)
-            self._tabs.addTab(wrapper, tab_name)
+        cards_page = QtWidgets.QWidget()
+        cards_lay = QtWidgets.QHBoxLayout(cards_page)
+        cards_lay.setContentsMargins(12, 8, 12, 8)
+        cards_lay.setSpacing(0)
+        cards_lay.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        for i, card in enumerate([
+            self._card_kept, self._card_ardoise, self._card_meta,
+            self._card_derush, self._card_habitat,
+        ]):
+            if i > 0:
+                cards_lay.addWidget(_VSep())
+            cards_lay.addWidget(card, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
 
-        self._stack.addWidget(self._tabs)
+        self._stack.addWidget(cards_page)
 
     def refresh(self, video_paths: list, trash_count: int):
         if self._worker and self._worker.isRunning():
@@ -883,11 +871,6 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
             self._card_meta._title    = "Metadata"
             self._card_derush._title  = "Events"
             self._card_habitat._title = "Habitat"
-            self._tabs.setTabText(0, "QUALIFICATION")
-            self._tabs.setTabText(1, "VALIDATION")
-            self._tabs.setTabText(2, "METADATA")
-            self._tabs.setTabText(3, "EVENTS")
-            self._tabs.setTabText(4, "HABITAT")
         else:
             self._card_kept._title    = "Qualification"
             self._card_ardoise._title = "Validation"
@@ -896,11 +879,6 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
             self._card_meta._title    = "Métadonnées"
             self._card_derush._title  = "Évènements"
             self._card_habitat._title = "Habitat"
-            self._tabs.setTabText(0, "QUALIFICATION")
-            self._tabs.setTabText(1, "VALIDATION")
-            self._tabs.setTabText(2, "MÉTADONNÉES")
-            self._tabs.setTabText(3, "ÉVÈNEMENTS")
-            self._tabs.setTabText(4, "HABITAT")
         for card in (self._card_kept, self._card_ardoise,
                      self._card_meta, self._card_derush, self._card_habitat):
             card.update()
