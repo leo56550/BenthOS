@@ -935,8 +935,8 @@ class AnalyseHabitatController(QtCore.QObject):
         self._list = QtWidgets.QListWidget()
         self._list.setStyleSheet(
             "QListWidget { background:#111f2e; color:#a0c8e0; border:none;"
-            " font-family:'Segoe UI',sans-serif; font-size:11px; }"
-            "QListWidget::item { padding:5px 10px; border-bottom:1px solid #1a2e40; }"
+            " font-family:'Segoe UI',sans-serif; font-size:14px; }"
+            "QListWidget::item { padding:7px 12px; border-bottom:1px solid #1a2e40; }"
             "QListWidget::item:selected { background:#20415d; color:#ffffff; }"
             "QListWidget::item:hover { background:#162438; }"
         )
