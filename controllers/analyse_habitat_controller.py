@@ -432,6 +432,69 @@ class _CollapsibleSection(QtWidgets.QWidget):
 
 # ── Canvas image zoomable/panable ────────────────────────────────────────────
 
+class _TimelineSlider(QtWidgets.QWidget):
+    """Slider horizontal avec timecode flottant au-dessus du curseur."""
+
+    sliderPressed  = QtCore.pyqtSignal()
+    sliderReleased = QtCore.pyqtSignal()
+    sliderMoved    = QtCore.pyqtSignal(int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._lbl = QtWidgets.QLabel("", self)
+        self._lbl.setStyleSheet(
+            "background: rgba(18,52,80,220); color: #7ec8e3;"
+            " font-size: 8pt; padding: 1px 5px; border-radius: 3px;"
+        )
+        self._lbl.hide()
+
+        self._slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal, self)
+        self._slider.setRange(0, 1000)
+        self._slider.sliderPressed.connect(self.sliderPressed)
+        self._slider.sliderReleased.connect(self.sliderReleased)
+        self._slider.sliderMoved.connect(self.sliderMoved)
+
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        lay.addSpacing(18)  # espace réservé pour le label flottant
+        lay.addWidget(self._slider)
+        self.setFixedHeight(18 + 14)
+
+    # ── API ──────────────────────────────────────────────────────────────────
+
+    def setRange(self, a, b):   self._slider.setRange(a, b)
+    def setValue(self, v):      self._slider.setValue(v); self._move_label()
+    def value(self):            return self._slider.value()
+    def blockSignals(self, b):  self._slider.blockSignals(b)
+    def setStyleSheet(self, s): self._slider.setStyleSheet(s)
+
+    def set_time_text(self, text: str):
+        if not text:
+            self._lbl.hide()
+            return
+        self._lbl.setText(text)
+        self._lbl.adjustSize()
+        self._move_label()
+        self._lbl.show()
+
+    def _move_label(self):
+        opt = QtWidgets.QStyleOptionSlider()
+        self._slider.initStyleOption(opt)
+        hr = self._slider.style().subControlRect(
+            QtWidgets.QStyle.ComplexControl.CC_Slider, opt,
+            QtWidgets.QStyle.SubControl.SC_SliderHandle, self._slider)
+        # convertir les coordonnées du slider vers ce widget
+        cx = self._slider.mapTo(self, hr.center()).x()
+        lw = self._lbl.width()
+        x = max(0, min(cx - lw // 2, self.width() - lw))
+        self._lbl.move(x, 0)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._move_label()
+
+
 class _ImageCanvas(QtWidgets.QWidget):
     """Zone d'affichage image zoomable (molette) et panable (clic-glisser)."""
 
@@ -538,6 +601,25 @@ class _SectorViewerWidget(QtWidgets.QWidget):
         self._canvas = _ImageCanvas(self)
         vlay.addWidget(self._canvas, 1)
 
+        # Timeline / scrubber avec timecode au-dessus du curseur
+        self._timeline = _TimelineSlider()
+        self._timeline.setRange(0, 1000)
+        self._timeline.setValue(0)
+        self._timeline.setStyleSheet(
+            "QSlider::groove:horizontal {"
+            "  height:4px; background:#1a3448; border-radius:2px; margin:0 4px; }"
+            "QSlider::sub-page:horizontal {"
+            "  background:#2778a2; border-radius:2px; }"
+            "QSlider::handle:horizontal {"
+            "  width:10px; height:10px; margin:-3px 0;"
+            "  background:#7ec8e3; border-radius:5px; }"
+        )
+        self._timeline.sliderPressed.connect(self._on_timeline_pressed)
+        self._timeline.sliderReleased.connect(self._on_timeline_released)
+        self._timeline.sliderMoved.connect(self._on_timeline_moved)
+        self._timeline_dragging = False
+        vlay.addWidget(self._timeline)
+
         ctrl = QtWidgets.QWidget()
         ctrl.setFixedHeight(34)
         ctrl.setStyleSheet("background:#0d1825; border-top:1px solid #1e3448;")
@@ -604,6 +686,48 @@ class _SectorViewerWidget(QtWidgets.QWidget):
 
         vlay.addWidget(ctrl)
 
+        # ── Barre navigation : ⏮  -5s -1s +1s +5s  |  x1 x2 x5 ──
+        nav = QtWidgets.QWidget()
+        nav.setFixedHeight(30)
+        nav.setStyleSheet("background:#0d1825; border-top:1px solid #1a2e42;")
+        nly = QtWidgets.QHBoxLayout(nav)
+        nly.setContentsMargins(8, 2, 8, 2)
+        nly.setSpacing(4)
+
+        self._playback_rate = 1.0
+
+        self._btn_goto_start = QtWidgets.QPushButton("⏮")
+        self._btn_goto_start.setFixedWidth(28)
+        self._btn_goto_start.setToolTip("Début du clip")
+        self._btn_goto_start.setStyleSheet(_ss)
+        self._btn_goto_start.clicked.connect(self._goto_clip_start)
+        nly.addWidget(self._btn_goto_start)
+
+        nly.addWidget(_sep())
+
+        for label, ms in (("-5s", -5000), ("-1s", -1000), ("+1s", 1000), ("+5s", 5000)):
+            b = QtWidgets.QPushButton(label)
+            b.setFixedWidth(34)
+            b.setStyleSheet(_ss)
+            b.clicked.connect(lambda _=False, d=ms: self._jump(d))
+            nly.addWidget(b)
+
+        nly.addWidget(_sep())
+        nly.addStretch()
+
+        self._speed_btns: list[QtWidgets.QPushButton] = []
+        for label, rate in (("x1", 1.0), ("x2", 2.0), ("x5", 5.0)):
+            b = QtWidgets.QPushButton(label)
+            b.setCheckable(True)
+            b.setFixedWidth(30)
+            b.setStyleSheet(_ss)
+            b.clicked.connect(lambda _=False, r=rate: self._set_speed(r))
+            nly.addWidget(b)
+            self._speed_btns.append(b)
+        self._speed_btns[0].setChecked(True)
+
+        vlay.addWidget(nav)
+
     # ── API publique ──────────────────────────────────────────────────────────
 
     def load_sector(self, video_path: str,
@@ -626,6 +750,10 @@ class _SectorViewerWidget(QtWidgets.QWidget):
         self._raw_frame = None
         self._canvas.set_pixmap(None)
         self._lbl_time.setText("—")
+        self._timeline.set_time_text("")
+        self._timeline.blockSignals(True)
+        self._timeline.setValue(0)
+        self._timeline.blockSignals(False)
 
     def show_frame_rgb(self, frame_rgb: np.ndarray):
         """Affiche une frame RGB (retournée par extract_frame_at_time)."""
@@ -667,7 +795,50 @@ class _SectorViewerWidget(QtWidgets.QWidget):
         ).copy()
         self._canvas.set_pixmap(QtGui.QPixmap.fromImage(qimg), reset=False)
         s = self._pos_ms // 1000
-        self._lbl_time.setText(f"{s // 60:02d}:{s % 60:02d}")
+        time_str = f"{s // 60:02d}:{s % 60:02d}"
+        self._lbl_time.setText(time_str)
+        self._timeline.set_time_text(time_str)
+        # Sync timeline (ne pas modifier si l'utilisateur est en train de glisser)
+        if not self._timeline_dragging:
+            dur = max(1, self._clip_end_ms - self._clip_start_ms)
+            pos = max(0, min(1000, int((self._pos_ms - self._clip_start_ms) * 1000 / dur)))
+            self._timeline.blockSignals(True)
+            self._timeline.setValue(pos)
+            self._timeline.blockSignals(False)
+
+    def _on_timeline_pressed(self):
+        self._timeline_dragging = True
+        if self._play_timer.isActive():
+            self._play_timer.stop()
+
+    def _on_timeline_released(self):
+        self._timeline_dragging = False
+        dur = max(1, self._clip_end_ms - self._clip_start_ms)
+        self._pos_ms = self._clip_start_ms + int(self._timeline.value() * dur / 1000)
+        self._read_and_show()
+        if self._btn_play.isChecked():
+            # Reprendre la lecture depuis la nouvelle position
+            if self._cap is not None:
+                self._cap.release()
+            self._cap = cv2.VideoCapture(self._video_path)
+            frame_num = round(self._pos_ms * self._fps / 1000.0)
+            self._cap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
+            self._play_timer.start(max(16, int(1000.0 / self._fps)))
+
+    def _on_timeline_moved(self, value: int):
+        if not self._video_path:
+            return
+        dur = max(1, self._clip_end_ms - self._clip_start_ms)
+        seek_ms = self._clip_start_ms + int(value * dur / 1000)
+        frame_num = round(seek_ms * self._fps / 1000.0)
+        cap = cv2.VideoCapture(self._video_path)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
+        ret, frame = cap.read()
+        cap.release()
+        if ret:
+            self._raw_frame = frame
+            self._pos_ms = seek_ms
+            self._show_corrected()
 
     def _advance_frame(self):
         if self._cap is None or not self._cap.isOpened():
@@ -703,7 +874,7 @@ class _SectorViewerWidget(QtWidgets.QWidget):
             self._cap = cv2.VideoCapture(self._video_path)
             frame_num = round(self._pos_ms * self._fps / 1000.0)
             self._cap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
-            interval = max(16, int(1000.0 / self._fps))
+            interval = max(8, int(1000.0 / (self._fps * self._playback_rate)))
             self._play_timer.start(interval)
             self._btn_play.setText("⏸")
         else:
@@ -717,9 +888,62 @@ class _SectorViewerWidget(QtWidgets.QWidget):
         self._apply_dh = checked
         self._show_corrected()
 
+    def _goto_clip_start(self):
+        self._stop_playback()
+        self._pos_ms = self._clip_start_ms
+        self._read_and_show()
+
+    def _jump(self, delta_ms: int):
+        """Déplace la position de delta_ms en restant dans les bornes du clip."""
+        new_pos = max(self._clip_start_ms,
+                      min(self._pos_ms + delta_ms, self._clip_end_ms))
+        self._pos_ms = new_pos
+        if self._play_timer.isActive():
+            # En lecture : seek le cap ouvert
+            if self._cap is not None:
+                frame_num = round(new_pos * self._fps / 1000.0)
+                self._cap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
+        else:
+            self._read_and_show()
+
+    def _step_frame(self, n: int):
+        """Avance ou recule de n frames exactes (pause uniquement)."""
+        if self._play_timer.isActive():
+            return
+        if self._fps <= 0:
+            return
+        frame_ms = max(1, int(1000.0 / self._fps))
+        self._jump(n * frame_ms)
+
+    def _set_speed(self, rate: float):
+        self._playback_rate = rate
+        for i, (_, r) in enumerate((("x1", 1.0), ("x2", 2.0), ("x5", 5.0))):
+            self._speed_btns[i].setChecked(r == rate)
+        if self._play_timer.isActive():
+            interval = max(8, int(1000.0 / (self._fps * rate)))
+            self._play_timer.setInterval(interval)
+
     def keyPressEvent(self, event):
-        if event.key() == QtCore.Qt.Key.Key_Space:
+        key  = event.key()
+        mods = event.modifiers()
+        shift = bool(mods & QtCore.Qt.KeyboardModifier.ShiftModifier)
+        ctrl  = bool(mods & QtCore.Qt.KeyboardModifier.ControlModifier)
+        if key == QtCore.Qt.Key.Key_Space:
             self._btn_play.setChecked(not self._btn_play.isChecked())
+        elif key == QtCore.Qt.Key.Key_Right:
+            if shift:
+                self._step_frame(+1)
+            elif ctrl:
+                self._step_frame(+10)
+            else:
+                self._jump(+5000)
+        elif key == QtCore.Qt.Key.Key_Left:
+            if shift:
+                self._step_frame(-1)
+            elif ctrl:
+                self._step_frame(-10)
+            else:
+                self._jump(-5000)
         else:
             super().keyPressEvent(event)
 
@@ -1039,30 +1263,57 @@ class AnalyseHabitatController(QtCore.QObject):
     def _build_right_panel(self) -> QtWidgets.QWidget:
         panel = QtWidgets.QWidget()
         panel.setStyleSheet("background:#0b1421;")
-        vlay = QtWidgets.QVBoxLayout(panel)
-        vlay.setContentsMargins(0, 0, 0, 0)
-        vlay.setSpacing(0)
+        hlay = QtWidgets.QHBoxLayout(panel)
+        hlay.setContentsMargins(0, 0, 0, 0)
+        hlay.setSpacing(0)
 
-        # 1. Sélecteur de secteur (S1..S6 avec thumbnails)
-        self._sector_selector = self._build_sector_selector()
-        vlay.addWidget(self._sector_selector)
+        # ── Colonne gauche : viewer image (s'étend pour remplir l'espace) ──
+        left_col = QtWidgets.QWidget()
+        left_col.setStyleSheet("background:#0b1421;")
+        left_vlay = QtWidgets.QVBoxLayout(left_col)
+        left_vlay.setContentsMargins(0, 0, 0, 0)
+        left_vlay.setSpacing(0)
 
-        # 2. Viewer image (image + corrections + lecture)
         self._sector_viewer = _SectorViewerWidget()
-        self._sector_viewer.setFixedHeight(250)
-        vlay.addWidget(self._sector_viewer)
+        left_vlay.addWidget(self._sector_viewer, 1)  # stretch = 1 → remplit tout
 
-        # 3. Formulaire mono-secteur (scrollable)
+        self._no_sel_label = QtWidgets.QLabel("Sélectionnez une station dans la liste")
+        self._no_sel_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self._no_sel_label.setStyleSheet(
+            "color:#3a5568; font-size:14px; font-family:'Segoe UI',sans-serif;")
+        left_vlay.addWidget(self._no_sel_label)
+
+        hlay.addWidget(left_col, 1)  # stretch = 1 → prend toute la largeur disponible
+
+        # ── Séparateur vertical ──
+        sep = QtWidgets.QFrame()
+        sep.setFrameShape(QtWidgets.QFrame.Shape.VLine)
+        sep.setStyleSheet("color:#1a3a54;")
+        hlay.addWidget(sep)
+
+        # ── Colonne droite fixe : sélecteur S1-S6 + formulaire ──
+        right_col = QtWidgets.QWidget()
+        right_col.setFixedWidth(340)
+        right_col.setStyleSheet("background:#0d1825;")
+        right_vlay = QtWidgets.QVBoxLayout(right_col)
+        right_vlay.setContentsMargins(0, 0, 0, 0)
+        right_vlay.setSpacing(0)
+
+        # Sélecteur de secteur (S1..S6 avec thumbnails) — tout en haut à droite
+        self._sector_selector = self._build_sector_selector()
+        right_vlay.addWidget(self._sector_selector)
+
+        # Formulaire mono-secteur (scrollable) — en dessous du sélecteur
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         scroll.setStyleSheet(
-            "QScrollArea { background:#0b1421; }"
+            "QScrollArea { background:#0d1825; }"
             "QScrollBar:vertical { background:#0d1e2e; width:8px; border-radius:4px; }"
             "QScrollBar::handle:vertical { background:#2778a2; border-radius:4px; }"
         )
         self._form_container = QtWidgets.QWidget()
-        self._form_container.setStyleSheet("background:#0b1421;")
+        self._form_container.setStyleSheet("background:#0d1825;")
         form_lay = QtWidgets.QVBoxLayout(self._form_container)
         form_lay.setContentsMargins(8, 4, 8, 16)
         form_lay.setSpacing(0)
@@ -1072,14 +1323,9 @@ class AnalyseHabitatController(QtCore.QObject):
         form_lay.addStretch()
 
         scroll.setWidget(self._form_container)
-        vlay.addWidget(scroll, 1)
+        right_vlay.addWidget(scroll, 1)
 
-        self._no_sel_label = QtWidgets.QLabel(
-            "Sélectionnez une station dans la liste")
-        self._no_sel_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self._no_sel_label.setStyleSheet(
-            "color:#3a5568; font-size:14px; font-family:'Segoe UI',sans-serif;")
-        vlay.addWidget(self._no_sel_label)
+        hlay.addWidget(right_col)
 
         self._sector_selector.setVisible(False)
         self._sector_viewer.setVisible(False)
