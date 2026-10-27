@@ -1612,6 +1612,8 @@ class AnalyseHabitatController(QtCore.QObject):
         if not self._video_model:
             self._list.blockSignals(False)
             return
+
+        entries: list[tuple[str, str, str, str]] = []
         for row in range(self._video_model.rowCount()):
             item = self._video_model.item(row, 0)
             if not item:
@@ -1620,17 +1622,25 @@ class AnalyseHabitatController(QtCore.QObject):
             if not vpath:
                 continue
             vpath_str = str(vpath)
-            if not _is_habitat_exploitable(vpath_str):
+            expl = _get_exploitability_value(vpath_str)
+            if expl not in {"oui", "habitat"}:
                 continue
             code = _get_codestation(vpath_str)
             display = code or item.text() or "—"
+            entries.append((display.lower(), display, vpath_str, expl))
+
+        # Tri alphabétique par codestation
+        entries.sort(key=lambda e: e[0])
+
+        for _, display, vpath_str, expl in entries:
             list_item = QtWidgets.QListWidgetItem(display)
             list_item.setData(QtCore.Qt.ItemDataRole.UserRole, vpath_str)
-            if code:
-                list_item.setForeground(QtGui.QBrush(QtGui.QColor("#4ade80")))  # vert
+            if expl == "oui":
+                list_item.setForeground(QtGui.QBrush(QtGui.QColor("#4ade80")))   # vert
             else:
-                list_item.setForeground(QtGui.QBrush(QtGui.QColor("#fb923c")))  # orange
+                list_item.setForeground(QtGui.QBrush(QtGui.QColor("#fb923c")))   # orange
             self._list.addItem(list_item)
+
         self._list.blockSignals(False)
 
     def select_video_by_name(self, name: str):
@@ -1644,6 +1654,23 @@ class AnalyseHabitatController(QtCore.QObject):
 
 
 # ── Utilitaires ───────────────────────────────────────────────────────────────
+
+def _get_exploitability_value(video_path: str) -> str:
+    """Retourne la valeur brute d'exploitabilité ('oui', 'habitat', ...) ou ''."""
+    try:
+        stem   = os.path.splitext(os.path.basename(video_path))[0]
+        folder = os.path.dirname(os.path.normpath(video_path))
+        json_path = os.path.join(folder, f"{stem}_temp.json")
+        if not os.path.isfile(json_path):
+            return ""
+        with open(json_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        expl = data.get("video_observation", {}).get("exploitable", {})
+        val  = expl.get("value", "") if isinstance(expl, dict) else str(expl or "")
+        return str(val).strip().lower()
+    except Exception:
+        return ""
+
 
 def _is_habitat_exploitable(video_path: str) -> bool:
     """Vrai si la vidéo a un statut d'exploitabilité 'oui' ou 'habitat'."""
