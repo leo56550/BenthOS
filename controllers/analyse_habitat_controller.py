@@ -147,6 +147,81 @@ _NON_ROTATION = {"atterrissage", "atterissage", "décollage", "decollage",
                  "landing", "takeoff", "debut_analyse", "fin_analyse",
                  "analysis_start", "analysis_end"}
 
+# Dictionnaire de traduction FR→EN
+_EN: dict[str, str] = {
+    # Titres de sections
+    "Topo et complexité":                    "Topo and complexity",
+    "Recouvrement visible":                  "Visible coverage",
+    "Herbier ou Algues sur substrat visible": "Seagrass or Algae on visible substrate",
+    "Recouvrement Herbier":                  "Seagrass coverage",
+    "Recouvrement par épibiontes":           "Epibiont coverage",
+    "Recouvrement Algues":                   "Algae coverage",
+    "Présence Algues":                       "Algae presence",
+    "Invertébrés remarquables":              "Notable invertebrates",
+    "Anthropisation":                        "Anthropization",
+    # Notes de sections
+    "codage 1–5, obligatoire":               "score 1–5, mandatory",
+    "% de la surface totale observée":       "% of total observed surface",
+    "somme à 100 % par secteur":             "sum to 100% per sector",
+    "1=non, 2=un peu, 3=beaucoup":           "1=no, 2=a little, 3=a lot",
+    "nombre d'individus par secteur":        "number of individuals per sector",
+    "0 ou 1, obligatoire":                   "0 or 1, mandatory",
+    # Labels de champs
+    "Topographie":                  "Topography",
+    "Complexité":                   "Complexity",
+    "Débris, petits blocs (<30cm)": "Debris, small blocks (<30cm)",
+    "Moyens blocs (30cm–1m)":       "Medium blocks (30cm–1m)",
+    "Gros blocs et roche (>1m)":    "Large blocks and rock (>1m)",
+    "Algues / substrat non-visible":  "Algae / non-visible substrate",
+    "Herbier / substrat non-visible": "Seagrass / non-visible substrate",
+    "Algues sur substrat visible":  "Algae on visible substrate",
+    "Herbier sur substrat visible": "Seagrass on visible substrate",
+    "Total herbier":                "Total seagrass",
+    "Herbier court (<20cm)":        "Short seagrass (<20cm)",
+    "Herbier haut (>20cm)":         "Tall seagrass (>20cm)",
+    "Herbier dense":                "Dense seagrass",
+    "Herbier semi-dense":           "Semi-dense seagrass",
+    "Herbier clairsemé (<25%)":     "Sparse seagrass (<25%)",
+    "Matte morte":                  "Dead mat",
+    "Algues brunes non ID":         "Brown algae unidentified",
+    "Algues brunes – Laminariales": "Brown algae – Laminariales",
+    "Algues brunes – Fucus":        "Brown algae – Fucus",
+    "Algues brunes – Sargasses":    "Brown algae – Sargassum",
+    "Algues brunes – Halidrys":     "Brown algae – Halidrys",
+    "Algues vertes":                "Green algae",
+    "Algues rouges":                "Red algae",
+    "TOTAL algues":                 "TOTAL algae",
+    "Huîtres":                      "Oysters",
+    "Moules":                       "Mussels",
+    "Éponge":                       "Sponge",
+    "Oursin":                       "Sea urchin",
+    "Holothurie":                   "Sea cucumber",
+    "Crabe":                        "Crab",
+    "Ormeau":                       "Abalone",
+    "Gorgone":                      "Gorgonian",
+    "Étoile de mer":                "Starfish",
+    "Anémone":                      "Anemone",
+    "Ascidie":                      "Tunicate",
+    "Coquille St-Jacques":          "Scallop",
+    "Autres crustacés":             "Other crustaceans",
+    "Autres coquillages":           "Other shellfish",
+    "Etat de santé herbier/algues": "Seagrass/algae health status",
+    "Engins de pêche":              "Fishing gear",
+    "Macrodéchets":                 "Macrodetritus",
+    # Panneau analyse vidéo
+    "Analyseur poisson":            "Fish annotator",
+    "Analyseur habitat":            "Habitat annotator",
+    "Substrat":                     "Substrate",
+    "Visibilité (m)":               "Visibility (m)",
+    "Distance analysable (m)":      "Analysable distance (m)",
+    # Labels UI
+    "Analyse vidéo":                "Video analysis",
+    "Sélectionnez une station dans la liste": "Select a station from the list",
+    # Widget cascade
+    "Total :":                      "Total:",
+    "+ Ajouter un substrat":        "+ Add substrate",
+}
+
 
 # ── Worker extraction de frames ───────────────────────────────────────────────
 
@@ -428,6 +503,12 @@ class _CollapsibleSection(QtWidgets.QWidget):
 
     def set_layout(self, layout):
         self._content.setLayout(layout)
+
+    def retranslate(self, title: str, note: str = ""):
+        arrow = "▶" if self._collapsed else "▼"
+        self._btn.setText(f"  {arrow}  {title}")
+        if note:
+            self._btn.setToolTip(note)
 
 
 # ── Canvas image zoomable/panable ────────────────────────────────────────────
@@ -959,6 +1040,7 @@ class _RecouvrementCascade(QtWidgets.QWidget):
         super().__init__(parent)
         self._rows: list[dict] = []
         self._loading = False
+        self._language = 'fr'
         self.setStyleSheet("background:transparent;")
         self._build_ui()
 
@@ -980,6 +1062,7 @@ class _RecouvrementCascade(QtWidgets.QWidget):
         tlay.setContentsMargins(0, 4, 0, 4)
         tlay.setSpacing(0)
         self._total_lbl = QtWidgets.QLabel("Total : 0 %")
+        self._total_lbl.setObjectName("cascade_total")
         self._total_lbl.setStyleSheet(
             "color:#f0c040; font-weight:bold; font-size:11px; background:transparent;")
         tlay.addWidget(self._total_lbl)
@@ -1059,7 +1142,8 @@ class _RecouvrementCascade(QtWidgets.QWidget):
     def _on_row_changed(self):
         total = sum((ri["pct_cb"].currentData() or 0) for ri in self._rows)
         color = "#4ade80" if total == 100 else "#e05050" if total > 100 else "#f0c040"
-        self._total_lbl.setText(f"Total : {total} %")
+        prefix = "Total:" if getattr(self, '_language', 'fr') == 'en' else "Total :"
+        self._total_lbl.setText(f"{prefix} {total} %")
         self._total_lbl.setStyleSheet(
             f"color:{color}; font-weight:bold; font-size:11px; background:transparent;")
         self._btn_add.setVisible(total < 100)
@@ -1074,6 +1158,13 @@ class _RecouvrementCascade(QtWidgets.QWidget):
             if k and v > 0:
                 result[k] = result.get(k, 0) + v
         return result
+
+    def set_language(self, language: str):
+        self._language = language
+        self._on_row_changed()
+        self._btn_add.setText(
+            "+ Add substrate" if language == 'en' else "+ Ajouter un substrat"
+        )
 
     def set_data(self, data: dict[str, int]):
         self._loading = True
@@ -1119,6 +1210,10 @@ class AnalyseHabitatController(QtCore.QObject):
         self._sector_photo_labels: list[QtWidgets.QLabel] = []
         self._sector_worker: _FrameWorker | None = None
 
+        # Translation refs
+        self._tr_label_refs: list[tuple[QtWidgets.QLabel, str]] = []
+        self._section_widgets: list[tuple[_CollapsibleSection, str, str]] = []
+
         self._build_ui()
 
     # ── Construction UI ───────────────────────────────────────────────────────
@@ -1154,9 +1249,14 @@ class AnalyseHabitatController(QtCore.QObject):
             " padding:8px 12px; border-bottom:1px solid #1e3448;"
         )
         header.setFixedHeight(32)
+        self._header_label = header
         vlay.addWidget(header)
 
         self._list = QtWidgets.QListWidget()
+        self._list.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Maximum,  # s'étire jusqu'au contenu, pas plus
+        )
         self._list.setStyleSheet(
             "QListWidget { background:#111f2e; color:#a0c8e0; border:none;"
             " font-family:'Segoe UI',sans-serif; font-size:14px; }"
@@ -1165,10 +1265,11 @@ class AnalyseHabitatController(QtCore.QObject):
             "QListWidget::item:hover { background:#162438; }"
         )
         self._list.currentRowChanged.connect(self._on_row_changed)
-        vlay.addWidget(self._list, 1)
+        vlay.addWidget(self._list)  # pas de stretch : la liste se dimensionne à son contenu
 
-        # ── Panneau Analyse vidéo replié par défaut ────────────────────────
+        # ── Panneau Analyse vidéo collé sous la liste ─────────────────────
         vlay.addWidget(self._build_analysis_panel_compact())
+        vlay.addStretch(1)  # espace vide en bas, hors des zones utiles
         return panel
 
     def _build_analysis_panel_compact(self) -> QtWidgets.QWidget:
@@ -1215,6 +1316,7 @@ class AnalyseHabitatController(QtCore.QObject):
         def _lbl(text):
             w = QtWidgets.QLabel(text)
             w.setStyleSheet(_lbl_s)
+            self._tr_label_refs.append((w, text))
             return w
 
         def _inp(key, placeholder=""):
@@ -1255,7 +1357,7 @@ class AnalyseHabitatController(QtCore.QObject):
         def _toggle(checked):
             self._av_panel_content.setVisible(checked)
             self._av_toggle_btn.setText(
-                f"  {'▼' if checked else '▶'}  Analyse vidéo")
+                f"  {'▼' if checked else '▶'}  {self._tr('Analyse vidéo')}")
 
         self._av_toggle_btn.toggled.connect(_toggle)
         return outer
@@ -1416,6 +1518,7 @@ class AnalyseHabitatController(QtCore.QObject):
 
         for section_name, note, fields in _SCHEMA:
             section = _CollapsibleSection(section_name, note)
+            self._section_widgets.append((section, section_name, note))
 
             if section_name == "Recouvrement visible":
                 inner = QtWidgets.QVBoxLayout()
@@ -1450,6 +1553,7 @@ class AnalyseHabitatController(QtCore.QObject):
                             f"color:#a0b8c8; font-size:11px;"
                             f" font-family:'Segoe UI',sans-serif;"
                             f" background:{bg}; padding:3px 4px; border-radius:2px;")
+                    self._tr_label_refs.append((lbl, flabel))
                     grid.addWidget(lbl, row_idx, 0)
 
                     if ftype == "total":
@@ -2029,8 +2133,48 @@ class AnalyseHabitatController(QtCore.QObject):
                 self._list.setCurrentRow(i)
                 return
 
+    def _tr(self, fr: str) -> str:
+        """Traduit un texte FR→EN si la langue courante est 'en'."""
+        if self._language == 'en':
+            return _EN.get(fr, fr)
+        return fr
+
+    def _retranslate_ui(self):
+        """Met à jour tous les textes de l'UI selon self._language."""
+        tr = self._tr
+        # En-tête de la liste
+        if hasattr(self, '_header_label'):
+            self._header_label.setText("  Stations")
+        # Bouton toggle Analyse vidéo
+        is_open = self._av_toggle_btn.isChecked()
+        arrow = "▼" if is_open else "▶"
+        self._av_toggle_btn.setText(f"  {arrow}  {tr('Analyse vidéo')}")
+        # Label sélection
+        self._no_sel_label.setText(tr("Sélectionnez une station dans la liste"))
+        # Label verrou
+        if self._language == 'en':
+            self._lock_label.setText(
+                "⚠  Landing + Takeoff\nor\nStart + End annotation\n\n"
+                "required in the Events page\nbefore entering habitat analysis."
+            )
+        else:
+            self._lock_label.setText(
+                "⚠  Atterrissage + Décollage\nou\nDébut + Fin annotation\n\n"
+                "requis dans la page Évènements\navant de saisir l'analyse habitat."
+            )
+        # Labels génériques (champs formulaire + panneau analyse vidéo)
+        for lbl, fr_text in self._tr_label_refs:
+            lbl.setText(tr(fr_text))
+        # Titres de sections du formulaire
+        for section, fr_title, fr_note in self._section_widgets:
+            section.retranslate(tr(fr_title), tr(fr_note) if fr_note else "")
+        # Widget cascade recouvrement
+        if self._sv_recouvrement is not None:
+            self._sv_recouvrement.set_language(self._language)
+
     def set_language(self, language: str):
         self._language = language
+        self._retranslate_ui()
 
 
 # ── Utilitaires ───────────────────────────────────────────────────────────────
