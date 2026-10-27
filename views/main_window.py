@@ -356,13 +356,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._sb_videos = _lbl()
         self._sb_duration = _lbl()
-        self._sb_qualified = _lbl()
 
         sb.addPermanentWidget(self._sb_videos)
         sb.addPermanentWidget(_sep())
         sb.addPermanentWidget(self._sb_duration)
-        sb.addPermanentWidget(_sep())
-        sb.addPermanentWidget(self._sb_qualified)
 
     def update_status_bar(self, video_count: int, total_seconds: int, qualified_count: int):
         """Met à jour les trois indicateurs de la barre de statut."""
@@ -384,13 +381,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._sb_videos.setText(video_lbl)
         self._sb_duration.setText(dur_lbl)
-
-        color = "#4CAF50" if pct == 100 else "#f0c040" if pct > 0 else "#a0b8c8"
-        self._sb_qualified.setStyleSheet(
-            f"color: {color}; font-family: 'Segoe UI', sans-serif;"
-            " font-size: 13px; padding: 0 14px;"
-        )
-        self._sb_qualified.setText(qual_lbl)
 
     def _setup_export_progress_bar(self):
         """Barre de progression d'export + bouton STOP, visibles depuis n'importe quelle page."""
