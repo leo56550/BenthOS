@@ -42,9 +42,9 @@ _SCHEMA: list[tuple[str, str, list]] = [
         ("herbier_snv",         "Herbier / substrat non-visible","percent"),
         ("total_recouvrement",  "TOTAL",                         "total"),
     ]),
-    ("Herbier ou Algues sur substrat visible", "", [
-        ("algues_sv",   "Algues sur substrat visible",  "presence"),
-        ("herbier_sv",  "Herbier sur substrat visible", "presence"),
+    ("Herbier ou Algues sur substrat visible", "% de la surface totale observée", [
+        ("algues_sv",   "Algues sur substrat visible",  "percent"),
+        ("herbier_sv",  "Herbier sur substrat visible", "percent"),
     ]),
     ("Recouvrement Herbier", "somme à 100 % par secteur", [
         ("total_herbier",      "Total herbier",             "percent"),
@@ -54,10 +54,7 @@ _SCHEMA: list[tuple[str, str, list]] = [
         ("herbier_semi_dense", "Herbier semi-dense",        "percent"),
         ("herbier_clairseme",  "Herbier clairsemé (<25%)",  "percent"),
         ("matte_morte",        "Matte morte",               "percent"),
-    ]),
-    ("Recouvrement par épibiontes", "1=non, 2=un peu, 3=beaucoup", [
-        ("epib_algues",   "Algues",   "score13"),
-        ("epib_herbier",  "Herbier",  "score13"),
+        ("epib_herbier",       "Épibiontes herbier",        "score13"),
     ]),
     ("Recouvrement Algues", "somme à 100 % par secteur", [
         ("alg_brunes_nid",  "Algues brunes non ID",          "percent"),
@@ -68,6 +65,7 @@ _SCHEMA: list[tuple[str, str, list]] = [
         ("alg_vertes",      "Algues vertes",                 "percent"),
         ("alg_rouges",      "Algues rouges",                 "percent"),
         ("total_algues",    "TOTAL algues",                  "total"),
+        ("epib_algues",     "Épibiontes algues",             "score13"),
     ]),
     ("Présence Algues", "0 ou 1, obligatoire", [
         ("laminaria_sp",     "Laminaria sp.",           "presence"),
@@ -492,10 +490,10 @@ class _CollapsibleSection(QtWidgets.QWidget):
         self._content.setStyleSheet("background:#0b1825;")
         outer.addWidget(self._content)
 
-        self._btn.clicked.connect(self._toggle)
+        self._btn.clicked.connect(lambda _: self._toggle())
 
     def _toggle(self):
-        self._collapsed = not self._content.isVisible()
+        self._collapsed = not self._collapsed
         self._content.setVisible(not self._collapsed)
         arrow = "▶" if self._collapsed else "▼"
         txt = self._btn.text()
@@ -503,6 +501,27 @@ class _CollapsibleSection(QtWidgets.QWidget):
 
     def set_layout(self, layout):
         self._content.setLayout(layout)
+
+    def set_locked(self, locked: bool):
+        """Grise et désactive la section (contenu non accessible)."""
+        self._btn.setEnabled(not locked)
+        self._content.setVisible(not locked)
+        if locked:
+            self._btn.setStyleSheet(
+                "QToolButton { background:#111f2e; color:#445566;"
+                " font-weight:bold; font-size:11px; font-family:'Segoe UI',sans-serif;"
+                " border:none; border-radius:4px; padding:5px 8px; text-align:left; }"
+            )
+            self._collapsed = True
+        else:
+            self._btn.setStyleSheet(
+                "QToolButton { background:#1a3a54; color:#7ec8e3;"
+                " font-weight:bold; font-size:11px; font-family:'Segoe UI',sans-serif;"
+                " border:none; border-radius:4px; padding:5px 8px; text-align:left; }"
+                "QToolButton:hover { background:#20415d; }"
+            )
+            self._collapsed = False
+            self._content.setVisible(True)
 
     def retranslate(self, title: str, note: str = ""):
         arrow = "▶" if self._collapsed else "▼"
@@ -618,8 +637,28 @@ class _ImageCanvas(QtWidgets.QWidget):
         )
 
     def wheelEvent(self, event):
+        if self._pixmap is None:
+            return
         factor = 1.15 if event.angleDelta().y() > 0 else 1.0 / 1.15
-        self._zoom = max(0.1, min(10.0, self._zoom * factor))
+        old_zoom = self._zoom
+        new_zoom = max(0.1, min(10.0, old_zoom * factor))
+        if new_zoom == old_zoom:
+            return
+        pos = event.position()
+        mx, my = pos.x(), pos.y()
+        pw = self._pixmap.width() * old_zoom
+        ph = self._pixmap.height() * old_zoom
+        img_x = (self.width() - pw) / 2.0 + self._offset.x()
+        img_y = (self.height() - ph) / 2.0 + self._offset.y()
+        ix = (mx - img_x) / old_zoom
+        iy = (my - img_y) / old_zoom
+        new_pw = self._pixmap.width() * new_zoom
+        new_ph = self._pixmap.height() * new_zoom
+        self._offset = QtCore.QPointF(
+            mx - ix * new_zoom - (self.width() - new_pw) / 2.0,
+            my - iy * new_zoom - (self.height() - new_ph) / 2.0,
+        )
+        self._zoom = new_zoom
         self.update()
 
     def mousePressEvent(self, event):
@@ -635,6 +674,10 @@ class _ImageCanvas(QtWidgets.QWidget):
 
     def mouseReleaseEvent(self, event):
         self._last_mouse = None
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self.zoom_fit()
 
     def zoom_in(self):
         self._zoom = min(10.0, self._zoom * 1.25)
@@ -822,7 +865,8 @@ class _SectorViewerWidget(QtWidgets.QWidget):
         fps = cap_tmp.get(cv2.CAP_PROP_FPS)
         cap_tmp.release()
         self._fps = fps if fps > 0 else 25.0
-        self._pos_ms = mid_ms if mid_ms is not None else (clip_start_ms + clip_end_ms) // 2
+        # Curseur toujours à 0 (début du clip) ; mid_ms sert uniquement aux vignettes
+        self._pos_ms = clip_start_ms
         self._read_and_show()
 
     def clear(self):
@@ -875,7 +919,7 @@ class _SectorViewerWidget(QtWidgets.QWidget):
             QtGui.QImage.Format.Format_RGB888,
         ).copy()
         self._canvas.set_pixmap(QtGui.QPixmap.fromImage(qimg), reset=False)
-        s = self._pos_ms // 1000
+        s = max(0, self._pos_ms - self._clip_start_ms) // 1000
         time_str = f"{s // 60:02d}:{s % 60:02d}"
         self._lbl_time.setText(time_str)
         self._timeline.set_time_text(time_str)
@@ -1181,6 +1225,167 @@ class _RecouvrementCascade(QtWidgets.QWidget):
         self._on_row_changed()
 
 
+# ── Widget cascade présence (algues / invertébrés) ────────────────────────────
+
+class _PresenceCascade(QtWidgets.QWidget):
+    """Sélection d'items par présence : liste de lignes [Nom ×], bouton + Ajouter."""
+
+    data_changed = QtCore.pyqtSignal()
+
+    def __init__(self, items: list[tuple[str, str]], add_label: str = "+ Ajouter",
+                 show_count: bool = False, parent=None):
+        super().__init__(parent)
+        self._items = items          # [(key, label), ...]
+        self._add_label = add_label
+        self._show_count = show_count
+        self._rows: list[dict] = []  # [{"key": str, "widget": QWidget, "spin"?: QSpinBox}, ...]
+        self._loading = False
+        self._language = 'fr'
+
+        _css = (
+            "QComboBox { background:#0d1825; color:#c0d8e8; border:1px solid #2a4057;"
+            " border-radius:3px; padding:2px 4px; font-size:11px; min-height:22px; }"
+            "QComboBox::drop-down { border:none; }"
+            "QComboBox QAbstractItemView { background:#0d1825; color:#c0d8e8;"
+            " selection-background-color:#20415d; }"
+        )
+
+        outer = QtWidgets.QVBoxLayout(self)
+        outer.setContentsMargins(4, 4, 4, 4)
+        outer.setSpacing(4)
+
+        self._rows_vlay = QtWidgets.QVBoxLayout()
+        self._rows_vlay.setSpacing(3)
+        outer.addLayout(self._rows_vlay)
+
+        self._btn_add = QtWidgets.QPushButton(add_label)
+        self._btn_add.setStyleSheet(
+            "QPushButton { background:#0a1e2d; color:#7ec8e3; border:1px solid #2778a2;"
+            " border-radius:3px; font-size:10px; padding:3px 8px; }"
+            "QPushButton:hover { background:#1a3a52; }"
+        )
+        self._btn_add.clicked.connect(self._add_row)
+        outer.addWidget(self._btn_add, 0, QtCore.Qt.AlignmentFlag.AlignLeft)
+
+        self._css = _css
+
+    def _available_keys(self) -> list[tuple[str, str]]:
+        used = {r["key"] for r in self._rows}
+        return [(k, l) for k, l in self._items if k not in used]
+
+    def _add_row(self, key: str = "", label_override: str = ""):
+        avail = self._available_keys()
+        if key:
+            avail_keys = [k for k, _ in avail]
+            if key not in avail_keys:
+                # already present or unknown — skip silently
+                return
+        elif not avail:
+            return
+
+        row_w = QtWidgets.QWidget()
+        row_w.setStyleSheet("background:#0b1421;")
+        rlay = QtWidgets.QHBoxLayout(row_w)
+        rlay.setContentsMargins(2, 1, 2, 1)
+        rlay.setSpacing(4)
+
+        cb = QtWidgets.QComboBox()
+        cb.setStyleSheet(self._css)
+        cb.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,
+                         QtWidgets.QSizePolicy.Policy.Fixed)
+        for k, lbl in self._items:
+            cb.addItem(lbl, k)
+
+        chosen_key = key if key else (avail[0][0] if avail else "")
+        idx = cb.findData(chosen_key)
+        if idx >= 0:
+            cb.setCurrentIndex(idx)
+
+        btn_del = QtWidgets.QPushButton("×")
+        btn_del.setFixedSize(20, 20)
+        btn_del.setStyleSheet(
+            "QPushButton { background:#1a2030; color:#e05050;"
+            " border:1px solid #2a1525; border-radius:3px; font-size:12px; }"
+            "QPushButton:hover { background:#2a1525; }"
+        )
+
+        spin = None
+        if self._show_count:
+            spin = QtWidgets.QSpinBox()
+            spin.setRange(1, 9999)
+            spin.setValue(1)
+            spin.setFixedWidth(58)
+            spin.setStyleSheet(
+                "QSpinBox { background:#0d1825; color:#c0d8e8; border:1px solid #2a4057;"
+                " border-radius:3px; padding:1px 3px; font-size:11px; }"
+            )
+
+        row_info = {"key": chosen_key, "combo": cb, "spin": spin, "widget": row_w}
+        self._rows.append(row_info)
+        self._rows_vlay.addWidget(row_w)
+        rlay.addWidget(cb, 1)
+        if spin is not None:
+            rlay.addWidget(spin)
+        rlay.addWidget(btn_del)
+
+        btn_del.clicked.connect(lambda: self._remove_row(row_info))
+        cb.currentIndexChanged.connect(
+            lambda _, ri=row_info: self._on_cb_changed(ri))
+        if spin is not None:
+            spin.valueChanged.connect(lambda _, ri=row_info: self._on_cb_changed(ri))
+
+        self._update_add_btn()
+        if not self._loading:
+            self.data_changed.emit()
+
+    def _remove_row(self, row_info: dict):
+        row_info["widget"].setParent(None)
+        row_info["widget"].deleteLater()
+        if row_info in self._rows:
+            self._rows.remove(row_info)
+        self._update_add_btn()
+        if not self._loading:
+            self.data_changed.emit()
+
+    def _on_cb_changed(self, row_info: dict):
+        row_info["key"] = row_info["combo"].currentData() or ""
+        if not self._loading:
+            self.data_changed.emit()
+
+    def _update_add_btn(self):
+        self._btn_add.setVisible(bool(self._available_keys()))
+
+    def get_data(self) -> dict[str, int]:
+        """Retourne {key: count} (count=1 si pas de spinbox)."""
+        result = {}
+        for r in self._rows:
+            k = r["combo"].currentData()
+            if k:
+                count = r["spin"].value() if r.get("spin") else 1
+                result[k] = count
+        return result
+
+    def set_data(self, data: dict[str, int]):
+        """Charge depuis {key: count}; n'ajoute que les clés avec valeur > 0."""
+        self._loading = True
+        for ri in list(self._rows):
+            ri["widget"].setParent(None)
+            ri["widget"].deleteLater()
+        self._rows.clear()
+        for k, v in data.items():
+            if v:
+                self._add_row(key=k)
+                if self._show_count and self._rows:
+                    spin = self._rows[-1].get("spin")
+                    if spin is not None:
+                        spin.setValue(int(v))
+        self._update_add_btn()
+        self._loading = False
+
+    def set_language(self, language: str):
+        self._language = language
+
+
 # ── Contrôleur principal ──────────────────────────────────────────────────────
 
 class AnalyseHabitatController(QtCore.QObject):
@@ -1202,6 +1407,11 @@ class AnalyseHabitatController(QtCore.QObject):
         self._sv_widgets: dict[str, QtWidgets.QWidget] = {}
         self._sv_recouvrement: _RecouvrementCascade | None = None
         self._sector_viewer: _SectorViewerWidget | None = None
+        self._section_rec_herbier: _CollapsibleSection | None = None
+        self._section_rec_algues: _CollapsibleSection | None = None
+        self._section_presence_algues: _CollapsibleSection | None = None
+        self._sv_presence_algues: _PresenceCascade | None = None
+        self._sv_inverts: _PresenceCascade | None = None
 
         # Timestamps / thumbnails secteurs
         self._sector_mid_ts: list[float | None] = [None] * 6
@@ -1535,6 +1745,12 @@ class AnalyseHabitatController(QtCore.QObject):
         for section_name, note, fields in _SCHEMA:
             section = _CollapsibleSection(section_name, note)
             self._section_widgets.append((section, section_name, note))
+            if section_name == "Recouvrement Herbier":
+                self._section_rec_herbier = section
+            elif section_name == "Recouvrement Algues":
+                self._section_rec_algues = section
+            elif section_name == "Présence Algues":
+                self._section_presence_algues = section
 
             if section_name == "Recouvrement visible":
                 inner = QtWidgets.QVBoxLayout()
@@ -1545,6 +1761,33 @@ class AnalyseHabitatController(QtCore.QObject):
                     self._sv_on_recouvrement_changed)
                 inner.addWidget(self._sv_recouvrement)
                 section.set_layout(inner)
+
+            elif section_name == "Présence Algues":
+                inner = QtWidgets.QVBoxLayout()
+                inner.setContentsMargins(4, 4, 4, 4)
+                inner.setSpacing(4)
+                items = [(fkey, flabel) for fkey, flabel, _ in fields]
+                add_lbl = _EN.get("+ Ajouter une algue", "+ Ajouter une algue") \
+                    if self._language == 'en' else "+ Ajouter une algue"
+                self._sv_presence_algues = _PresenceCascade(
+                    items, add_label="+ Ajouter une algue", show_count=False)
+                self._sv_presence_algues.data_changed.connect(
+                    self._sv_on_presence_algues_changed)
+                inner.addWidget(self._sv_presence_algues)
+                section.set_layout(inner)
+
+            elif section_name == "Invertébrés remarquables":
+                inner = QtWidgets.QVBoxLayout()
+                inner.setContentsMargins(4, 4, 4, 4)
+                inner.setSpacing(4)
+                items = [(fkey, flabel) for fkey, flabel, _ in fields]
+                self._sv_inverts = _PresenceCascade(
+                    items, add_label="+ Ajouter un invertébré", show_count=True)
+                self._sv_inverts.data_changed.connect(
+                    self._sv_on_inverts_changed)
+                inner.addWidget(self._sv_inverts)
+                section.set_layout(inner)
+
             else:
                 grid = QtWidgets.QGridLayout()
                 grid.setContentsMargins(4, 4, 4, 4)
@@ -1593,20 +1836,19 @@ class AnalyseHabitatController(QtCore.QObject):
     # ── Gestion secteur courant ───────────────────────────────────────────────
 
     def _initial_ms_for_sector(self, idx: int) -> int | None:
-        """Retourne le ms de la frame initiale : atterrissage pour S1, début du clip sinon."""
+        """Retourne le ms de la frame initiale : atterrissage pour S1, milieu du clip sinon."""
         bounds = self._sector_bounds[idx] if idx < len(self._sector_bounds) else None
         if bounds is None:
             return None
         clip_start = bounds[0]
-        if self._landing_ms is not None:
-            # On prend la position d'atterrissage si elle est dans le clip courant
+        # La logique atterrissage ne s'applique qu'à S1 (idx==0) :
+        # pour S2-S6, landing_ms < clip_start → on tomberait au début du clip (rotation)
+        if idx == 0 and self._landing_ms is not None:
             lms = self._landing_ms
             if clip_start <= lms <= bounds[1]:
                 return lms
-            # Si le landing est avant ce clip, on prend le début du clip
             if lms < clip_start:
                 return clip_start
-        # Fallback : milieu du clip
         mid_ts = self._sector_mid_ts[idx] if idx < len(self._sector_mid_ts) else None
         return int(mid_ts * 1000) if mid_ts is not None else None
 
@@ -1654,10 +1896,34 @@ class AnalyseHabitatController(QtCore.QObject):
                     if v:
                         rec_data[k] = v
                 self._sv_recouvrement.set_data(rec_data)
+
+            if self._sv_presence_algues is not None:
+                algues_data: dict[str, int] = {}
+                for sname, _, fields in _SCHEMA:
+                    if sname != "Présence Algues":
+                        continue
+                    for fkey, _, _ in fields:
+                        v = (d.get(fkey, [0] * 6))[s] if s < len(d.get(fkey, [0] * 6)) else 0
+                        if v:
+                            algues_data[fkey] = v
+                self._sv_presence_algues.set_data(algues_data)
+
+            if self._sv_inverts is not None:
+                inverts_data: dict[str, int] = {}
+                for sname, _, fields in _SCHEMA:
+                    if sname != "Invertébrés remarquables":
+                        continue
+                    for fkey, _, _ in fields:
+                        vals = d.get(fkey, [0] * 6)
+                        v = vals[s] if s < len(vals) else 0
+                        if v:
+                            inverts_data[fkey] = v
+                self._sv_inverts.set_data(inverts_data)
         finally:
             self._updating = False
         self._sv_refresh_totals()
         self._sv_update_badges()
+        self._sv_update_conditional_sections()
 
     def _sv_on_changed(self, field_key: str, value):
         if self._updating or not self._current_video:
@@ -1667,6 +1933,8 @@ class AnalyseHabitatController(QtCore.QObject):
         row[self._current_sector_idx] = value
         self._sv_refresh_totals()
         self._sv_update_badges()
+        self._sv_update_conditional_sections()
+        self._persist_habitat(self._current_video)
 
     def _sv_on_recouvrement_changed(self):
         if self._updating or not self._current_video or self._sv_recouvrement is None:
@@ -1678,6 +1946,92 @@ class AnalyseHabitatController(QtCore.QObject):
             row[self._current_sector_idx] = cascade_data.get(k, 0)
         self._sv_refresh_totals()
         self._sv_update_badges()
+        self._sv_update_conditional_sections()
+        self._persist_habitat(self._current_video)
+
+    def _sv_on_presence_algues_changed(self):
+        if self._updating or not self._current_video or self._sv_presence_algues is None:
+            return
+        cascade_data = self._sv_presence_algues.get_data()
+        d = self._data.setdefault(self._current_video, {})
+        s = self._current_sector_idx
+        for section_name, _, fields in _SCHEMA:
+            if section_name != "Présence Algues":
+                continue
+            for fkey, _, _ in fields:
+                row = d.setdefault(fkey, [0] * 6)
+                row[s] = cascade_data.get(fkey, 0)
+        self._sv_update_badges()
+        self._persist_habitat(self._current_video)
+
+    def _sv_on_inverts_changed(self):
+        if self._updating or not self._current_video or self._sv_inverts is None:
+            return
+        cascade_data = self._sv_inverts.get_data()
+        d = self._data.setdefault(self._current_video, {})
+        s = self._current_sector_idx
+        for section_name, _, fields in _SCHEMA:
+            if section_name != "Invertébrés remarquables":
+                continue
+            for fkey, _, _ in fields:
+                row = d.setdefault(fkey, [0] * 6)
+                row[s] = cascade_data.get(fkey, 0)
+        self._sv_update_badges()
+        self._persist_habitat(self._current_video)
+
+    # ── Persistance habitat.json ──────────────────────────────────────────────
+
+    @staticmethod
+    def _habitat_json_path(video_path: str) -> str:
+        stem = os.path.splitext(os.path.basename(video_path))[0]
+        folder = os.path.dirname(os.path.normpath(video_path))
+        return os.path.join(folder, f"{stem}_habitat.json")
+
+    def _load_habitat_json(self, video_path: str):
+        """Charge les données habitat depuis {stem}_habitat.json si présent."""
+        path = self._habitat_json_path(video_path)
+        if not os.path.isfile(path):
+            print(f"[HABITAT] Pas de fichier existant : {path}")
+            return
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            self._data[video_path] = data
+            print(f"[HABITAT] Chargé ({len(data)} clés) ← {path}")
+        except Exception as e:
+            print(f"[HABITAT] Erreur chargement {path}: {e}")
+
+    def _persist_habitat(self, video_path: str):
+        """Écrit les données habitat dans {stem}_habitat.json."""
+        path = self._habitat_json_path(video_path)
+        d = self._data.get(video_path, {})
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(d, f, indent=2, ensure_ascii=False)
+            print(f"[HABITAT] Sauvegardé ({len(d)} clés) → {path}")
+        except Exception as e:
+            print(f"[HABITAT] Erreur sauvegarde {path}: {e}")
+
+    def _sv_update_conditional_sections(self):
+        """Verrouille Recouvrement Herbier / Algues si le substrat correspondant est absent."""
+        if not self._current_video:
+            return
+        d = self._data.get(self._current_video, {})
+        s = self._current_sector_idx
+
+        def _val(key):
+            v = d.get(key, [0] * 6)
+            return v[s] if s < len(v) else 0
+
+        has_herbier = bool(_val("herbier_snv") or _val("herbier_sv"))
+        has_algues  = bool(_val("algues_snv")  or _val("algues_sv"))
+
+        if self._section_rec_herbier is not None:
+            self._section_rec_herbier.set_locked(not has_herbier)
+        if self._section_rec_algues is not None:
+            self._section_rec_algues.set_locked(not has_algues)
+        if self._section_presence_algues is not None:
+            self._section_presence_algues.set_locked(not has_algues)
 
     def _sv_sector_is_complete(self, sector_idx: int) -> bool:
         """Retourne True si topo, complexité et recouvrement (=100%) sont renseignés."""
@@ -2076,6 +2430,7 @@ class AnalyseHabitatController(QtCore.QObject):
         self._sector_viewer.setVisible(True)
         self._scroll.setVisible(True)
         self._load_av_fields(self._current_video)
+        self._load_habitat_json(self._current_video)
         self._load_rotation_timestamps(self._current_video)
         self._start_frame_extraction(self._current_video)
         # Afficher secteur 0 par défaut
