@@ -1465,7 +1465,7 @@ class AnalyseHabitatController(QtCore.QObject):
         self._list = QtWidgets.QListWidget()
         self._list.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Maximum,  # s'étire jusqu'au contenu, pas plus
+            QtWidgets.QSizePolicy.Policy.Expanding,
         )
         self._list.setStyleSheet(
             "QListWidget { background:#111f2e; color:#a0c8e0; border:none;"
@@ -1475,31 +1475,20 @@ class AnalyseHabitatController(QtCore.QObject):
             "QListWidget::item:hover { background:#162438; }"
         )
         self._list.currentRowChanged.connect(self._on_row_changed)
-        vlay.addWidget(self._list)  # pas de stretch : la liste se dimensionne à son contenu
 
-        # ── Panneau Analyse vidéo collé sous la liste ─────────────────────
-        vlay.addWidget(self._build_analysis_panel_compact())
-
-        # ── Bouton export CSV masque saisie ───────────────────────────────
-        self._btn_export_csv = QtWidgets.QPushButton()
-        self._btn_export_csv.setText(
-            "Générer masque saisie (CSV)" if self._language == 'fr' else "Generate entry template (CSV)"
+        # ── Splitter vertical : liste ↕ panneau Analyse vidéo ─────────────
+        self._left_splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
+        self._left_splitter.setStyleSheet(
+            "QSplitter::handle { background:#1e3448; height:5px; }"
+            "QSplitter::handle:hover { background:#2778a2; }"
         )
-        self._btn_export_csv.setStyleSheet(
-            "QPushButton { background:#0d2a3e; color:#7ec8e3; border:1px solid #2778a2;"
-            " border-radius:4px; font-size:10px; font-family:'Segoe UI',sans-serif;"
-            " padding:5px 10px; margin:6px 8px; }"
-            "QPushButton:hover { background:#1a3a52; }"
-            "QPushButton:pressed { background:#0a1e2d; }"
-        )
-        self._btn_export_csv.clicked.connect(self._export_saisie_csv)
-        self._btn_export_csv.setContextMenuPolicy(
-            QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
-        self._btn_export_csv.customContextMenuRequested.connect(
-            self._on_export_csv_context_menu)
-        vlay.addWidget(self._btn_export_csv)
+        self._left_splitter.addWidget(self._list)
+        self._left_splitter.addWidget(self._build_analysis_panel_compact())
+        self._left_splitter.setSizes([200, 160])
+        self._left_splitter.setCollapsible(0, False)
+        self._left_splitter.setCollapsible(1, False)
+        vlay.addWidget(self._left_splitter, 1)
 
-        vlay.addStretch(1)  # espace vide en bas, hors des zones utiles
         return panel
 
     def _build_analysis_panel_compact(self) -> QtWidgets.QWidget:
@@ -1581,6 +1570,25 @@ class AnalyseHabitatController(QtCore.QObject):
         dist_lay.addWidget(_inp("distance_max", "5"))
         dist_lay.addStretch()
         content_lay.addWidget(dist_row)
+
+        # ── Bouton export CSV masque saisie ───────────────────────────────
+        self._btn_export_csv = QtWidgets.QPushButton()
+        self._btn_export_csv.setText(
+            "Générer masque saisie (CSV)" if self._language == 'fr' else "Generate entry template (CSV)"
+        )
+        self._btn_export_csv.setStyleSheet(
+            "QPushButton { background:#0d2a3e; color:#7ec8e3; border:1px solid #2778a2;"
+            " border-radius:4px; font-size:10px; font-family:'Segoe UI',sans-serif;"
+            " padding:5px 10px; margin:6px 0px; }"
+            "QPushButton:hover { background:#1a3a52; }"
+            "QPushButton:pressed { background:#0a1e2d; }"
+        )
+        self._btn_export_csv.clicked.connect(self._export_saisie_csv)
+        self._btn_export_csv.setContextMenuPolicy(
+            QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self._btn_export_csv.customContextMenuRequested.connect(
+            self._on_export_csv_context_menu)
+        content_lay.addWidget(self._btn_export_csv)
 
         outer_lay.addWidget(self._av_panel_content)
 
