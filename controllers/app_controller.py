@@ -814,6 +814,7 @@ class AppController(QtCore.QObject):
             self.analyse_habitat_ctrl._rebuild_list()
         else:
             self._habitat_list_dirty = True
+        self.analyse_habitat_ctrl.ensure_habitat_jsons()
 
     def _on_events_changed(self, *_):
         """Callback déclenché quand des événements sont ajoutés/supprimés/modifiés."""

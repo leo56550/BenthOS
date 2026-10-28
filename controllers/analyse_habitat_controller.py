@@ -1493,6 +1493,10 @@ class AnalyseHabitatController(QtCore.QObject):
             "QPushButton:pressed { background:#0a1e2d; }"
         )
         self._btn_export_csv.clicked.connect(self._export_saisie_csv)
+        self._btn_export_csv.setContextMenuPolicy(
+            QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self._btn_export_csv.customContextMenuRequested.connect(
+            self._on_export_csv_context_menu)
         vlay.addWidget(self._btn_export_csv)
 
         vlay.addStretch(1)  # espace vide en bas, hors des zones utiles
@@ -2005,12 +2009,35 @@ class AnalyseHabitatController(QtCore.QObject):
         """Écrit les données habitat dans {stem}_habitat.json."""
         path = self._habitat_json_path(video_path)
         d = self._data.get(video_path, {})
+        is_new = not os.path.isfile(path)
         try:
             with open(path, 'w', encoding='utf-8') as f:
                 json.dump(d, f, indent=2, ensure_ascii=False)
-            print(f"[HABITAT] Sauvegardé ({len(d)} clés) → {path}")
+            if is_new:
+                print(f"[HABITAT] Fichier créé → {path}")
+            else:
+                print(f"[HABITAT] Sauvegardé ({len(d)} clés) → {path}")
         except Exception as e:
             print(f"[HABITAT] Erreur sauvegarde {path}: {e}")
+
+    def ensure_habitat_jsons(self):
+        """Crée (si absent) un habitat.json pour chaque vidéo exploitable (oui/habitat)."""
+        if not self._video_model:
+            return
+        for row in range(self._video_model.rowCount()):
+            item = self._video_model.item(row, 0)
+            if not item:
+                continue
+            vpath = item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if not vpath:
+                continue
+            vpath_str = str(vpath)
+            expl = _get_exploitability_value(vpath_str)
+            if expl not in {"oui", "habitat"}:
+                continue
+            path = self._habitat_json_path(vpath_str)
+            if not os.path.isfile(path):
+                self._persist_habitat(vpath_str)
 
     def _sv_update_conditional_sections(self):
         """Verrouille Recouvrement Herbier / Algues si le substrat correspondant est absent."""
@@ -2639,6 +2666,94 @@ class AnalyseHabitatController(QtCore.QObject):
                 "Erreur" if self._language == 'fr' else "Error",
                 str(exc),
             )
+
+    def _on_export_csv_context_menu(self, pos):
+        menu = QtWidgets.QMenu(self._btn_export_csv)
+        lbl = ("Générer tous les masques de saisie (un par station)"
+               if self._language == 'fr'
+               else "Generate all entry templates (one per station)")
+        action = menu.addAction(lbl)
+        chosen = menu.exec(self._btn_export_csv.mapToGlobal(pos))
+        if chosen is action:
+            self._export_all_saisie_csv()
+
+    def _export_all_saisie_csv(self):
+        """Génère un CSV par station dans le dossier de chaque vidéo."""
+        import csv
+
+        if not self._video_model:
+            return
+
+        entries: list[tuple[str, str]] = []
+        for row in range(self._video_model.rowCount()):
+            item = self._video_model.item(row, 0)
+            if not item:
+                continue
+            vpath = str(item.data(QtCore.Qt.ItemDataRole.UserRole) or "")
+            if not vpath:
+                continue
+            expl = _get_exploitability_value(vpath)
+            if expl not in {"oui", "habitat"}:
+                continue
+            code = _get_codestation(vpath) or item.text() or os.path.splitext(os.path.basename(vpath))[0]
+            entries.append((code, vpath))
+        entries.sort(key=lambda e: e[0].lower())
+
+        if not entries:
+            QtWidgets.QMessageBox.information(
+                self._page,
+                "Aucune station" if self._language == 'fr' else "No station",
+                "Aucune vidéo exploitable trouvée." if self._language == 'fr' else "No exploitable video found.",
+            )
+            return
+
+        _AUTO_TOTAL = set(_TOTAL_SOURCES.keys())
+        field_keys: list[str] = []
+        field_labels: list[str] = []
+        for _, _, fields in _SCHEMA:
+            for key, label, _ in fields:
+                if key not in _AUTO_TOTAL and key not in field_keys:
+                    field_keys.append(key)
+                    field_labels.append(label if self._language == 'fr' else _EN.get(label, label))
+
+        header = (
+            ["codestation", "secteur"] + field_labels
+            if self._language == 'fr'
+            else ["station", "sector"] + field_labels
+        )
+
+        created: list[str] = []
+        errors: list[str] = []
+        for code, vpath in entries:
+            folder = os.path.dirname(os.path.normpath(vpath))
+            safe_code = "".join(c for c in code if c.isalnum() or c in "-_")
+            out_path = os.path.join(folder, f"{safe_code}_masque_saisie.csv")
+            try:
+                with open(out_path, 'w', newline='', encoding='utf-8-sig') as fh:
+                    writer = csv.writer(fh, delimiter=';')
+                    writer.writerow(header)
+                    d = self._data.get(vpath, {})
+                    for s in range(6):
+                        row_vals = [code, s + 1]
+                        for key in field_keys:
+                            vals = d.get(key)
+                            v = vals[s] if vals and s < len(vals) else ""
+                            row_vals.append("" if not v else v)
+                        writer.writerow(row_vals)
+                created.append(out_path)
+                print(f"[HABITAT] Masque saisie créé → {out_path}")
+            except Exception as exc:
+                errors.append(f"{code}: {exc}")
+
+        msg = (f"{len(created)} fichier(s) créé(s)." if self._language == 'fr'
+               else f"{len(created)} file(s) created.")
+        if errors:
+            msg += "\n\nErreurs :\n" + "\n".join(errors)
+        QtWidgets.QMessageBox.information(
+            self._page,
+            "Export terminé" if self._language == 'fr' else "Export done",
+            msg,
+        )
 
 
 # ── Utilitaires ───────────────────────────────────────────────────────────────
