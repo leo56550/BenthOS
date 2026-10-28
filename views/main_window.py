@@ -1,6 +1,7 @@
 import os
 
 from PyQt6 import QtWidgets, uic, QtCore, QtGui
+from views.widgets.progress_dashboard import ProgressDashboardWidget, ProgressToolbarStrip
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -235,12 +236,8 @@ class MainWindow(QtWidgets.QMainWindow):
         buttons_layout.setContentsMargins(0, 0, 0, 0)
         buttons_layout.setSpacing(4)
 
-        self.btn_avancement = _btn("Avancement",
-                                   "Voir l'avancement du dérushage de la campagne",
-                                   "btn_avancement", enabled=False)
         buttons_layout.addWidget(self.btn_sftp)
         buttons_layout.addWidget(self.btn_notes)
-        buttons_layout.addWidget(self.btn_avancement)
         buttons_layout.addStretch()
 
         buttons_scroll = QtWidgets.QScrollArea()
@@ -280,12 +277,23 @@ class MainWindow(QtWidgets.QMainWindow):
             " QToolButton:pressed { background-color: #0a3a4e; }"
         )
 
-        self.action_toolbar.addWidget(buttons_scroll)
-        self.action_toolbar.addWidget(self.btn_load_history)
-        self.action_toolbar.addWidget(self.btn_synthese_infostation)
-        # Stocker l'action wrapper pour pouvoir show/hide correctement dans la toolbar
-        self._act_generate_temp = self.action_toolbar.addWidget(self.btn_generate_temp)
-        self._act_generate_temp.setVisible(False)
+        self.inline_donuts = ProgressToolbarStrip()
+        self.btn_generate_temp.setVisible(False)
+
+        # Conteneur unique couvrant toute la toolbar : gauche | centre (donuts) | droite
+        _tc = QtWidgets.QWidget()
+        _tc_lay = QtWidgets.QHBoxLayout(_tc)
+        _tc_lay.setContentsMargins(0, 0, 0, 0)
+        _tc_lay.setSpacing(0)
+        _tc_lay.addWidget(buttons_scroll, 1)            # gauche — s'étire
+        _tc_lay.addStretch(1)                           # espace avant les donuts
+        _tc_lay.addWidget(self.inline_donuts, 0,
+                          QtCore.Qt.AlignmentFlag.AlignVCenter)
+        _tc_lay.addStretch(1)                           # espace après les donuts
+        _tc_lay.addWidget(self.btn_load_history)
+        _tc_lay.addWidget(self.btn_synthese_infostation)
+        _tc_lay.addWidget(self.btn_generate_temp)
+        self.action_toolbar.addWidget(_tc)
 
         self.action_toolbar.setStyleSheet("""
             QToolBar {
@@ -479,14 +487,12 @@ class MainWindow(QtWidgets.QMainWindow):
         'fr': {
             'btn_sftp':          ("KOSMOS Connexion",    "Connexion SFTP / Planification déploiement"),
             'btn_notes':         ("Notes",               "Notes de session — mémo libre de la campagne"),
-            'btn_avancement':    ("Avancement",          "Voir l'avancement du dérushage de la campagne"),
             'btn_load_history':  ("Données historiques", "Charger les données historiques (clic droit → supprimer temp.json)"),
             'btn_generate_temp': ("GÉNÉRER TEMP.JSON",   "Générer les _temp.json dans le dossier de l'infoStation chargée"),
         },
         'en': {
             'btn_sftp':          ("KOSMOS Connection",   "SFTP connection / Deployment planning"),
             'btn_notes':         ("Notes",               "Session notes — free memo for the campaign"),
-            'btn_avancement':    ("Progress",            "View campaign processing progress"),
             'btn_load_history':  ("Historical data",     "Load historical data (right-click → delete temp.json)"),
             'btn_generate_temp': ("GENERATE TEMP.JSON",  "Generate _temp.json files in the loaded infoStation folder"),
         },

@@ -102,7 +102,7 @@ _SCHEMA: list[tuple[str, str, list]] = [
         ("autres_coq",    "Autres coquillages", "count"),
     ]),
     ("Anthropisation", "", [
-        ("etat_sante",   "Etat de santé herbier/algues",  "score13"),
+        ("etat_sante",   "Etat de santé herbier/algues",  "score13_sante"),
         ("engins_peche", "Engins de pêche",               "presence"),
         ("macrochets",   "Macrodéchets",                  "presence"),
     ]),
@@ -484,6 +484,7 @@ _BD_EMPTY   = "#1e3448"   # bordure par défaut
 _COMBO_ITEMS: dict[str, list[tuple[str, int]]] = {
     "score15": [("—", 0), ("1", 1), ("2", 2), ("3", 3), ("4", 4), ("5", 5)],
     "score13": [("—", 0), ("1 – non", 1), ("2 – peu", 2), ("3 – bcp", 3)],
+    "score13_sante": [("—", 0), ("1 – non impacté", 1), ("2 – moyen", 2), ("3 – très impacté", 3)],
     "percent": [(f"{v} %", v) for v in range(0, 101, 5)],
     "count":   ([(str(v), v) for v in range(0, 21)]
                 + [("25", 25), ("30", 30), ("40", 40), ("50", 50),

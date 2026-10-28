@@ -298,6 +298,12 @@ _ANIM_DURATION_MS = 850
 _RW = 8          # épaisseur de l'anneau (thin = moderne)
 _DS = 108        # diamètre de l'anneau
 
+# Mode compact (incrusté dans la toolbar)
+_RW_C = 5
+_DS_C = 60
+_W_C  = 80       # largeur du widget compact
+_H_C  = 98       # hauteur du widget compact
+
 
 def _ease_out_quart(t: float) -> float:
     return 1.0 - (1.0 - t) ** 4
@@ -308,13 +314,19 @@ def _ease_out_quart(t: float) -> float:
 class _DonutBase(QtWidgets.QWidget):
     """Base partagée : timer, elapsed, taille fixe."""
 
-    def __init__(self, parent=None):
+    def __init__(self, compact: bool = False, parent=None):
         super().__init__(parent)
+        self._compact = compact
+        self._ds = _DS_C if compact else _DS
+        self._rw = _RW_C if compact else _RW
         self._elapsed = QtCore.QElapsedTimer()
         self._elapsed.start()
         self._timer = QtCore.QTimer(self)
         self._timer.timeout.connect(self._step)
-        self.setFixedSize(148, 190)
+        if compact:
+            self.setFixedSize(_W_C, _H_C)
+        else:
+            self.setFixedSize(148, 190)
 
     def _start_anim(self, delay_ms: int = 0):
         self._timer.stop()
@@ -332,16 +344,14 @@ class _DonutBase(QtWidgets.QWidget):
 
     # ── Primitives de rendu ────────────────────────────────────────────────
 
-    @staticmethod
-    def _paint_track(p: QtGui.QPainter, rect: QtCore.QRectF) -> None:
+    def _paint_track(self, p: QtGui.QPainter, rect: QtCore.QRectF) -> None:
         """Anneau de fond, très discret."""
-        p.setPen(QtGui.QPen(QtGui.QColor("#111f2d"), _RW,
+        p.setPen(QtGui.QPen(QtGui.QColor("#111f2d"), self._rw,
                             QtCore.Qt.PenStyle.SolidLine,
                             QtCore.Qt.PenCapStyle.FlatCap))
         p.drawArc(rect, 0, 360 * 16)
 
-    @staticmethod
-    def _paint_arc(p: QtGui.QPainter,
+    def _paint_arc(self, p: QtGui.QPainter,
                    rect: QtCore.QRectF,
                    start_deg: float, span_deg: float,
                    color: QtGui.QColor) -> None:
@@ -351,25 +361,24 @@ class _DonutBase(QtWidgets.QWidget):
         sq = int(start_deg * 16)
         sp = int(span_deg  * 16)
 
-        # Lueur ambiante — une seule couche, très transparente
         gc = QtGui.QColor(color)
         gc.setAlpha(22)
-        p.setPen(QtGui.QPen(gc, _RW + 14,
+        glow = self._rw + (8 if self._compact else 14)
+        p.setPen(QtGui.QPen(gc, glow,
                             QtCore.Qt.PenStyle.SolidLine,
                             QtCore.Qt.PenCapStyle.RoundCap))
         p.drawArc(rect, sq, sp)
 
-        # Arc principal
-        p.setPen(QtGui.QPen(color, _RW,
+        p.setPen(QtGui.QPen(color, self._rw,
                             QtCore.Qt.PenStyle.SolidLine,
                             QtCore.Qt.PenCapStyle.RoundCap))
         p.drawArc(rect, sq, sp)
 
-    @staticmethod
-    def _paint_title(p: QtGui.QPainter, title: str, w: int, y: float) -> None:
-        p.setFont(QtGui.QFont("Segoe UI", 8, QtGui.QFont.Weight.Medium))
+    def _paint_title(self, p: QtGui.QPainter, title: str, w: int, y: float) -> None:
+        sz = 7 if self._compact else 8
+        p.setFont(QtGui.QFont("Segoe UI", sz, QtGui.QFont.Weight.Medium))
         p.setPen(QtGui.QColor("#4a6e88"))
-        p.drawText(QtCore.QRectF(0, y, w, 18),
+        p.drawText(QtCore.QRectF(0, y, w, 16),
                    QtCore.Qt.AlignmentFlag.AlignCenter, title.upper())
 
 
@@ -379,8 +388,8 @@ class _DonutBiColor(_DonutBase):
     _C_KEPT    = QtGui.QColor("#34d399")   # emerald
     _C_TRASHED = QtGui.QColor("#f87171")   # rose
 
-    def __init__(self, title: str, parent=None):
-        super().__init__(parent)
+    def __init__(self, title: str, compact: bool = False, parent=None):
+        super().__init__(compact=compact, parent=parent)
         self._title   = title
         self._kept    = 0
         self._trashed = 0
@@ -408,9 +417,10 @@ class _DonutBiColor(_DonutBase):
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         p.setRenderHint(QtGui.QPainter.RenderHint.TextAntialiasing)
 
+        ds = self._ds
         w, h = self.width(), self.height()
-        cx, top = w // 2, 10
-        rect = QtCore.QRectF(cx - _DS / 2, top, _DS, _DS)
+        cx, top = w // 2, 6 if self._compact else 10
+        rect = QtCore.QRectF(cx - ds / 2, top, ds, ds)
         total = self._total or 1
 
         kept_full    = self._kept    / total * 360.0
@@ -422,32 +432,35 @@ class _DonutBiColor(_DonutBase):
         self._paint_arc(p, rect,  90.0,               -kept_drawn,    self._C_KEPT)
         self._paint_arc(p, rect,  90.0 - kept_drawn,  -trashed_drawn, self._C_TRASHED)
 
-        cy = top + _DS / 2.0
+        cy = top + ds / 2.0
+        big_sz  = 13 if self._compact else 22
+        small_sz = 8 if self._compact else 12
 
-        # Centre : nb gardées (grand, vert)
-        p.setFont(QtGui.QFont("Segoe UI", 22, QtGui.QFont.Weight.Bold))
+        p.setFont(QtGui.QFont("Segoe UI", big_sz, QtGui.QFont.Weight.Bold))
         p.setPen(self._C_KEPT)
-        p.drawText(QtCore.QRectF(cx - _DS/2, cy - 30, _DS, 28),
+        p.drawText(QtCore.QRectF(cx - ds/2, cy - (18 if self._compact else 30), ds,
+                                 big_sz + 4),
                    QtCore.Qt.AlignmentFlag.AlignCenter, str(self._kept))
 
-        # Sous-ligne : nb jetées (rouge)
-        p.setFont(QtGui.QFont("Segoe UI", 12, QtGui.QFont.Weight.Bold))
+        p.setFont(QtGui.QFont("Segoe UI", small_sz, QtGui.QFont.Weight.Bold))
         p.setPen(self._C_TRASHED)
-        p.drawText(QtCore.QRectF(cx - _DS/2, cy + 2, _DS, 20),
+        p.drawText(QtCore.QRectF(cx - ds/2, cy + (2 if self._compact else 2), ds, small_sz + 4),
                    QtCore.Qt.AlignmentFlag.AlignCenter, str(self._trashed))
 
-        # Légende en dessous
-        frag = QtGui.QFont("Segoe UI", 7)
+        leg_sz = 6 if self._compact else 7
+        frag = QtGui.QFont("Segoe UI", leg_sz)
         p.setFont(frag)
-        y_leg = top + _DS + 6
+        y_leg = top + ds + 4
         p.setPen(self._C_KEPT)
-        p.drawText(QtCore.QRectF(0, y_leg, w, 13),
-                   QtCore.Qt.AlignmentFlag.AlignCenter, f"● Gardées  {self._kept}")
+        p.drawText(QtCore.QRectF(0, y_leg, w, 12),
+                   QtCore.Qt.AlignmentFlag.AlignCenter,
+                   f"● {self._kept}" if self._compact else f"● Gardées  {self._kept}")
         p.setPen(self._C_TRASHED)
-        p.drawText(QtCore.QRectF(0, y_leg + 14, w, 13),
-                   QtCore.Qt.AlignmentFlag.AlignCenter, f"● Jetées  {self._trashed}")
+        p.drawText(QtCore.QRectF(0, y_leg + 12, w, 12),
+                   QtCore.Qt.AlignmentFlag.AlignCenter,
+                   f"● {self._trashed}" if self._compact else f"● Jetées  {self._trashed}")
 
-        self._paint_title(p, self._title, w, y_leg + 30)
+        self._paint_title(p, self._title, w, y_leg + (26 if self._compact else 30))
         p.end()
 
 
@@ -456,8 +469,8 @@ class _DonutBiColor(_DonutBase):
 class _DonutCard(_DonutBase):
     double_clicked = QtCore.pyqtSignal()
 
-    def __init__(self, title: str, color: str, parent=None):
-        super().__init__(parent)
+    def __init__(self, title: str, color: str, compact: bool = False, parent=None):
+        super().__init__(compact=compact, parent=parent)
         self._title  = title
         self._color  = QtGui.QColor(color)
         self._value  = 0
@@ -489,29 +502,32 @@ class _DonutCard(_DonutBase):
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         p.setRenderHint(QtGui.QPainter.RenderHint.TextAntialiasing)
 
+        ds = self._ds
         w = self.width()
-        cx, top = w // 2, 10
-        rect = QtCore.QRectF(cx - _DS / 2, top, _DS, _DS)
-        cy   = top + _DS / 2.0
+        cx, top = w // 2, 6 if self._compact else 10
+        rect = QtCore.QRectF(cx - ds / 2, top, ds, ds)
+        cy   = top + ds / 2.0
 
         self._paint_track(p, rect)
         self._paint_arc(p, rect, 90.0, -self._angle, self._color)
 
-        # Pourcentage centré dans le trou
         pct = int(self._value / self._total * 100) if self._total > 0 else 0
+        big_sz = 13 if self._compact else 20
 
-        p.setFont(QtGui.QFont("Segoe UI", 20, QtGui.QFont.Weight.Bold))
+        p.setFont(QtGui.QFont("Segoe UI", big_sz, QtGui.QFont.Weight.Bold))
         p.setPen(QtGui.QColor("#dff0fa"))
-        p.drawText(QtCore.QRectF(cx - _DS/2, cy - 24, _DS, 26),
+        p.drawText(QtCore.QRectF(cx - ds/2, cy - (16 if self._compact else 24), ds,
+                                 big_sz + 4),
                    QtCore.Qt.AlignmentFlag.AlignCenter, f"{pct}%")
 
-        p.setFont(QtGui.QFont("Segoe UI", 7))
-        p.setPen(QtGui.QColor("#2e4a5e"))
-        p.drawText(QtCore.QRectF(cx - _DS/2, cy + 5, _DS, 14),
-                   QtCore.Qt.AlignmentFlag.AlignCenter,
-                   f"{self._value} / {self._total}")
+        if not self._compact:
+            p.setFont(QtGui.QFont("Segoe UI", 7))
+            p.setPen(QtGui.QColor("#2e4a5e"))
+            p.drawText(QtCore.QRectF(cx - ds/2, cy + 5, ds, 14),
+                       QtCore.Qt.AlignmentFlag.AlignCenter,
+                       f"{self._value} / {self._total}")
 
-        self._paint_title(p, self._title, w, top + _DS + 10)
+        self._paint_title(p, self._title, w, top + ds + (4 if self._compact else 10))
         p.end()
 
 
@@ -522,17 +538,18 @@ class _DonutCard(_DonutBase):
 class _DonutMetaSplit(_DonutBase):
     _C_ESSENTIAL = QtGui.QColor("#5DBB63")
     _C_OPTIONAL  = QtGui.QColor("#60a5fa")
-    _DS_IN = 74     # diamètre anneau intérieur
-    _RW_IN = 6      # épaisseur anneau intérieur
 
-    def __init__(self, title: str, parent=None):
-        super().__init__(parent)
+    def __init__(self, title: str, compact: bool = False, parent=None):
+        super().__init__(compact=compact, parent=parent)
         self._title      = title
         self._ess_filled = 0
         self._ess_total  = 1
         self._opt_filled = 0
         self._opt_total  = 1
         self._p          = 0.0
+        # diamètre intérieur proportionnel au mode
+        self._ds_in = 40 if compact else 74
+        self._rw_in = 3 if compact else 6
 
     def set_data(self, ess_filled: int, ess_total: int,
                  opt_filled: int, opt_total: int, delay_ms: int = 0):
@@ -559,10 +576,11 @@ class _DonutMetaSplit(_DonutBase):
         sq, sp = int(start_deg * 16), int(span_deg * 16)
         gc = QtGui.QColor(color)
         gc.setAlpha(22)
-        p.setPen(QtGui.QPen(gc, self._RW_IN + 10,
+        glow = self._rw_in + (6 if self._compact else 10)
+        p.setPen(QtGui.QPen(gc, glow,
                             QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.RoundCap))
         p.drawArc(rect, sq, sp)
-        p.setPen(QtGui.QPen(color, self._RW_IN,
+        p.setPen(QtGui.QPen(color, self._rw_in,
                             QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.RoundCap))
         p.drawArc(rect, sq, sp)
 
@@ -571,55 +589,53 @@ class _DonutMetaSplit(_DonutBase):
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         p.setRenderHint(QtGui.QPainter.RenderHint.TextAntialiasing)
 
+        ds = self._ds
         w = self.width()
-        cx, top = w // 2, 10
-        cy = top + _DS / 2.0
+        cx, top = w // 2, 6 if self._compact else 10
+        cy = top + ds / 2.0
 
-        rect_out = QtCore.QRectF(cx - _DS / 2, top, _DS, _DS)
-        ds_in    = self._DS_IN
-        rect_in  = QtCore.QRectF(cx - ds_in / 2,
-                                  top + (_DS - ds_in) / 2,
-                                  ds_in, ds_in)
+        rect_out = QtCore.QRectF(cx - ds / 2, top, ds, ds)
+        ds_in    = self._ds_in
+        rect_in  = QtCore.QRectF(cx - ds_in / 2, top + (ds - ds_in) / 2, ds_in, ds_in)
 
-        # Tracks (fond des deux anneaux)
-        p.setPen(QtGui.QPen(QtGui.QColor("#111f2d"), _RW,
+        p.setPen(QtGui.QPen(QtGui.QColor("#111f2d"), self._rw,
                             QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.FlatCap))
         p.drawArc(rect_out, 0, 360 * 16)
-        p.setPen(QtGui.QPen(QtGui.QColor("#111f2d"), self._RW_IN,
+        p.setPen(QtGui.QPen(QtGui.QColor("#111f2d"), self._rw_in,
                             QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.FlatCap))
         p.drawArc(rect_in, 0, 360 * 16)
 
-        # Arcs animés (chacun en % de son propre total)
         ess_angle = self._ess_filled / self._ess_total * 360.0 * self._p
         opt_angle = self._opt_filled / self._opt_total * 360.0 * self._p
 
         self._paint_arc(p, rect_out, 90.0, -ess_angle, self._C_ESSENTIAL)
-        self._paint_inner_arc(p, rect_in,  90.0, -opt_angle, self._C_OPTIONAL)
+        self._paint_inner_arc(p, rect_in, 90.0, -opt_angle, self._C_OPTIONAL)
 
-        # Centre : % essentiels
         pct_ess = int(self._ess_filled / self._ess_total * 100)
         pct_opt = int(self._opt_filled / self._opt_total * 100)
+        big_sz  = 10 if self._compact else 15
 
-        p.setFont(QtGui.QFont("Segoe UI", 15, QtGui.QFont.Weight.Bold))
+        p.setFont(QtGui.QFont("Segoe UI", big_sz, QtGui.QFont.Weight.Bold))
         p.setPen(self._C_ESSENTIAL)
-        p.drawText(QtCore.QRectF(cx - ds_in / 2, cy - 20, ds_in, 22),
+        p.drawText(QtCore.QRectF(cx - ds_in / 2, cy - (14 if self._compact else 20),
+                                 ds_in, big_sz + 4),
                    QtCore.Qt.AlignmentFlag.AlignCenter, f"{pct_ess}%")
 
-        # Légende deux lignes : Essentielles / Optionnelles
-        y_leg = top + _DS + 6
-        p.setFont(QtGui.QFont("Segoe UI", 7, QtGui.QFont.Weight.Bold))
+        y_leg = top + ds + 4
+        leg_sz = 6 if self._compact else 7
+        p.setFont(QtGui.QFont("Segoe UI", leg_sz, QtGui.QFont.Weight.Bold))
 
         p.setPen(self._C_ESSENTIAL)
-        p.drawText(QtCore.QRectF(0, y_leg, w, 13),
+        p.drawText(QtCore.QRectF(0, y_leg, w, 12),
                    QtCore.Qt.AlignmentFlag.AlignCenter,
-                   f"● Essentielles  {pct_ess}%")
+                   f"● {pct_ess}%" if self._compact else f"● Essentielles  {pct_ess}%")
 
         p.setPen(self._C_OPTIONAL)
-        p.drawText(QtCore.QRectF(0, y_leg + 14, w, 13),
+        p.drawText(QtCore.QRectF(0, y_leg + 12, w, 12),
                    QtCore.Qt.AlignmentFlag.AlignCenter,
-                   f"● Optionnelles  {pct_opt}%")
+                   f"● {pct_opt}%" if self._compact else f"● Optionnelles  {pct_opt}%")
 
-        self._paint_title(p, self._title, w, y_leg + 30)
+        self._paint_title(p, self._title, w, y_leg + (26 if self._compact else 30))
         p.end()
 
 
@@ -630,16 +646,16 @@ class _DonutMetaSplit(_DonutBase):
 class _DonutDerushSplit(_DonutBase):
     _C_LAND  = QtGui.QColor("#a78bfa")   # violet
     _C_ANNO  = QtGui.QColor("#f0abfc")   # rose/violet
-    _DS_IN   = 74
-    _RW_IN   = 6
 
-    def __init__(self, title: str, parent=None):
-        super().__init__(parent)
+    def __init__(self, title: str, compact: bool = False, parent=None):
+        super().__init__(compact=compact, parent=parent)
         self._title    = title
         self._land_val = 0
         self._anno_val = 0
         self._total    = 1
         self._p        = 0.0
+        self._ds_in = 40 if compact else 74
+        self._rw_in = 3 if compact else 6
 
     def set_data(self, land: int, anno: int, total: int, delay_ms: int = 0):
         self._land_val = land
@@ -664,10 +680,11 @@ class _DonutDerushSplit(_DonutBase):
         sq, sp = int(start_deg * 16), int(span_deg * 16)
         gc = QtGui.QColor(color)
         gc.setAlpha(22)
-        p.setPen(QtGui.QPen(gc, self._RW_IN + 10,
+        glow = self._rw_in + (6 if self._compact else 10)
+        p.setPen(QtGui.QPen(gc, glow,
                             QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.RoundCap))
         p.drawArc(rect, sq, sp)
-        p.setPen(QtGui.QPen(color, self._RW_IN,
+        p.setPen(QtGui.QPen(color, self._rw_in,
                             QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.RoundCap))
         p.drawArc(rect, sq, sp)
 
@@ -676,21 +693,19 @@ class _DonutDerushSplit(_DonutBase):
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         p.setRenderHint(QtGui.QPainter.RenderHint.TextAntialiasing)
 
+        ds = self._ds
         w = self.width()
-        cx, top = w // 2, 10
-        cy = top + _DS / 2.0
+        cx, top = w // 2, 6 if self._compact else 10
+        cy = top + ds / 2.0
 
-        rect_out = QtCore.QRectF(cx - _DS / 2, top, _DS, _DS)
-        ds_in    = self._DS_IN
-        rect_in  = QtCore.QRectF(cx - ds_in / 2,
-                                  top + (_DS - ds_in) / 2,
-                                  ds_in, ds_in)
+        rect_out = QtCore.QRectF(cx - ds / 2, top, ds, ds)
+        ds_in    = self._ds_in
+        rect_in  = QtCore.QRectF(cx - ds_in / 2, top + (ds - ds_in) / 2, ds_in, ds_in)
 
-        # Tracks
-        p.setPen(QtGui.QPen(QtGui.QColor("#111f2d"), _RW,
+        p.setPen(QtGui.QPen(QtGui.QColor("#111f2d"), self._rw,
                             QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.FlatCap))
         p.drawArc(rect_out, 0, 360 * 16)
-        p.setPen(QtGui.QPen(QtGui.QColor("#111f2d"), self._RW_IN,
+        p.setPen(QtGui.QPen(QtGui.QColor("#111f2d"), self._rw_in,
                             QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.FlatCap))
         p.drawArc(rect_in, 0, 360 * 16)
 
@@ -700,29 +715,31 @@ class _DonutDerushSplit(_DonutBase):
         self._paint_arc(p, rect_out, 90.0, -land_angle, self._C_LAND)
         self._paint_inner_arc(p, rect_in, 90.0, -anno_angle, self._C_ANNO)
 
-        # Centre : % atterrissage/décollage
         pct_land = int(self._land_val / self._total * 100)
         pct_anno = int(self._anno_val / self._total * 100)
+        big_sz   = 10 if self._compact else 15
 
-        p.setFont(QtGui.QFont("Segoe UI", 15, QtGui.QFont.Weight.Bold))
+        p.setFont(QtGui.QFont("Segoe UI", big_sz, QtGui.QFont.Weight.Bold))
         p.setPen(self._C_LAND)
-        p.drawText(QtCore.QRectF(cx - ds_in / 2, cy - 20, ds_in, 22),
+        p.drawText(QtCore.QRectF(cx - ds_in / 2, cy - (14 if self._compact else 20),
+                                 ds_in, big_sz + 4),
                    QtCore.Qt.AlignmentFlag.AlignCenter, f"{pct_land}%")
 
-        y_leg = top + _DS + 6
-        p.setFont(QtGui.QFont("Segoe UI", 7, QtGui.QFont.Weight.Bold))
+        y_leg = top + ds + 4
+        leg_sz = 6 if self._compact else 7
+        p.setFont(QtGui.QFont("Segoe UI", leg_sz, QtGui.QFont.Weight.Bold))
 
         p.setPen(self._C_LAND)
-        p.drawText(QtCore.QRectF(0, y_leg, w, 13),
+        p.drawText(QtCore.QRectF(0, y_leg, w, 12),
                    QtCore.Qt.AlignmentFlag.AlignCenter,
-                   f"● Att./Déc.  {pct_land}%")
+                   f"● {pct_land}%" if self._compact else f"● Att./Déc.  {pct_land}%")
 
         p.setPen(self._C_ANNO)
-        p.drawText(QtCore.QRectF(0, y_leg + 14, w, 13),
+        p.drawText(QtCore.QRectF(0, y_leg + 12, w, 12),
                    QtCore.Qt.AlignmentFlag.AlignCenter,
-                   f"● Déb./Fin ann.  {pct_anno}%")
+                   f"● {pct_anno}%" if self._compact else f"● Déb./Fin ann.  {pct_anno}%")
 
-        self._paint_title(p, self._title, w, y_leg + 30)
+        self._paint_title(p, self._title, w, y_leg + (26 if self._compact else 30))
         p.end()
 
 
@@ -778,16 +795,19 @@ class _VSep(QtWidgets.QWidget):
 # ── Dashboard widget ──────────────────────────────────────────────────────────
 
 class ProgressDashboardWidget(QtWidgets.QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, compact: bool = False, parent=None):
         super().__init__(parent)
+        self._compact = compact
         self._worker: _StatsWorker | None = None
         self._expl_breakdown: dict[str, int] = {}
         self._setup_ui()
 
     def _setup_ui(self):
+        c = self._compact
         root = QtWidgets.QVBoxLayout(self)
-        root.setContentsMargins(8, 8, 8, 8)
-        root.setSpacing(4)
+        m = 2 if c else 8
+        root.setContentsMargins(m, m, m, m)
+        root.setSpacing(2 if c else 4)
 
         # Stack principal : spinner (0) ou onglets (1)
         self._stack = QtWidgets.QStackedWidget()
@@ -799,18 +819,19 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
         sp.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self._spinner = _Spinner()
         sp.addWidget(self._spinner, 0, QtCore.Qt.AlignmentFlag.AlignCenter)
-        lbl = QtWidgets.QLabel("Calcul en cours…")
-        lbl.setStyleSheet("color: #2e4a5e; font-size: 10px;")
-        lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        sp.addWidget(lbl)
+        if not c:
+            lbl = QtWidgets.QLabel("Calcul en cours…")
+            lbl.setStyleSheet("color: #2e4a5e; font-size: 10px;")
+            lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            sp.addWidget(lbl)
         self._stack.addWidget(spinner_page)
 
         # Page 1 — tous les donuts côte à côte
-        self._card_kept    = _DonutBiColor("Qualification")
-        self._card_ardoise = _DonutCard("Validation", "#fbbf24")
-        self._card_meta    = _DonutMetaSplit("Métadonnées")
-        self._card_derush  = _DonutDerushSplit("Évènements")
-        self._card_habitat = _DonutCard("Habitat", "#34d399")
+        self._card_kept    = _DonutBiColor("Qualification", compact=c)
+        self._card_ardoise = _DonutCard("Validation", "#fbbf24", compact=c)
+        self._card_meta    = _DonutMetaSplit("Métadonnées", compact=c)
+        self._card_derush  = _DonutDerushSplit("Évènements", compact=c)
+        self._card_habitat = _DonutCard("Habitat", "#34d399", compact=c)
 
         self._card_ardoise.double_clicked.connect(self._show_expl_popup)
         self._card_ardoise.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
@@ -929,3 +950,268 @@ class AvancementPanel(QtWidgets.QDialog):
             self.hide()
         else:
             self.show_below(anchor_widget)
+
+
+# ── Donut mini pour la toolbar (auto-contenu, pas de spinner) ─────────────────
+
+_MINI_D  = 34   # diamètre anneau
+_MINI_RW = 4    # épaisseur anneau
+_MINI_W  = 58   # largeur widget
+_MINI_H  = 42   # hauteur widget
+
+
+class _MiniRingDual(QtWidgets.QWidget):
+    """Deux anneaux concentriques mini : essentiel (ext.) + optionnel (int.)."""
+
+    _C_ESS = QtGui.QColor("#5DBB63")
+    _C_OPT = QtGui.QColor("#60a5fa")
+    _D_IN  = 20   # diamètre anneau intérieur
+    _RW_IN = 3
+
+    def __init__(self, tip: str, parent=None):
+        super().__init__(parent)
+        self._pct_ess = 0
+        self._pct_opt = 0
+        self._p       = 0.0
+        self._elapsed = QtCore.QElapsedTimer()
+        self._elapsed.start()
+        self._timer = QtCore.QTimer(self)
+        self._timer.timeout.connect(self._step)
+        self.setFixedSize(_MINI_W, _MINI_H)
+        self.setToolTip(tip)
+
+    def set_data(self, pct_ess: int, pct_opt: int, delay_ms: int = 0):
+        self._pct_ess = max(0, min(100, pct_ess))
+        self._pct_opt = max(0, min(100, pct_opt))
+        self._p = 0.0
+        if delay_ms > 0:
+            QtCore.QTimer.singleShot(delay_ms, self._start)
+        else:
+            self._start()
+
+    def _start(self):
+        self._elapsed.restart()
+        self._timer.start(16)
+
+    def _step(self):
+        t = min(self._elapsed.elapsed() / _ANIM_DURATION_MS, 1.0)
+        self._p = _ease_out_quart(t)
+        self.update()
+        if t >= 1.0:
+            self._p = 1.0
+            self._timer.stop()
+
+    def paintEvent(self, _event):
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QtGui.QPainter.RenderHint.TextAntialiasing)
+
+        w, h = self.width(), self.height()
+        cx  = w // 2
+        top = (h - _MINI_D) // 2
+
+        rect_out = QtCore.QRectF(cx - _MINI_D / 2, top, _MINI_D, _MINI_D)
+        rect_in  = QtCore.QRectF(cx - self._D_IN / 2,
+                                 top + (_MINI_D - self._D_IN) / 2,
+                                 self._D_IN, self._D_IN)
+
+        # Tracks
+        p.setPen(QtGui.QPen(QtGui.QColor("#1e3a52"), _MINI_RW,
+                            QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.FlatCap))
+        p.drawArc(rect_out, 0, 360 * 16)
+        p.setPen(QtGui.QPen(QtGui.QColor("#1e3a52"), self._RW_IN,
+                            QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.FlatCap))
+        p.drawArc(rect_in, 0, 360 * 16)
+
+        # Arcs
+        a_ess = self._pct_ess / 100 * 360.0 * self._p
+        a_opt = self._pct_opt / 100 * 360.0 * self._p
+        if a_ess > 0.3:
+            p.setPen(QtGui.QPen(self._C_ESS, _MINI_RW,
+                                QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.RoundCap))
+            p.drawArc(rect_out, int(90 * 16), int(-a_ess * 16))
+        if a_opt > 0.3:
+            p.setPen(QtGui.QPen(self._C_OPT, self._RW_IN,
+                                QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.RoundCap))
+            p.drawArc(rect_in, int(90 * 16), int(-a_opt * 16))
+
+        # Pourcentage essentiel au centre
+        p.setFont(QtGui.QFont("Segoe UI", 7, QtGui.QFont.Weight.Bold))
+        p.setPen(self._C_ESS)
+        p.drawText(rect_in, QtCore.Qt.AlignmentFlag.AlignCenter, f"{self._pct_ess}%")
+        p.end()
+
+
+class _MiniRing(QtWidgets.QWidget):
+    """Petit anneau de progression pour la toolbar : juste le ring + un pourcentage."""
+
+    double_clicked = QtCore.pyqtSignal()
+
+    def __init__(self, color: str, tip: str, parent=None):
+        super().__init__(parent)
+        self._color  = QtGui.QColor(color)
+        self._pct    = 0
+        self._p_anim = 0.0
+        self._elapsed = QtCore.QElapsedTimer()
+        self._elapsed.start()
+        self._timer = QtCore.QTimer(self)
+        self._timer.timeout.connect(self._step)
+        self.setFixedSize(_MINI_W, _MINI_H)
+        self.setToolTip(tip)
+
+    def set_pct(self, pct: int, delay_ms: int = 0):
+        self._pct    = max(0, min(100, pct))
+        self._p_anim = 0.0
+        if delay_ms > 0:
+            QtCore.QTimer.singleShot(delay_ms, self._start)
+        else:
+            self._start()
+
+    def _start(self):
+        self._elapsed.restart()
+        self._timer.start(16)
+
+    def _step(self):
+        t = min(self._elapsed.elapsed() / _ANIM_DURATION_MS, 1.0)
+        self._p_anim = _ease_out_quart(t)
+        self.update()
+        if t >= 1.0:
+            self._p_anim = 1.0
+            self._timer.stop()
+
+    def mouseDoubleClickEvent(self, _event):
+        self.double_clicked.emit()
+
+    def paintEvent(self, _event):
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QtGui.QPainter.RenderHint.TextAntialiasing)
+
+        w, h = self.width(), self.height()
+        cx   = w // 2
+        top  = (h - _MINI_D) // 2
+        rect = QtCore.QRectF(cx - _MINI_D / 2, top, _MINI_D, _MINI_D)
+
+        p.setPen(QtGui.QPen(QtGui.QColor("#1e3a52"), _MINI_RW,
+                            QtCore.Qt.PenStyle.SolidLine,
+                            QtCore.Qt.PenCapStyle.FlatCap))
+        p.drawArc(rect, 0, 360 * 16)
+
+        angle = self._pct / 100 * 360.0 * self._p_anim
+        if angle > 0.3:
+            p.setPen(QtGui.QPen(self._color, _MINI_RW,
+                                QtCore.Qt.PenStyle.SolidLine,
+                                QtCore.Qt.PenCapStyle.RoundCap))
+            p.drawArc(rect, int(90 * 16), int(-angle * 16))
+
+        p.setFont(QtGui.QFont("Segoe UI", 7, QtGui.QFont.Weight.Bold))
+        p.setPen(QtGui.QColor("#c8e0f0"))
+        p.drawText(QtCore.QRectF(cx - _MINI_D / 2, top, _MINI_D, _MINI_D),
+                   QtCore.Qt.AlignmentFlag.AlignCenter,
+                   f"{self._pct}%")
+        p.end()
+
+
+class ProgressToolbarStrip(QtWidgets.QWidget):
+    """Bande de 5 mini-donuts à incruster dans la toolbar."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._worker: _StatsWorker | None = None
+        self._expl_breakdown: dict[str, int] = {}
+        self._stats: dict = {}
+
+        lay = QtWidgets.QHBoxLayout(self)
+        lay.setContentsMargins(8, 2, 8, 2)
+        lay.setSpacing(10)
+
+        self._r_kept    = _MiniRing("#34d399", "Qualification")
+        self._r_ardoise = _MiniRing("#fbbf24", "Validation — double-cliquer pour détails")
+        self._r_meta    = _MiniRingDual("Métadonnées")
+        self._r_derush  = _MiniRing("#a78bfa", "Dérushage")
+        self._r_habitat = _MiniRing("#34d399", "Habitat")
+
+        self._r_ardoise.double_clicked.connect(self._show_expl_popup)
+        self._r_ardoise.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+
+        _pairs = [
+            ("Qualif.",  "#34d399", self._r_kept),
+            ("Valid.",   "#fbbf24", self._r_ardoise),
+            ("Méta.",    "#5DBB63", self._r_meta),
+            ("Dérush.",  "#a78bfa", self._r_derush),
+            ("Habitat",  "#34d399", self._r_habitat),
+        ]
+        for title, color, ring in _pairs:
+            lbl = QtWidgets.QLabel(title)
+            lbl.setStyleSheet(
+                f"color: {color}; font-size: 9px; font-weight: bold;"
+                " background: transparent; border: none;")
+            lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight |
+                             QtCore.Qt.AlignmentFlag.AlignVCenter)
+            lay.addWidget(lbl)
+            lay.addWidget(ring)
+
+        self.setFixedHeight(_MINI_H + 6)
+
+    def refresh(self, video_paths: list, trash_count: int):
+        if self._worker and self._worker.isRunning():
+            self._worker.terminate()
+            self._worker.wait(200)
+        self._worker = _StatsWorker(video_paths, trash_count, self)
+        self._worker.stats_ready.connect(self._on_stats_ready)
+        self._worker.start()
+
+    def _on_stats_ready(self, stats: dict):
+        self._stats = stats
+        self._expl_breakdown = stats.get("expl_breakdown", {})
+        total  = stats["total"] or 1
+        kept   = total - stats["trashed"]
+        ess_f  = stats["essential_filled"]
+        ess_t  = max(stats["essential_total"], 1)
+        opt_f  = stats["optional_filled"]
+        opt_t  = max(stats["optional_total"], 1)
+        land   = stats["derushees"]
+        anno   = stats["annotations"]
+
+        self._r_kept.set_pct(int(kept / total * 100), delay_ms=0)
+        self._r_kept.setToolTip(
+            f"Qualification\nGardées : {kept} / {total} ({int(kept/total*100)}%)\n"
+            f"Jetées : {stats['trashed']}")
+
+        self._r_ardoise.set_pct(int(stats["ardoise"] / total * 100), delay_ms=100)
+        self._r_ardoise.setToolTip(
+            f"Validation\nArdoise renseignée : {stats['ardoise']} / {total} "
+            f"({int(stats['ardoise']/total*100)}%)\n"
+            f"Double-cliquer pour la répartition par statut")
+
+        self._r_meta.set_data(int(ess_f / ess_t * 100), int(opt_f / opt_t * 100), delay_ms=200)
+        self._r_meta.setToolTip(
+            f"Métadonnées\n● Essentielles : {ess_f} / {ess_t} ({int(ess_f/ess_t*100)}%)\n"
+            f"● Optionnelles : {opt_f} / {opt_t} ({int(opt_f/opt_t*100)}%)")
+
+        self._r_derush.set_pct(int(land / total * 100), delay_ms=300)
+        self._r_derush.setToolTip(
+            f"Dérushage\nAtt./Déc. : {land} / {total} ({int(land/total*100)}%)\n"
+            f"Début/Fin ann. : {anno} / {total} ({int(anno/total*100)}%)")
+
+        self._r_habitat.set_pct(0, delay_ms=400)
+        self._r_habitat.setToolTip("Analyse Habitat\n(données en cours de calcul)")
+
+    def _show_expl_popup(self):
+        self._expl_popup = _ExploitabilityPopup(self._expl_breakdown, None)
+        self._expl_popup.show()
+
+    def set_language(self, lang: str):
+        if lang == 'en':
+            self._r_kept.setToolTip("Qualification")
+            self._r_ardoise.setToolTip("Validation — double-click for details")
+            self._r_meta.setToolTip("Metadata")
+            self._r_derush.setToolTip("Rushes")
+            self._r_habitat.setToolTip("Habitat")
+        else:
+            self._r_kept.setToolTip("Qualification")
+            self._r_ardoise.setToolTip("Validation — double-cliquer pour détails")
+            self._r_meta.setToolTip("Métadonnées")
+            self._r_derush.setToolTip("Dérushage")
+            self._r_habitat.setToolTip("Habitat")
+        # Après chargement, les tooltips seront regénérés par _on_stats_ready

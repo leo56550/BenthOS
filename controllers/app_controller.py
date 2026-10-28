@@ -138,7 +138,6 @@ from services.weather_service import WeatherWorker
 from services.sound_service import get_sound_service
 from views.dialogs.notes_dialog import NotesDialog
 from controllers.accueil_controller import AccueilController
-from views.widgets.progress_dashboard import AvancementPanel
 from controllers.qualif_controller import QualifController, _get_point_name
 from controllers.validation_controller import ValidationController
 from controllers.evenements_controller import EvenementsController
@@ -223,11 +222,6 @@ class AppController(QtCore.QObject):
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Ignored)
         window.stackedWidget.setMinimumHeight(0)
-
-        self._avancement_panel = AvancementPanel(window)
-        if hasattr(window, 'btn_avancement'):
-            window.btn_avancement.clicked.connect(
-                lambda: self._avancement_panel.toggle(window.btn_avancement))
 
         self.qualif_ctrl.video_model.rowsInserted.connect(self.refresh_status_bar)
         self.qualif_ctrl.video_model.rowsRemoved.connect(self.refresh_status_bar)
@@ -1161,7 +1155,8 @@ class AppController(QtCore.QObject):
         for ctrl in self.page_controllers:
             if hasattr(ctrl, 'set_language'):
                 ctrl.set_language(language)
-        self._avancement_panel.dashboard.set_language(language)
+        if hasattr(self.window, 'inline_donuts'):
+            self.window.inline_donuts.set_language(language)
         self.refresh_status_bar()
 
     def _update_info_labels(self, trans: dict):
@@ -1777,9 +1772,8 @@ class AppController(QtCore.QObject):
             if model.item(row, 0) and model.item(row, 0).data(QtCore.Qt.ItemDataRole.UserRole)
         ]
         trash_count = self.qualif_ctrl.trash_model.rowCount()
-        self._avancement_panel.dashboard.refresh(paths, trash_count)
-        if hasattr(self.window, 'btn_avancement'):
-            self.window.btn_avancement.setEnabled(True)
+        if hasattr(self.window, 'inline_donuts'):
+            self.window.inline_donuts.refresh(paths, trash_count)
 
     def refresh_status_bar(self, *_):
         """Recalcule et affiche les stats de campagne dans la barre de statut."""
