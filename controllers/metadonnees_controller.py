@@ -1594,6 +1594,7 @@ class MetadonneesController:
                             obs_block["codeObs"] = {"value": json_code}
                     with open(json_path, 'w', encoding='utf-8') as f:
                         json.dump(jdata, f, indent=4, ensure_ascii=False)
+                    print(f"[TEMP_JSON] {os.path.basename(json_path)} ← video_observation.codeObs = {json_code!r}")
                     if self._on_metadata_saved:
                         self._on_metadata_saved(video_path)
                 else:

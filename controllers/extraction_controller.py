@@ -756,6 +756,7 @@ class ExtractionController:
                             break
             with open(json_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
+            print(f"[TEMP_JSON] {os.path.basename(json_path)} ← segment déplacé (extraction)")
         except Exception as e:
             print(f"[EXTRACTION] save event error: {e}")
 

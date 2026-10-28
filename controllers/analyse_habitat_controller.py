@@ -120,6 +120,111 @@ _TOTAL_SOURCES: dict[str, list[str]] = {
     ],
 }
 
+# Encodage JSON par section de _SCHEMA :
+#   "flat"  → chaque champ est ajouté directement dans le dict secteur
+#   "dict"  → champs regroupés dans un sous-dict (clé = 2e élément)
+#   "list"  → liste des clés dont la valeur == 1 (presence)
+#   "dict_count" → dict {clé: valeur} pour les comptages (invertébrés)
+_JSON_SECTION: dict[str, tuple[str, str | None]] = {
+    "Topo et complexité":                        ("flat",        None),
+    "Recouvrement visible":                      ("dict",        "recouvrement_visible"),
+    "Herbier ou Algues sur substrat visible":    ("flat",        None),
+    "Recouvrement Herbier":                      ("dict",        "recouvrement_herbier"),
+    "Recouvrement Algues":                       ("dict",        "recouvrement_algues"),
+    "Présence Algues":                           ("list",        "presence_algues"),
+    "Invertébrés remarquables":                  ("dict_count",  "invertebres"),
+    "Anthropisation":                            ("flat",        None),
+}
+
+# Ordre exact + mapping clé→label Excel pour l'export XLSX (ref: Masque saisie CC 2022)
+_XLSX_LAYOUT: list[tuple[str, list]] = [
+    ("Topo et complexité", [
+        ("topographie",       "Topographie (1-5)"),
+        ("complexite",        "Complexité (1-5)"),
+    ]),
+    ("Recouvrement visible", [
+        ("sable",              "Sable"),
+        ("vase",               "Vase"),
+        ("debris_petits",      "Débris, petits blocs (<30cm)"),
+        ("moyens_blocs",       "Moyens blocs (30cm<l<1m)"),
+        ("gros_blocs",         "Gros blocs et roche (>1m)"),
+        ("dalle",              "Dalle"),
+        ("bioconstruit",       "Bioconstruit"),
+        ("haploops",           "Haploops"),
+        ("maerl",              "Maerl"),
+        ("algues_snv",         "Algues sur substrat non-visible"),
+        ("herbier_snv",        "Herbier sur substrat non-visible"),
+        ("total_recouvrement", "Total du recouvrement"),
+    ]),
+    ("Herbier ou Algues sur substrat visible", [
+        ("algues_sv",   "Algues sur substrat visible"),
+        ("herbier_sv",  "Herbier sur substrat visible"),
+    ]),
+    ("Recouvrement Herbier", [
+        ("total_herbier",      "Total herbier"),
+        ("herbier_court",      "Herbier court (<20cm)"),
+        ("herbier_haut",       "Herbier haut (>20cm)"),
+        ("herbier_dense",      "Herbier dense (sable non visible)"),
+        ("herbier_semi_dense", "Herbier semi-dense"),
+        ("herbier_clairseme",  "Herbier clairsemé (<25%)"),
+        ("matte_morte",        "Matte morte"),
+    ]),
+    ("Recouvrement par épibiontes", [
+        ("epib_algues",   "Algues"),
+        ("epib_herbier",  "Herbier"),
+    ]),
+    ("Recouvrement Algues", [
+        ("alg_brunes_nid", "Algues brunes non ID"),
+        ("alg_brunes_lam", "Algues brunes - Laminariales"),
+        ("alg_fucus",      "Algues brunes à Fucales - Fucus"),
+        ("alg_sargasses",  "Algues brunes - Fucales - Sargasses"),
+        ("alg_halidrys",   "Algues brunes - Fucales - Halidrys"),
+        ("alg_vertes",     "Algues vertes"),
+        ("alg_rouges",     "Algues rouges"),
+        ("total_algues",   "Total algues"),
+    ]),
+    ("Présence Algues", [
+        ("laminaria_sp",    "Laminaria sp."),
+        ("laminaria_hyp",   "Laminaria hyperborea"),
+        ("laminaria_dig",   "Laminaria digitata"),
+        ("laminaria_och",   "Laminaria ochroleuca"),
+        ("himanthalia",     "Himanthalia elongata"),
+        ("saccharina",      "Saccharina latissima"),
+        ("sacchorhiza",     "Sacchorhiza polyschides"),
+        ("undaria",         "Undaria pinnatifida"),
+        ("cystoseira",      "Cystoseira"),
+        ("padina",          "Padina"),
+        ("ulva",            "Ulva spp."),
+        ("codium",          "Codium spp."),
+        ("chondrus",        "Chondrus crispus"),
+        ("palmaria",        "Palmaria palmata"),
+        ("solieria",        "Solieria chordalis"),
+        ("corallines",      "Corallines"),
+    ]),
+    ("Invertébrés remarquables", [
+        ("huitres",      "Huîtres"),
+        ("moules",       "Moules"),
+        ("eponge",       "Eponge"),
+        ("oursin",       "Oursin"),
+        ("holothurie",   "Holothurie"),
+        ("crabe",        "Crabe"),
+        ("ormeau",       "Ormeau"),
+        ("gorgone",      "Gorgone"),
+        ("etoile_mer",   "Etoile de mer"),
+        ("anemone",      "Anémone"),
+        ("ascidie",      "Ascidie"),
+        ("coquille_stj", "Coquille St-Jacques"),
+        ("autres_crust", "Autres crustacés"),
+        ("autres_coq",   "Autres coquillages"),
+    ]),
+    ("Anthropisation", [
+        ("etat_sante",   "Etat de santé herbier et algues"),
+        ("engins_peche", "Engins de pêche"),
+        ("macrochets",   "Macrodéchets"),
+    ]),
+    ("Captures écran", []),
+]
+
 _COL_W   = 72   # largeur d'un secteur (plus large pour la flèche combobox)
 _LABEL_W = 240  # largeur de la colonne label
 _THUMB_H = 90   # hauteur des thumbnails dans la barre d'en-tête
@@ -1543,7 +1648,14 @@ class AnalyseHabitatController(QtCore.QObject):
             w.setPlaceholderText(placeholder)
             w.setStyleSheet(_inp_s)
             w.setMinimumHeight(24)
-            w.editingFinished.connect(lambda k=key, wi=w: self._save_av_field(k, wi.text()))
+            print(f"[HABITAT DEBUG] création widget _inp pour {key!r}")
+            def _on_edit_finished(k=key, wi=w):
+                print(f"[HABITAT DEBUG] editingFinished → {k!r} = {wi.text()!r}")
+                self._save_av_field(k, wi.text())
+            def _on_text_edited(text, k=key):
+                print(f"[HABITAT DEBUG] textEdited → {k!r} = {text!r}")
+            w.editingFinished.connect(_on_edit_finished)
+            w.textEdited.connect(_on_text_edited)
             self._av_widgets[key] = w
             return w
 
@@ -1574,7 +1686,7 @@ class AnalyseHabitatController(QtCore.QObject):
         # ── Bouton export CSV masque saisie ───────────────────────────────
         self._btn_export_csv = QtWidgets.QPushButton()
         self._btn_export_csv.setText(
-            "Générer masque saisie (CSV)" if self._language == 'fr' else "Generate entry template (CSV)"
+            "Générer masque saisie (XLSX)" if self._language == 'fr' else "Generate entry template (XLSX)"
         )
         self._btn_export_csv.setStyleSheet(
             "QPushButton { background:#0d2a3e; color:#7ec8e3; border:1px solid #2778a2;"
@@ -2000,31 +2112,149 @@ class AnalyseHabitatController(QtCore.QObject):
         return os.path.join(folder, f"{stem}_habitat.json")
 
     def _load_habitat_json(self, video_path: str):
-        """Charge les données habitat depuis {stem}_habitat.json si présent."""
+        """Charge les données habitat depuis {stem}_habitat.json (nouveau format) vers _data plat."""
         path = self._habitat_json_path(video_path)
         if not os.path.isfile(path):
             print(f"[HABITAT] Pas de fichier existant : {path}")
             return
         try:
             with open(path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            self._data[video_path] = data
-            print(f"[HABITAT] Chargé ({len(data)} clés) ← {path}")
+                doc = json.load(f)
         except Exception as e:
             print(f"[HABITAT] Erreur chargement {path}: {e}")
+            return
+
+        # Compatibilité ancien format plat (migration transparente)
+        if "sectors" not in doc:
+            self._data[video_path] = doc
+            print(f"[HABITAT] Chargé (ancien format, {len(doc)} clés) ← {path}")
+            return
+
+        flat: dict[str, list] = {}
+        _AUTO = set(_TOTAL_SOURCES.keys())
+
+        for sector_obj in doc.get("sectors", []):
+            s = sector_obj.get("index", 1) - 1  # 0-based
+            if not (0 <= s < 6):
+                continue
+
+            for sec_name, enc_type, json_key in (
+                (n, t, k) for n, (t, k) in _JSON_SECTION.items()
+            ):
+                # Récupère les clés de champs pour cette section depuis _SCHEMA
+                fields_for_sec = next(
+                    (flds for sn, _, flds in _SCHEMA if sn == sec_name), []
+                )
+
+                if enc_type == "flat":
+                    for fkey, _, _ in fields_for_sec:
+                        if fkey in _AUTO:
+                            continue
+                        v = sector_obj.get(fkey, 0)
+                        if v:
+                            flat.setdefault(fkey, [0] * 6)[s] = v
+
+                elif enc_type == "dict":
+                    sub = sector_obj.get(json_key, {})
+                    for fkey, _, _ in fields_for_sec:
+                        if fkey in _AUTO:
+                            continue
+                        v = sub.get(fkey, 0)
+                        if v:
+                            flat.setdefault(fkey, [0] * 6)[s] = v
+
+                elif enc_type == "list":
+                    present = set(sector_obj.get(json_key, []))
+                    for fkey, _, _ in fields_for_sec:
+                        if fkey in present:
+                            flat.setdefault(fkey, [0] * 6)[s] = 1
+
+                elif enc_type == "dict_count":
+                    sub = sector_obj.get(json_key, {})
+                    for fkey, _, _ in fields_for_sec:
+                        v = sub.get(fkey, 0)
+                        if v:
+                            flat.setdefault(fkey, [0] * 6)[s] = v
+
+        self._data[video_path] = flat
+        n_sectors = len(doc.get("sectors", []))
+        print(f"[HABITAT] Chargé ({n_sectors} secteurs, {len(flat)} champs) ← {path}")
 
     def _persist_habitat(self, video_path: str):
-        """Écrit les données habitat dans {stem}_habitat.json."""
+        """Écrit les données habitat dans {stem}_habitat.json (nouveau format structuré)."""
         path = self._habitat_json_path(video_path)
-        d = self._data.get(video_path, {})
         is_new = not os.path.isfile(path)
+        d = self._data.get(video_path, {})
+        _AUTO = set(_TOTAL_SOURCES.keys())
+
+        # ── meta : codestation + champs Analyse vidéo depuis _temp.json ──────
+        meta: dict = {"codestation": _get_codestation(video_path) or ""}
+        try:
+            stem   = os.path.splitext(os.path.basename(video_path))[0]
+            folder = os.path.dirname(os.path.normpath(video_path))
+            tmp_path = os.path.join(folder, f"{stem}_temp.json")
+            with open(tmp_path, 'r', encoding='utf-8') as f:
+                tmp = json.load(f)
+            vob = tmp.get("video_observation", {})
+            for key in ("fish_annotator", "habitat_annotator", "substrat",
+                        "estimated_visibility", "distance_min", "distance_max"):
+                entry = vob.get(key)
+                val = entry.get("value", "") if isinstance(entry, dict) else (entry or "")
+                if val not in (None, ""):
+                    meta[key] = val
+        except Exception:
+            pass
+
+        # ── sectors ───────────────────────────────────────────────────────────
+        sectors = []
+        for s in range(6):
+            sec: dict = {"index": s + 1}
+
+            for sec_name, (enc_type, json_key) in _JSON_SECTION.items():
+                fields_for_sec = next(
+                    (flds for sn, _, flds in _SCHEMA if sn == sec_name), []
+                )
+
+                if enc_type == "flat":
+                    for fkey, _, _ in fields_for_sec:
+                        if fkey in _AUTO:
+                            continue
+                        vals = d.get(fkey, [0] * 6)
+                        v = vals[s] if s < len(vals) else 0
+                        if v:
+                            sec[fkey] = v
+
+                elif enc_type in ("dict", "dict_count"):
+                    sub: dict = {}
+                    for fkey, _, _ in fields_for_sec:
+                        if fkey in _AUTO:
+                            continue
+                        vals = d.get(fkey, [0] * 6)
+                        v = vals[s] if s < len(vals) else 0
+                        if v:
+                            sub[fkey] = v
+                    if sub:
+                        sec[json_key] = sub
+
+                elif enc_type == "list":
+                    present = [
+                        fkey for fkey, _, _ in fields_for_sec
+                        if (d.get(fkey, [0] * 6)[s] if s < len(d.get(fkey, [0] * 6)) else 0)
+                    ]
+                    if present:
+                        sec[json_key] = present
+
+            sectors.append(sec)
+
+        doc = {"meta": meta, "sectors": sectors}
         try:
             with open(path, 'w', encoding='utf-8') as f:
-                json.dump(d, f, indent=2, ensure_ascii=False)
+                json.dump(doc, f, indent=2, ensure_ascii=False)
             if is_new:
                 print(f"[HABITAT] Fichier créé → {path}")
             else:
-                print(f"[HABITAT] Sauvegardé ({len(d)} clés) → {path}")
+                n_filled = sum(1 for sec in sectors if len(sec) > 1)
+                print(f"[HABITAT] Sauvegardé ({n_filled} secteurs renseignés) → {path}")
         except Exception as e:
             print(f"[HABITAT] Erreur sauvegarde {path}: {e}")
 
@@ -2192,8 +2422,11 @@ class AnalyseHabitatController(QtCore.QObject):
 
     def _save_av_field(self, field_key: str, value: str):
         """Sauvegarde field_key dans le JSON de TOUTES les vidéos du modèle."""
+        print(f"[HABITAT] _save_av_field appelé : {field_key} = {value!r}")
         if not self._video_model:
+            print(f"[HABITAT] _save_av_field : pas de video_model, abandon")
             return
+        print(f"[HABITAT] _save_av_field : {self._video_model.rowCount()} vidéo(s) dans le modèle")
         for row in range(self._video_model.rowCount()):
             item = self._video_model.item(row, 0)
             if not item:
@@ -2203,6 +2436,7 @@ class AnalyseHabitatController(QtCore.QObject):
                 continue
             json_path = _find_json(str(vpath))
             if not json_path or not os.path.isfile(json_path):
+                print(f"[HABITAT] _save_av_field : JSON introuvable pour {os.path.basename(str(vpath))!r} (json_path={json_path!r})")
                 continue
             try:
                 with open(json_path, 'r', encoding='utf-8') as f:
@@ -2215,6 +2449,7 @@ class AnalyseHabitatController(QtCore.QObject):
                     vob[field_key] = {"value": value or None}
                 with open(json_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=4, ensure_ascii=False)
+                print(f"[HABITAT] Analyse vidéo : {field_key} = {value!r} → {os.path.basename(json_path)}")
             except Exception as e:
                 print(f"[ANALYSE-HABITAT] _save_av_field {field_key}: {e}")
 
@@ -2496,6 +2731,30 @@ class AnalyseHabitatController(QtCore.QObject):
                 self._load_av_fields(str(vp))
                 break
 
+    def _mask_csv_exists(self, vpath: str) -> bool:
+        code = _get_codestation(vpath) or os.path.splitext(os.path.basename(vpath))[0]
+        safe = "".join(c for c in code if c.isalnum() or c in "-_")
+        folder = os.path.dirname(os.path.normpath(vpath))
+        return os.path.isfile(os.path.join(folder, f"{safe}_masque_saisie.xlsx"))
+
+    def _refresh_mask_indicators(self):
+        """Met à jour le ✓ sur les items de la liste sans reconstruire toute la liste."""
+        for i in range(self._list.count()):
+            item = self._list.item(i)
+            if not item:
+                continue
+            vpath = item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if not vpath:
+                continue
+            # Texte de base = tout avant le suffixe ✓
+            base = item.text().split("  ✓")[0]
+            has_mask = self._mask_csv_exists(str(vpath))
+            item.setText(base + ("  ✓ Masque généré" if has_mask else ""))
+            font = item.font()
+            font.setItalic(has_mask)
+            item.setFont(font)
+            item.setToolTip("Masque de saisie CSV déjà généré dans ce dossier" if has_mask else "")
+
     def _rebuild_list(self, *_):
         self._list.blockSignals(True)
         self._list.clear()
@@ -2523,12 +2782,19 @@ class AnalyseHabitatController(QtCore.QObject):
         entries.sort(key=lambda e: e[0])
 
         for _, display, vpath_str, expl in entries:
-            list_item = QtWidgets.QListWidgetItem(display)
+            has_mask = self._mask_csv_exists(vpath_str)
+            text = display + ("  ✓ Masque généré" if has_mask else "")
+            list_item = QtWidgets.QListWidgetItem(text)
             list_item.setData(QtCore.Qt.ItemDataRole.UserRole, vpath_str)
             if expl == "oui":
-                list_item.setForeground(QtGui.QBrush(QtGui.QColor("#4ade80")))   # vert
+                list_item.setForeground(QtGui.QBrush(QtGui.QColor("#4ade80")))
             else:
-                list_item.setForeground(QtGui.QBrush(QtGui.QColor("#fb923c")))   # orange
+                list_item.setForeground(QtGui.QBrush(QtGui.QColor("#fb923c")))
+            if has_mask:
+                font = list_item.font()
+                font.setItalic(True)
+                list_item.setFont(font)
+                list_item.setToolTip("Masque de saisie CSV déjà généré dans ce dossier")
             self._list.addItem(list_item)
 
         self._list.blockSignals(False)
@@ -2583,92 +2849,158 @@ class AnalyseHabitatController(QtCore.QObject):
         self._retranslate_ui()
         if hasattr(self, '_btn_export_csv'):
             self._btn_export_csv.setText(
-                "Générer masque saisie (CSV)" if language == 'fr' else "Generate entry template (CSV)"
+                "Générer masque saisie (XLSX)" if language == 'fr' else "Generate entry template (XLSX)"
             )
 
-    # ── Export CSV masque saisie ──────────────────────────────────────────────
+    # ── Export XLSX masque saisie ─────────────────────────────────────────────
+
+    def _write_xlsx_station(self, ws, code: str, vpath: str,
+                             start_row: int, write_header: bool,
+                             progress_cb=None) -> int:
+        """Écrit une station dans la feuille ws à partir de start_row.
+        Retourne la première ligne libre après cette station."""
+        from openpyxl.styles import PatternFill, Font, Alignment
+
+        FILL_HDR  = PatternFill("solid", fgColor="93CDDD")
+        FILL_SEC  = PatternFill("solid", fgColor="DEE6EF")
+        FONT_BOLD = Font(bold=True)
+        ALIGN_CTR = Alignment(horizontal="center", vertical="center",
+                               wrap_text=False)
+
+        row = start_row
+        if write_header:
+            for c, h in enumerate(["Nom du point", "Couches", "Caractéristiques",
+                                    "1", "2", "3", "4", "5", "6", "Commentaire"], 1):
+                cell = ws.cell(row=row, column=c, value=h)
+                cell.fill = FILL_HDR
+                cell.font = FONT_BOLD
+                cell.alignment = ALIGN_CTR
+            row += 1
+
+        d = self._data.get(vpath, {})
+        data_start = row
+        steps = 0
+
+        for section_name, fields in _XLSX_LAYOUT:
+            if not fields:
+                cell_b = ws.cell(row=row, column=2, value=section_name)
+                cell_b.fill = FILL_SEC
+                cell_b.font = FONT_BOLD
+                row += 1
+                steps += 1
+                if progress_cb:
+                    progress_cb(steps)
+                continue
+
+            for field_idx, (fkey, excel_label) in enumerate(fields):
+                cell_b = ws.cell(row=row, column=2)
+                if field_idx == 0:
+                    cell_b.value = section_name
+                    cell_b.fill = FILL_SEC
+                    cell_b.font = FONT_BOLD
+
+                ws.cell(row=row, column=3, value=excel_label)
+
+                vals = d.get(fkey)
+                for s in range(6):
+                    v = (vals[s] if vals and s < len(vals) else None)
+                    ws.cell(row=row, column=4 + s, value=v if v else None)
+
+                row += 1
+                steps += 1
+                if progress_cb:
+                    progress_cb(steps)
+
+        if row > data_start:
+            cell_a = ws.cell(row=data_start, column=1)
+            cell_a.value = code
+            cell_a.font = FONT_BOLD
+            cell_a.alignment = ALIGN_CTR
+            if row - 1 > data_start:
+                ws.merge_cells(
+                    start_row=data_start, start_column=1,
+                    end_row=row - 1, end_column=1,
+                )
+
+        return row
 
     def _export_saisie_csv(self):
-        """Génère un CSV avec une ligne par secteur par station, colonnes = tous les champs habitat."""
-        import csv
+        """Génère le masque saisie XLSX de la station courante directement dans son dossier."""
+        try:
+            import openpyxl
+        except ImportError:
+            QtWidgets.QMessageBox.critical(self._page, "Erreur",
+                                           "openpyxl non installé (pip install openpyxl).")
+            return
 
-        if not self._video_model:
+        if not self._current_video:
             QtWidgets.QMessageBox.warning(
                 self._page,
-                "Aucune campagne" if self._language == 'fr' else "No campaign",
-                "Aucune campagne chargée." if self._language == 'fr' else "No campaign loaded.",
+                "Aucune station sélectionnée" if self._language == 'fr' else "No station selected",
+                "Sélectionnez une station dans la liste." if self._language == 'fr'
+                else "Select a station from the list.",
             )
             return
 
-        # Collecte des stations éligibles (oui ou habitat), triées par codestation
-        entries: list[tuple[str, str]] = []
-        for row in range(self._video_model.rowCount()):
-            item = self._video_model.item(row, 0)
-            if not item:
-                continue
-            vpath = str(item.data(QtCore.Qt.ItemDataRole.UserRole) or "")
-            if not vpath:
-                continue
-            expl = _get_exploitability_value(vpath)
-            if expl not in {"oui", "habitat"}:
-                continue
-            code = _get_codestation(vpath) or item.text() or vpath
-            entries.append((code, vpath))
-        entries.sort(key=lambda e: e[0].lower())
+        vpath = self._current_video
+        code = _get_codestation(vpath) or os.path.splitext(os.path.basename(vpath))[0]
+        folder = os.path.dirname(os.path.normpath(vpath))
+        safe_code = "".join(c for c in code if c.isalnum() or c in "-_")
+        out_path = os.path.join(folder, f"{safe_code}_masque_saisie.xlsx")
 
-        if not entries:
-            QtWidgets.QMessageBox.information(
+        if os.path.isfile(out_path):
+            reply = QtWidgets.QMessageBox.question(
                 self._page,
-                "Aucune station" if self._language == 'fr' else "No station",
-                "Aucune vidéo exploitable trouvée." if self._language == 'fr' else "No exploitable video found.",
+                "Fichier existant" if self._language == 'fr' else "File already exists",
+                (f"Le fichier existe déjà :\n{out_path}\n\nÉcraser ?"
+                 if self._language == 'fr'
+                 else f"File already exists:\n{out_path}\n\nOverwrite?"),
+                QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+                QtWidgets.QMessageBox.StandardButton.No,
             )
-            return
+            if reply != QtWidgets.QMessageBox.StandardButton.Yes:
+                return
 
-        # Colonnes : tous les champs de _SCHEMA sauf les totaux auto-calculés
-        _AUTO_TOTAL = set(_TOTAL_SOURCES.keys())
-        field_keys: list[str] = []
-        field_labels: list[str] = []
-        for _, _, fields in _SCHEMA:
-            for key, label, _ in fields:
-                if key not in _AUTO_TOTAL and key not in field_keys:
-                    field_keys.append(key)
-                    field_labels.append(label if self._language == 'fr' else _EN.get(label, label))
+        total_steps = sum(max(len(fields), 1) for _, fields in _XLSX_LAYOUT)
 
-        header = (
-            ["codestation", "secteur"] + field_labels
-            if self._language == 'fr'
-            else ["station", "sector"] + field_labels
+        progress = QtWidgets.QProgressDialog(
+            f"Génération : {code}" if self._language == 'fr' else f"Generating: {code}",
+            None, 0, total_steps, self._page,
         )
-
-        out_path, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self._page,
-            "Enregistrer le masque saisie" if self._language == 'fr' else "Save entry template",
-            "masque_saisie_habitat.csv",
-            "CSV (*.csv)",
-        )
-        if not out_path:
-            return
+        progress.setWindowTitle("Export XLSX")
+        progress.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+        QtWidgets.QApplication.processEvents()
 
         try:
-            with open(out_path, 'w', newline='', encoding='utf-8-sig') as fh:
-                writer = csv.writer(fh, delimiter=';')
-                writer.writerow(header)
-                for code, vpath in entries:
-                    d = self._data.get(vpath, {})
-                    for s in range(6):
-                        row_vals = [code, s + 1]
-                        for key in field_keys:
-                            vals = d.get(key)
-                            v = vals[s] if vals and s < len(vals) else ""
-                            row_vals.append("" if not v else v)
-                        writer.writerow(row_vals)
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Analyses Habitat"
+            ws.column_dimensions["A"].width = 18
+            ws.column_dimensions["B"].width = 36
+            ws.column_dimensions["C"].width = 46
+            for col in ["D", "E", "F", "G", "H", "I"]:
+                ws.column_dimensions[col].width = 8
+            ws.column_dimensions["J"].width = 22
 
+            def _step(s):
+                progress.setValue(s)
+                QtWidgets.QApplication.processEvents()
+
+            self._write_xlsx_station(ws, code, vpath, 1, True, _step)
+            wb.save(out_path)
+            progress.setValue(total_steps)
+            progress.close()
+            print(f"[HABITAT] Masque saisie → {out_path}")
+            self._refresh_mask_indicators()
             QtWidgets.QMessageBox.information(
                 self._page,
                 "Export réussi" if self._language == 'fr' else "Export successful",
                 f"Fichier enregistré :\n{out_path}",
             )
         except Exception as exc:
+            progress.close()
             QtWidgets.QMessageBox.critical(
                 self._page,
                 "Erreur" if self._language == 'fr' else "Error",
@@ -2686,8 +3018,13 @@ class AnalyseHabitatController(QtCore.QObject):
             self._export_all_saisie_csv()
 
     def _export_all_saisie_csv(self):
-        """Génère un CSV par station dans le dossier de chaque vidéo."""
-        import csv
+        """Génère un XLSX par station dans son dossier (2 barres de progression)."""
+        try:
+            import openpyxl
+        except ImportError:
+            QtWidgets.QMessageBox.critical(self._page, "Erreur",
+                                           "openpyxl non installé (pip install openpyxl).")
+            return
 
         if not self._video_model:
             return
@@ -2700,8 +3037,7 @@ class AnalyseHabitatController(QtCore.QObject):
             vpath = str(item.data(QtCore.Qt.ItemDataRole.UserRole) or "")
             if not vpath:
                 continue
-            expl = _get_exploitability_value(vpath)
-            if expl not in {"oui", "habitat"}:
+            if _get_exploitability_value(vpath) not in {"oui", "habitat"}:
                 continue
             code = _get_codestation(vpath) or item.text() or os.path.splitext(os.path.basename(vpath))[0]
             entries.append((code, vpath))
@@ -2715,43 +3051,110 @@ class AnalyseHabitatController(QtCore.QObject):
             )
             return
 
-        _AUTO_TOTAL = set(_TOTAL_SOURCES.keys())
-        field_keys: list[str] = []
-        field_labels: list[str] = []
-        for _, _, fields in _SCHEMA:
-            for key, label, _ in fields:
-                if key not in _AUTO_TOTAL and key not in field_keys:
-                    field_keys.append(key)
-                    field_labels.append(label if self._language == 'fr' else _EN.get(label, label))
+        total_steps = sum(max(len(fields), 1) for _, fields in _XLSX_LAYOUT)
 
-        header = (
-            ["codestation", "secteur"] + field_labels
-            if self._language == 'fr'
-            else ["station", "sector"] + field_labels
-        )
+        # Confirmation si des fichiers existent déjà
+        existing = []
+        for code, vpath in entries:
+            safe_code = "".join(c for c in code if c.isalnum() or c in "-_")
+            p = os.path.join(os.path.dirname(os.path.normpath(vpath)),
+                             f"{safe_code}_masque_saisie.xlsx")
+            if os.path.isfile(p):
+                existing.append(code)
+        if existing:
+            names = "\n".join(f"  • {c}" for c in existing[:10])
+            if len(existing) > 10:
+                names += f"\n  … et {len(existing) - 10} autre(s)"
+            reply = QtWidgets.QMessageBox.question(
+                self._page,
+                "Fichiers existants" if self._language == 'fr' else "Files already exist",
+                (f"{len(existing)} fichier(s) existent déjà :\n{names}\n\nÉcraser tout ?"
+                 if self._language == 'fr'
+                 else f"{len(existing)} file(s) already exist:\n{names}\n\nOverwrite all?"),
+                QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+                QtWidgets.QMessageBox.StandardButton.No,
+            )
+            if reply != QtWidgets.QMessageBox.StandardButton.Yes:
+                return
+
+        # ── Dialogue avec 2 barres ────────────────────────────────────────
+        dlg = QtWidgets.QDialog(self._page)
+        dlg.setWindowTitle("Export XLSX – toutes les stations" if self._language == 'fr'
+                           else "XLSX Export – all stations")
+        dlg.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
+        dlg.setFixedWidth(420)
+        dlg_lay = QtWidgets.QVBoxLayout(dlg)
+        dlg_lay.setSpacing(8)
+        dlg_lay.setContentsMargins(16, 16, 16, 16)
+
+        _ss_lbl = "color:#a0c8e0; font-size:11px; font-family:'Segoe UI',sans-serif;"
+        _ss_bar = ("QProgressBar { background:#0d1e2e; border:1px solid #2778a2;"
+                   " border-radius:4px; height:18px; text-align:center; color:#7ec8e3; }"
+                   "QProgressBar::chunk { background:#2778a2; border-radius:3px; }")
+
+        lbl_global = QtWidgets.QLabel(f"Station 0 / {len(entries)}")
+        lbl_global.setStyleSheet(_ss_lbl)
+        bar_global = QtWidgets.QProgressBar()
+        bar_global.setRange(0, len(entries))
+        bar_global.setValue(0)
+        bar_global.setStyleSheet(_ss_bar)
+
+        lbl_local = QtWidgets.QLabel("Ligne 0 / " + str(total_steps))
+        lbl_local.setStyleSheet(_ss_lbl)
+        bar_local = QtWidgets.QProgressBar()
+        bar_local.setRange(0, total_steps)
+        bar_local.setValue(0)
+        bar_local.setStyleSheet(_ss_bar)
+
+        dlg_lay.addWidget(lbl_global)
+        dlg_lay.addWidget(bar_global)
+        dlg_lay.addSpacing(4)
+        dlg_lay.addWidget(lbl_local)
+        dlg_lay.addWidget(bar_local)
+        dlg.show()
+        QtWidgets.QApplication.processEvents()
 
         created: list[str] = []
         errors: list[str] = []
-        for code, vpath in entries:
+
+        for i, (code, vpath) in enumerate(entries):
+            lbl_global.setText(f"Station {i + 1} / {len(entries)} : {code}")
+            bar_global.setValue(i)
+            bar_local.setValue(0)
+            lbl_local.setText(f"Ligne 0 / {total_steps}")
+            QtWidgets.QApplication.processEvents()
+
             folder = os.path.dirname(os.path.normpath(vpath))
             safe_code = "".join(c for c in code if c.isalnum() or c in "-_")
-            out_path = os.path.join(folder, f"{safe_code}_masque_saisie.csv")
+            out_path = os.path.join(folder, f"{safe_code}_masque_saisie.xlsx")
             try:
-                with open(out_path, 'w', newline='', encoding='utf-8-sig') as fh:
-                    writer = csv.writer(fh, delimiter=';')
-                    writer.writerow(header)
-                    d = self._data.get(vpath, {})
-                    for s in range(6):
-                        row_vals = [code, s + 1]
-                        for key in field_keys:
-                            vals = d.get(key)
-                            v = vals[s] if vals and s < len(vals) else ""
-                            row_vals.append("" if not v else v)
-                        writer.writerow(row_vals)
+                wb = openpyxl.Workbook()
+                ws = wb.active
+                ws.title = "Analyses Habitat"
+                ws.column_dimensions["A"].width = 18
+                ws.column_dimensions["B"].width = 36
+                ws.column_dimensions["C"].width = 46
+                for col in ["D", "E", "F", "G", "H", "I"]:
+                    ws.column_dimensions[col].width = 8
+                ws.column_dimensions["J"].width = 22
+
+                def _step(s, _lbl=lbl_local, _bar=bar_local):
+                    _lbl.setText(f"Ligne {s} / {total_steps}")
+                    _bar.setValue(s)
+                    QtWidgets.QApplication.processEvents()
+
+                self._write_xlsx_station(ws, code, vpath, 1, True, _step)
+                wb.save(out_path)
+                bar_local.setValue(total_steps)
                 created.append(out_path)
-                print(f"[HABITAT] Masque saisie créé → {out_path}")
+                print(f"[HABITAT] Masque saisie → {out_path}")
             except Exception as exc:
                 errors.append(f"{code}: {exc}")
+
+        bar_global.setValue(len(entries))
+        QtWidgets.QApplication.processEvents()
+        dlg.close()
+        self._refresh_mask_indicators()
 
         msg = (f"{len(created)} fichier(s) créé(s)." if self._language == 'fr'
                else f"{len(created)} file(s) created.")

@@ -413,6 +413,7 @@ class AppController(QtCore.QObject):
                     vo["derusher"]["value"] = new_val
                     with open(wjson, 'w', encoding='utf-8') as f:
                         _json.dump(data, f, indent=2, ensure_ascii=False)
+                    print(f"[TEMP_JSON] {os.path.basename(wjson)} ← video_observation.derusher = {new_val!r}")
                     count += 1
             except Exception as e:
                 print(f"[DERUSHER] {wjson}: {e}")

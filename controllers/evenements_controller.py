@@ -1621,6 +1621,7 @@ class EvenementsController:
         try:
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
+            print(f"[TEMP_JSON] {os.path.basename(json_path)} ← events_motor (motor batch)")
         except Exception as e:
             print(f"[MOTOR_BATCH] Erreur écriture JSON {os.path.basename(json_path)}: {e}")
             return
@@ -1723,6 +1724,7 @@ class EvenementsController:
         try:
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
+            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← events_motor (rotations auto)")
         except Exception as e:
             print(f"[EVENTS] Erreur écriture JSON rotations auto : {e}")
             return

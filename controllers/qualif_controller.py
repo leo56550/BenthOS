@@ -1489,6 +1489,7 @@ class QualifController:
                 if changed:
                     with open(json_path, 'w', encoding='utf-8') as _f:
                         json.dump(data, _f, indent=4, ensure_ascii=False)
+                    print(f"[TEMP_JSON] {os.path.basename(json_path)} ← propagation champs campagne")
                     n_filled += 1
             except Exception as e:
                 print(f"[CAMPAGNE] Propagation survey impossible pour "

@@ -45,6 +45,72 @@ The validation page is a secondary review pass over the qualified videos. For ea
 
 ---
 
+### Analyse Habitat
+![Analyse Habitat](img/screenshots/analyse_habitat.png)
+
+The habitat analysis page is the biological coding step. Only videos whose exploitability status is set to **oui** or **habitat** on the Validation page are shown here, sorted by station code and colour-coded by status.
+
+**Station list (left panel)** — each station is listed with its code. Once an XLSX entry template has been generated for a station, a **✓ Masque généré** indicator appears next to its name in italic. The panel height is adjustable via a vertical splitter against the "Analyse vidéo" block below it.
+
+**Sector viewer (centre)** — six thumbnail captures extracted from the video are displayed side by side, one per analysis sector. Clicking a sector selects it and loads its data into the form on the right. Each thumbnail shows a badge with the number of filled fields for that sector.
+
+**Habitat form (right panel)** — a scrollable form driven by `_SCHEMA` with collapsible sections (click the triangle to expand/collapse). Sections include:
+- **Topo et complexité** — topography and complexity scores (1–5).
+- **Recouvrement visible** — percentage cover for each substrate type (sand, silt, rocks, bioconstructed, seagrass on non-visible substrate, etc.). The total is computed automatically.
+- **Herbier ou Algues sur substrat visible** — presence of seagrass or algae on visible substrate.
+- **Recouvrement Herbier** — seagrass cover breakdown (total, short, tall, dense, semi-dense, sparse, dead mat).
+- **Recouvrement Algues** — algae cover breakdown by species group; total computed automatically.
+- **Présence Algues** — cascade selector listing 16 macroalgae species (Laminaria, Cystoseira, Ulva, Corallines, etc.).
+- **Invertébrés remarquables** — cascade selector with individual count for 14 invertebrate taxa (oysters, mussels, sponges, urchins, etc.).
+- **Anthropisation** — health status of seagrass/algae, fishing gear presence, macrodetritus presence.
+
+**Image canvas** — the sector frame is displayed in a zoomable/pannable canvas. The mouse wheel zooms toward the cursor position. Middle-click or drag to pan.
+
+**Analyse vidéo panel** — a compact collapsible panel below the station list holds annotation metadata: fish annotator, habitat annotator, annotation date, analysis software version, and free-text comments. Fields are saved automatically to `habitat.json`.
+
+**XLSX entry template export** — clicking **Générer masque saisie (XLSX)** generates a colour-coded Excel file (`.xlsx`) directly into the station's raw footage folder, matching the format of the reference template *Masque saisie CC 2022*:
+- Header row in blue-grey (`#93CDDD`), bold.
+- Section rows in light blue (`#DEE6EF`), bold.
+- One row per field, columns: *Nom du point* | *Couches* | *Caractéristiques* | *1* | *2* | *3* | *4* | *5* | *6* | *Commentaire*.
+- Station code merged across all its rows in column A.
+- If a file already exists, a confirmation dialog appears before overwriting.
+
+**Right-click on the export button** → *Générer tous les masques de saisie* — batch-generates one XLSX per station. A dialog with two progress bars shows per-station progress (rows written) and overall campaign progress simultaneously. If any files already exist, a single confirmation lists them before proceeding.
+
+All habitat data is persisted to a per-station `habitat.json` sidecar file written alongside the raw video. The JSON format is:
+
+```json
+{
+  "meta": {
+    "codestation": "CC220001",
+    "fish_annotator": "...",
+    "habitat_annotator": "...",
+    "annotation_date": "...",
+    "logiciel": "BenthOS"
+  },
+  "sectors": [
+    {
+      "index": 1,
+      "topographie": 3,
+      "complexite": 2,
+      "recouvrement_visible": { "sable": 40, "vase": 10, ... },
+      "recouvrement_herbier": { "total_herbier": 30, ... },
+      "recouvrement_algues":  { "alg_brunes_nid": 5, ... },
+      "presence_algues": ["laminaria_sp", "corallines"],
+      "invertebres": { "oursin": 3, "crabe": 1 },
+      "etat_sante": 2,
+      "engins_peche": 0,
+      "macrochets": 0
+    },
+    ...
+  ]
+}
+```
+
+`habitat.json` is created automatically when a video's exploitability status is set to *oui* or *habitat* on the Validation page.
+
+---
+
 ### Event annotation
 ![Events](img/screenshots/event.png)
 
@@ -122,6 +188,7 @@ The progress dashboard gives a real-time overview of the campaign processing sta
 | **Validation** | Secondary review pass. Toggle exploitability and stereo/mono status per video. Right-click "SAISIR ARDOISE" to run ArUco slate detection on the current video, all videos, or only those missing a codestation. |
 | **Event annotation** | Mark timestamped events on the video timeline: fish, birds, turtles, motor events — with audio cues. Zone-aware interaction and motor rotation auto-detection (single video or full batch). |
 | **Metadata editing** | Edit structured fields driven by a configurable `template.json` schema. Includes weather lookup and GPS map view. |
+| **Analyse Habitat** | Sector-by-sector biological coding form for exploitable stations. Collapsible sections, zoomable sector viewer, cascade selectors for algae and invertebrates. Exports a colour-coded XLSX entry template matching the *Masque saisie CC 2022* reference format. Data persisted as `habitat.json`. |
 | **Extraction** | Clip video segments and capture still frames with CLAHE dehazing, histogram equalisation and stereo rectification. |
 | **PDF report** | Generate a campaign report with statistics, GPS scatter, and per-video data sheets. |
 | **SFTP transfer** | Pull files from the KOSMOS SD card directly over SSH/SFTP without mounting the drive. |
@@ -130,6 +197,17 @@ The progress dashboard gives a real-time overview of the campaign processing sta
 ---
 
 ## Recent additions
+
+### Analyse Habitat page
+A full sector-by-sector biological coding workflow is now available as a dedicated page. Only videos validated as *oui* or *habitat* appear in the station list. Key features:
+
+- **Collapsible sections** — each thematic block (Topo, Recouvrement visible, Herbier, Algues, Invertébrés, Anthropisation) can be expanded or collapsed by clicking its triangle header.
+- **Zoom-to-mouse** — the sector image canvas zooms toward the cursor position on mouse wheel, keeping the point of interest stationary.
+- **Cascade selectors** — algae presence (16 species) and notable invertebrates (14 taxa + count) use a compact add/remove cascade widget instead of a flat grid.
+- **Vertical splitter** — the station list and the "Analyse vidéo" annotation panel are stacked in a `QSplitter`, letting the operator resize each area freely.
+- **habitat.json** — all coding data is persisted as a structured JSON sidecar alongside the raw video. The format includes a `meta` block (annotators, date, software) and a `sectors` array (one entry per sector, with typed sub-dicts for recouvrement, presence lists, invert counts, etc.). The file is created automatically when exploitability is set on the Validation page.
+- **XLSX masque saisie** — the export button generates a colour-coded Excel file (`.xlsx`) matching the *Masque saisie CC 2022* reference layout: one row per field (not per sector), header in blue-grey `#93CDDD`, section rows in light blue `#DEE6EF`, station code merged across its rows. Right-click → *Générer tous les masques de saisie* exports one file per station with a two-bar progress dialog. Overwrite confirmation shown when files already exist.
+- **✓ indicator** — after a masque is generated the station's entry in the list shows *✓ Masque généré* in italic and a tooltip.
 
 ### Motor rotation auto-detection
 The "Rotation moteur" button in the event annotation page now exposes a right-click context menu. The **Détecter automatiquement** action runs an OpenCV phase-correlation analysis between the Landing and Takeoff timestamps to locate horizontal camera panning without manual review. The analysis runs in a `QThread` with a progress dialog that fills progressively throughout the process. Detected rotations are merged into the existing `events_motor` pool alongside manually placed ones.
@@ -165,7 +243,7 @@ The "Vue des secteurs" toggle button on the event annotation page is now display
 | `paramiko` | 4.0.0 | SFTP transfer from KOSMOS hardware |
 | `requests` | 2.33.1 | Weather API (Open-Meteo) |
 | `folium` | 0.20.0 | Interactive Leaflet map generation |
-| `openpyxl` | — | Excel export |
+| `openpyxl` | 3.1.5 | XLSX masque saisie export |
 | `pywin32` | 312 | Windows shell integration |
 
 ---
@@ -237,6 +315,7 @@ BenthOS/
 │   ├── evenements_controller.py
 │   ├── metadonnees_controller.py
 │   ├── extraction_controller.py
+│   ├── analyse_habitat_controller.py  # Habitat coding + XLSX export
 │   └── apropos_controller.py
 │
 ├── models/                   # Qt item models (no widgets)
@@ -262,7 +341,8 @@ A KOSMOS campaign is organised as follows. The top-level campaign folder contain
 │   │   ├── 0102.json                  # device metadata (never modified)
 │   │   ├── 0102.csv                   # GPS / sensor timeseries (never modified)
 │   │   ├── 0102.txt                   # device log (never modified)
-│   │   ├── 0102_temp.json             # ← BenthOS annotations (writable)
+│   │   │   ├── 0102_temp.json             # ← BenthOS annotations (writable)
+│   │   ├── 0102_habitat.json          # ← Habitat coding data (writable)
 │   │   └── systemEvent.csv            # system events log (never modified)
 │   ├── 0103/
 │   └── ...
@@ -277,7 +357,8 @@ A KOSMOS campaign is organised as follows. The top-level campaign folder contain
 | `<stem>.csv` | KOSMOS device | Time-series telemetry: GPS, depth, heading, motor rotations. Read-only. |
 | `<stem>.txt` | KOSMOS device | Device event log. Read-only. |
 | `systemEvent.csv` | KOSMOS device | System-level events (motor start/stop, etc.). Read-only. |
-| `<stem>_temp.json` | BenthOS | **The sole writable file.** Contains all operator annotations (see below). |
+| `<stem>_temp.json` | BenthOS | Main annotation sidecar. Contains qualification, validation, events, extraction deliverables. |
+| `<stem>_habitat.json` | BenthOS | Habitat coding sidecar. Created automatically when exploitability is set to *oui* or *habitat*. Stores `meta` (annotators, date) + `sectors` array (one entry per sector with typed sub-dicts). |
 
 The `_temp.json` structure mirrors `template.json` and stores:
 
