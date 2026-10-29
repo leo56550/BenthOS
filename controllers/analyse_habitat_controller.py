@@ -1590,7 +1590,7 @@ class AnalyseHabitatController(QtCore.QObject):
         )
         self._left_splitter.addWidget(self._list)
         self._left_splitter.addWidget(self._build_analysis_panel_compact())
-        self._left_splitter.setSizes([200, 160])
+        self._left_splitter.setSizes([200, 90])
         self._left_splitter.setCollapsible(0, False)
         self._left_splitter.setCollapsible(1, False)
         vlay.addWidget(self._left_splitter, 1)
@@ -1598,38 +1598,18 @@ class AnalyseHabitatController(QtCore.QObject):
         return panel
 
     def _build_analysis_panel_compact(self) -> QtWidgets.QWidget:
-        """Panneau 'Analyse vidéo' compact placé en bas du panneau gauche."""
+        """Panneau compact placé en bas du panneau gauche (analyseur habitat + masque saisie)."""
         outer = QtWidgets.QWidget()
         outer.setStyleSheet("background:#0d1825; border-top:1px solid #1e3448;")
         outer_lay = QtWidgets.QVBoxLayout(outer)
-        outer_lay.setContentsMargins(0, 0, 0, 0)
-        outer_lay.setSpacing(0)
+        outer_lay.setContentsMargins(10, 8, 10, 10)
+        outer_lay.setSpacing(5)
 
-        # Bouton repliable
+        # Stub pour compatibilité _retranslate_ui (pas de toggle réel)
         self._av_toggle_btn = QtWidgets.QToolButton()
-        self._av_toggle_btn.setText("  ▶  Analyse vidéo")
+        self._av_toggle_btn.setVisible(False)
         self._av_toggle_btn.setCheckable(True)
-        self._av_toggle_btn.setChecked(False)
-        self._av_toggle_btn.setToolButtonStyle(
-            QtCore.Qt.ToolButtonStyle.ToolButtonTextOnly)
-        self._av_toggle_btn.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Fixed)
-        self._av_toggle_btn.setStyleSheet(
-            "QToolButton { background:#0d1825; color:#7ec8e3;"
-            " font-weight:bold; font-size:11px;"
-            " font-family:'Segoe UI',sans-serif;"
-            " border:none; padding:7px 12px; text-align:left; }"
-            "QToolButton:checked { color:#aee8ff; }")
-        outer_lay.addWidget(self._av_toggle_btn)
-
-        # Contenu (caché par défaut)
-        self._av_panel_content = QtWidgets.QWidget()
-        self._av_panel_content.setStyleSheet("background:#0d1825;")
-        self._av_panel_content.setVisible(False)
-        content_lay = QtWidgets.QVBoxLayout(self._av_panel_content)
-        content_lay.setContentsMargins(10, 4, 10, 10)
-        content_lay.setSpacing(5)
+        self._av_toggle_btn.setChecked(True)
 
         _lbl_s = ("color:#7ec8e3; font-size:11px;"
                   " font-family:'Segoe UI',sans-serif; background:transparent;")
@@ -1649,42 +1629,15 @@ class AnalyseHabitatController(QtCore.QObject):
             w.setPlaceholderText(placeholder)
             w.setStyleSheet(_inp_s)
             w.setMinimumHeight(24)
-            print(f"[HABITAT DEBUG] création widget _inp pour {key!r}")
-            def _on_edit_finished(k=key, wi=w):
-                print(f"[HABITAT DEBUG] editingFinished → {k!r} = {wi.text()!r}")
-                self._save_av_field(k, wi.text())
-            def _on_text_edited(text, k=key):
-                print(f"[HABITAT DEBUG] textEdited → {k!r} = {text!r}")
-            w.editingFinished.connect(_on_edit_finished)
-            w.textEdited.connect(_on_text_edited)
+            w.editingFinished.connect(lambda k=key, wi=w: self._save_av_field(k, wi.text()))
             self._av_widgets[key] = w
             return w
 
-        rows = [
-            ("Analyseur poisson",     "fish_annotator",         "Jean Dupont"),
-            ("Analyseur habitat",     "habitat_annotator",      "Marie Martin"),
-            ("Substrat",              "substrat",               "Sable, Roche…"),
-            ("Visibilité (m)",        "estimated_visibility",   "ex : 5"),
-        ]
-        for label, key, ph in rows:
-            content_lay.addWidget(_lbl(label))
-            content_lay.addWidget(_inp(key, ph))
+        # Seul champ conservé : analyseur habitat
+        outer_lay.addWidget(_lbl("Analyseur habitat"))
+        outer_lay.addWidget(_inp("habitat_annotator", "ex : Marie Martin"))
 
-        # Distance min/max
-        content_lay.addWidget(_lbl("Distance analysable (m)"))
-        dist_row = QtWidgets.QWidget()
-        dist_row.setStyleSheet("background:transparent;")
-        dist_lay = QtWidgets.QHBoxLayout(dist_row)
-        dist_lay.setContentsMargins(0, 0, 0, 0)
-        dist_lay.setSpacing(6)
-        dist_lay.addWidget(_lbl("min"))
-        dist_lay.addWidget(_inp("distance_min", "0"))
-        dist_lay.addWidget(_lbl("max"))
-        dist_lay.addWidget(_inp("distance_max", "5"))
-        dist_lay.addStretch()
-        content_lay.addWidget(dist_row)
-
-        # ── Bouton export CSV masque saisie ───────────────────────────────
+        # ── Bouton export masque saisie ───────────────────────────────────
         self._btn_export_csv = QtWidgets.QPushButton()
         self._btn_export_csv.setText(
             "Générer masque saisie (XLSX)" if self._language == 'fr' else "Generate entry template (XLSX)"
@@ -1692,7 +1645,7 @@ class AnalyseHabitatController(QtCore.QObject):
         self._btn_export_csv.setStyleSheet(
             "QPushButton { background:#0d2a3e; color:#7ec8e3; border:1px solid #2778a2;"
             " border-radius:4px; font-size:10px; font-family:'Segoe UI',sans-serif;"
-            " padding:5px 10px; margin:6px 0px; }"
+            " padding:5px 10px; margin:4px 0px; }"
             "QPushButton:hover { background:#1a3a52; }"
             "QPushButton:pressed { background:#0a1e2d; }"
         )
@@ -1701,16 +1654,8 @@ class AnalyseHabitatController(QtCore.QObject):
             QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self._btn_export_csv.customContextMenuRequested.connect(
             self._on_export_csv_context_menu)
-        content_lay.addWidget(self._btn_export_csv)
+        outer_lay.addWidget(self._btn_export_csv)
 
-        outer_lay.addWidget(self._av_panel_content)
-
-        def _toggle(checked):
-            self._av_panel_content.setVisible(checked)
-            self._av_toggle_btn.setText(
-                f"  {'▼' if checked else '▶'}  {self._tr('Analyse vidéo')}")
-
-        self._av_toggle_btn.toggled.connect(_toggle)
         return outer
 
     def _build_right_panel(self) -> QtWidgets.QWidget:
@@ -2818,10 +2763,7 @@ class AnalyseHabitatController(QtCore.QObject):
         # En-tête de la liste
         if hasattr(self, '_header_label'):
             self._header_label.setText("  Stations")
-        # Bouton toggle Analyse vidéo
-        is_open = self._av_toggle_btn.isChecked()
-        arrow = "▼" if is_open else "▶"
-        self._av_toggle_btn.setText(f"  {arrow}  {tr('Analyse vidéo')}")
+        # (pas de bouton toggle Analyse vidéo — panneau toujours ouvert)
         # Label sélection
         self._no_sel_label.setText(tr("Sélectionnez une station dans la liste"))
         # Label verrou
