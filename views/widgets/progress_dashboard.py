@@ -108,6 +108,12 @@ class _StatsWorker(QtCore.QThread):
         self._paths = list(video_paths)
         self._trash_count = trash_count
 
+    @staticmethod
+    def _habitat_json_path(vp: str) -> str:
+        stem   = os.path.splitext(os.path.basename(vp))[0]
+        folder = os.path.dirname(os.path.normpath(vp))
+        return os.path.join(folder, f"{stem}_habitat.json")
+
     def run(self):
         total = len(self._paths)
         ardoise = 0
@@ -116,9 +122,42 @@ class _StatsWorker(QtCore.QThread):
         essential_filled = 0
         optional_filled  = 0
         expl_breakdown: dict[str, int] = {}
+        habitat_done = 0
+        habitat_detail: list[dict] = []   # [{code, n_sectors, done}]
 
         for vp in self._paths:
-            temp = get_temp_json_path(str(vp))
+            vp_str = str(vp)
+            temp = get_temp_json_path(vp_str)
+
+            # ── Habitat ───────────────────────────────────────────────────────
+            hab_path = self._habitat_json_path(vp_str)
+            if os.path.isfile(hab_path):
+                try:
+                    with open(hab_path, 'r', encoding='utf-8') as f:
+                        hab = json.load(f)
+                    sectors = hab.get("sectors", [])
+                    n_done  = sum(
+                        1 for s in sectors
+                        if any(v for v in s.values() if v and v != 0)
+                    )
+                    code = hab.get("meta", {}).get("codestation", "") or \
+                           os.path.splitext(os.path.basename(vp_str))[0]
+                    has_data = n_done > 0 or bool(
+                        {k: v for k, v in hab.items()
+                         if k not in ("meta", "sectors") and v}
+                    )
+                    if has_data:
+                        habitat_done += 1
+                    habitat_detail.append({
+                        "code":     code,
+                        "n_done":   n_done,
+                        "n_total":  len(sectors) if sectors else 6,
+                        "has_data": has_data,
+                    })
+                except Exception:
+                    pass
+
+            # ── Temp JSON ─────────────────────────────────────────────────────
             if not os.path.isfile(temp):
                 continue
             try:
@@ -178,6 +217,8 @@ class _StatsWorker(QtCore.QThread):
             "optional_filled":   optional_filled,
             "optional_total":    _N_OPTIONAL  * total,
             "analyse_eligible":  analyse_eligible,
+            "habitat_done":      habitat_done,
+            "habitat_detail":    habitat_detail,
         })
 
 
@@ -960,6 +1001,70 @@ _MINI_W  = 58   # largeur widget
 _MINI_H  = 42   # hauteur widget
 
 
+class _HabitatPopup(QtWidgets.QDialog):
+    """Popup de détail de l'avancement Analyse Habitat par station."""
+
+    def __init__(self, detail: list[dict], done: int, total: int, parent=None):
+        super().__init__(parent, QtCore.Qt.WindowType.WindowStaysOnTopHint)
+        self.setWindowTitle("Avancement Analyse Habitat")
+        self.setMinimumWidth(320)
+        self.setStyleSheet("""
+            QDialog { background-color: #0e1d2c; }
+            QLabel  { color: #c8e0f0; background: transparent; border: none; }
+        """)
+        self._build(detail, done, total)
+        self.adjustSize()
+
+    def _build(self, detail: list[dict], done: int, total: int):
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(16, 14, 16, 14)
+        lay.setSpacing(4)
+
+        # En-tête
+        pct = int(done / total * 100) if total else 0
+        hdr = QtWidgets.QLabel(f"Stations traitées : {done} / {total}  ({pct} %)")
+        hdr.setStyleSheet("font-size: 13px; font-weight: bold; color: #34d399;")
+        lay.addWidget(hdr)
+
+        if not detail:
+            lay.addWidget(QtWidgets.QLabel("Aucune donnée habitat trouvée."))
+            return
+
+        sep = QtWidgets.QFrame()
+        sep.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        sep.setStyleSheet("border: 1px solid #1a3048; margin: 4px 0;")
+        lay.addWidget(sep)
+
+        for row in detail:
+            code    = row["code"] or "—"
+            n_done  = row["n_done"]
+            n_total = row["n_total"]
+            has_d   = row["has_data"]
+
+            line = QtWidgets.QWidget()
+            line.setStyleSheet("background: transparent;")
+            hl = QtWidgets.QHBoxLayout(line)
+            hl.setContentsMargins(0, 2, 0, 2)
+            hl.setSpacing(8)
+
+            dot = QtWidgets.QLabel("✓" if has_d else "○")
+            dot.setStyleSheet(
+                f"color: {'#34d399' if has_d else '#2e4a5e'}; font-size: 12px;")
+            hl.addWidget(dot)
+
+            lbl_code = QtWidgets.QLabel(code)
+            lbl_code.setStyleSheet(
+                f"font-size: 11px; color: {'#c8e0f0' if has_d else '#3a5468'};")
+            hl.addWidget(lbl_code, 1)
+
+            if n_done > 0:
+                lbl_sec = QtWidgets.QLabel(f"{n_done}/{n_total} secteurs")
+                lbl_sec.setStyleSheet("font-size: 10px; color: #7aa8c0;")
+                hl.addWidget(lbl_sec)
+
+            lay.addWidget(line)
+
+
 class _MiniRingDual(QtWidgets.QWidget):
     """Deux anneaux concentriques mini : essentiel (ext.) + optionnel (int.)."""
 
@@ -1119,6 +1224,8 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
         super().__init__(parent)
         self._worker: _StatsWorker | None = None
         self._expl_breakdown: dict[str, int] = {}
+        self._habitat_detail: list[dict] = []
+        self._habitat_done = 0
         self._stats: dict = {}
 
         lay = QtWidgets.QHBoxLayout(self)
@@ -1126,19 +1233,19 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
         lay.setSpacing(10)
 
         self._r_kept    = _MiniRing("#34d399", "Qualification")
-        self._r_ardoise = _MiniRing("#fbbf24", "Validation — double-cliquer pour détails")
+        self._r_ardoise = _MiniRing("#fbbf24", "Validation")
         self._r_meta    = _MiniRingDual("Métadonnées")
-        self._r_derush  = _MiniRing("#a78bfa", "Dérushage")
+        self._r_derush  = _MiniRing("#a78bfa", "Évènements")
         self._r_habitat = _MiniRing("#34d399", "Habitat")
 
-        self._r_ardoise.double_clicked.connect(self._show_expl_popup)
-        self._r_ardoise.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self._r_habitat.double_clicked.connect(self._show_habitat_popup)
+        self._r_habitat.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
 
         _pairs = [
             ("Qualif.",  "#34d399", self._r_kept),
             ("Valid.",   "#fbbf24", self._r_ardoise),
             ("Méta.",    "#5DBB63", self._r_meta),
-            ("Dérush.",  "#a78bfa", self._r_derush),
+            ("Évènts.", "#a78bfa", self._r_derush),
             ("Habitat",  "#34d399", self._r_habitat),
         ]
         for title, color, ring in _pairs:
@@ -1179,10 +1286,20 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
             f"Jetées : {stats['trashed']}")
 
         self._r_ardoise.set_pct(int(stats["ardoise"] / total * 100), delay_ms=100)
+        _expl_lines = []
+        _order = ["oui", "yes", "habitat", "communication", "non", "no"]
+        _labels = {"oui": "Oui", "yes": "Oui", "non": "Non", "no": "Non",
+                   "habitat": "Habitat", "communication": "Communication"}
+        for _k in sorted(self._expl_breakdown,
+                         key=lambda k: (_order.index(k) if k in _order else 99, k)):
+            _n = self._expl_breakdown[_k]
+            _pct_k = int(_n / total * 100)
+            _expl_lines.append(f"  {_labels.get(_k, _k.capitalize())} : {_n} ({_pct_k}%)")
+        _expl_block = "\n".join(_expl_lines) if _expl_lines else "  —"
         self._r_ardoise.setToolTip(
             f"Validation\nArdoise renseignée : {stats['ardoise']} / {total} "
             f"({int(stats['ardoise']/total*100)}%)\n"
-            f"Double-cliquer pour la répartition par statut")
+            f"Répartition exploitabilité :\n{_expl_block}")
 
         self._r_meta.set_data(int(ess_f / ess_t * 100), int(opt_f / opt_t * 100), delay_ms=200)
         self._r_meta.setToolTip(
@@ -1191,27 +1308,38 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
 
         self._r_derush.set_pct(int(land / total * 100), delay_ms=300)
         self._r_derush.setToolTip(
-            f"Dérushage\nAtt./Déc. : {land} / {total} ({int(land/total*100)}%)\n"
+            f"Évènements\nAtt./Déc. : {land} / {total} ({int(land/total*100)}%)\n"
             f"Début/Fin ann. : {anno} / {total} ({int(anno/total*100)}%)")
 
-        self._r_habitat.set_pct(0, delay_ms=400)
-        self._r_habitat.setToolTip("Analyse Habitat\n(données en cours de calcul)")
+        self._habitat_done   = stats.get("habitat_done", 0)
+        self._habitat_detail = stats.get("habitat_detail", [])
+        hab_pct = int(self._habitat_done / total * 100)
+        self._r_habitat.set_pct(hab_pct, delay_ms=400)
+        self._r_habitat.setToolTip(
+            f"Analyse Habitat\nStations traitées : {self._habitat_done} / {total} ({hab_pct}%)\n"
+            f"Double-cliquer pour le détail par station")
 
     def _show_expl_popup(self):
         self._expl_popup = _ExploitabilityPopup(self._expl_breakdown, None)
         self._expl_popup.show()
 
+    def _show_habitat_popup(self):
+        total = self._stats.get("total", 0) or len(self._habitat_detail) or 1
+        self._hab_popup = _HabitatPopup(
+            self._habitat_detail, self._habitat_done, total, None)
+        self._hab_popup.show()
+
     def set_language(self, lang: str):
         if lang == 'en':
             self._r_kept.setToolTip("Qualification")
-            self._r_ardoise.setToolTip("Validation — double-click for details")
+            self._r_ardoise.setToolTip("Validation")
             self._r_meta.setToolTip("Metadata")
-            self._r_derush.setToolTip("Rushes")
-            self._r_habitat.setToolTip("Habitat")
+            self._r_derush.setToolTip("Events (landing/takeoff + annotations)")
+            self._r_habitat.setToolTip("Habitat — double-click for details")
         else:
             self._r_kept.setToolTip("Qualification")
-            self._r_ardoise.setToolTip("Validation — double-cliquer pour détails")
+            self._r_ardoise.setToolTip("Validation")
             self._r_meta.setToolTip("Métadonnées")
-            self._r_derush.setToolTip("Dérushage")
-            self._r_habitat.setToolTip("Habitat")
+            self._r_derush.setToolTip("Évènements (att./déc. + annotations)")
+            self._r_habitat.setToolTip("Habitat — double-cliquer pour le détail")
         # Après chargement, les tooltips seront regénérés par _on_stats_ready
