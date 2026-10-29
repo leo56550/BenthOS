@@ -589,6 +589,9 @@ class EvenementsController:
         self._rebuild_event_buttons()
         if hasattr(self, 'export_button'):
             self.export_button.setText(self.translate("EXPORTER VERS VIAME", "EXPORT TO VIAME"))
+        if hasattr(self, '_viame_labels'):
+            for w, fr, en in self._viame_labels:
+                w.setText(fr if self.current_language == 'fr' else en)
         if hasattr(self, '_lbl_batch_export'):
             self._lbl_batch_export.setText(
                 self.translate("Export campagne", "Campaign export"))
@@ -2484,6 +2487,69 @@ class EvenementsController:
         layout.addWidget(self.export_progress)
         layout.addWidget(self.export_status_label)
 
+        # ── Champs méta VIAME ─────────────────────────────────────────────────
+        sep_viame = QtWidgets.QFrame()
+        sep_viame.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        sep_viame.setStyleSheet("border: none; border-top: 1px solid #1e3448; max-height: 1px;")
+        layout.addWidget(sep_viame)
+
+        _lbl_s = ("color:#7ec8e3; font-size:10px;"
+                  " font-family:'Segoe UI',sans-serif; background:transparent; border:none;")
+        _inp_s = ("QLineEdit { background:#162433; color:#F2BFB4;"
+                  " border:1px solid #2a4057; border-radius:4px;"
+                  " padding:3px 6px; font-size:10px; }"
+                  "QLineEdit:focus { border-color:#2778a2; }")
+
+        self._viame_widgets: dict[str, QtWidgets.QLineEdit] = {}
+        # labels traduits : clé = identifiant, valeur = (widget, texte_fr, texte_en)
+        self._viame_labels: list[tuple[QtWidgets.QLabel, str, str]] = []
+
+        def _viame_lbl(fr, en):
+            w = QtWidgets.QLabel(fr if self.current_language == 'fr' else en)
+            w.setStyleSheet(_lbl_s)
+            self._viame_labels.append((w, fr, en))
+            return w
+
+        def _viame_inp(key, placeholder=""):
+            w = QtWidgets.QLineEdit()
+            w.setPlaceholderText(placeholder)
+            w.setStyleSheet(_inp_s)
+            w.setMinimumHeight(22)
+            w.editingFinished.connect(lambda k=key, wi=w: self._save_viame_field(k, wi.text()))
+            self._viame_widgets[key] = w
+            return w
+
+        # Analyseur poisson
+        layout.addWidget(_viame_lbl("Analyseur poisson", "Fish annotator"))
+        layout.addWidget(_viame_inp("fish_annotator", "ex : Jean Dupont"))
+
+        # Substrat
+        layout.addWidget(_viame_lbl("Substrat", "Substrate"))
+        layout.addWidget(_viame_inp("substrat", "ex : Sable, Roche…"))
+
+        # Visibilité
+        layout.addWidget(_viame_lbl("Visibilité (m)", "Visibility (m)"))
+        layout.addWidget(_viame_inp("estimated_visibility", "ex : 5"))
+
+        # Distance analysable min/max
+        layout.addWidget(_viame_lbl("Distance analysable (m)", "Analysable distance (m)"))
+        dist_w = QtWidgets.QWidget()
+        dist_w.setStyleSheet("background:transparent;")
+        dist_lay = QtWidgets.QHBoxLayout(dist_w)
+        dist_lay.setContentsMargins(0, 0, 0, 0)
+        dist_lay.setSpacing(4)
+        dist_lbl_s = "color:#7ec8e3; font-size:10px; background:transparent; border:none;"
+        lbl_min = QtWidgets.QLabel("min")
+        lbl_min.setStyleSheet(dist_lbl_s)
+        lbl_max = QtWidgets.QLabel("max")
+        lbl_max.setStyleSheet(dist_lbl_s)
+        dist_lay.addWidget(lbl_min)
+        dist_lay.addWidget(_viame_inp("distance_min", "0"))
+        dist_lay.addWidget(lbl_max)
+        dist_lay.addWidget(_viame_inp("distance_max", "5"))
+        dist_lay.addStretch()
+        layout.addWidget(dist_w)
+
         # ── Export campagne (batch) ───────────────────────────────────────────
         self._sep_batch = QtWidgets.QFrame()
         self._sep_batch.setFrameShape(QtWidgets.QFrame.Shape.HLine)
@@ -2561,6 +2627,47 @@ class EvenementsController:
             self._on_export_button_context_menu)
         self.export_worker = None
         self._batch_coordinator = None
+
+    def _save_viame_field(self, field_key: str, value: str):
+        """Sauvegarde un champ méta VIAME dans video_observation du JSON courant."""
+        if not self.current_json_path or not os.path.isfile(self.current_json_path):
+            return
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            vob = data.setdefault("video_observation", {})
+            entry = vob.get(field_key)
+            if isinstance(entry, dict):
+                entry["value"] = value or None
+            else:
+                vob[field_key] = {"value": value or None}
+            with open(self.current_json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            print(f"[EVT] _save_viame_field {field_key}: {e}")
+
+    def _load_viame_fields(self):
+        """Charge les champs méta VIAME depuis le JSON de la vidéo courante."""
+        if not hasattr(self, '_viame_widgets') or not self._viame_widgets:
+            return
+        if not self.current_json_path or not os.path.isfile(self.current_json_path):
+            for w in self._viame_widgets.values():
+                w.blockSignals(True)
+                w.clear()
+                w.blockSignals(False)
+            return
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception:
+            return
+        vob = data.get("video_observation", {})
+        for key, widget in self._viame_widgets.items():
+            entry = vob.get(key, {})
+            val = entry.get("value", "") if isinstance(entry, dict) else (entry or "")
+            widget.blockSignals(True)
+            widget.setText(str(val) if val is not None else "")
+            widget.blockSignals(False)
 
     def _update_export_button_state(self):
         """Met à jour l'apparence du bouton Export (toujours cliquable pour le menu contextuel)."""
@@ -2913,6 +3020,7 @@ class EvenementsController:
         self._nettoyer_json_misplaced_events()
         self._update_export_button_state()
         self._load_evt_comment()
+        self._load_viame_fields()
 
         video_fps = 25.0
         if os.path.exists(self.current_video_path):

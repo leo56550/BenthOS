@@ -1661,19 +1661,26 @@ class AnalyseHabitatController(QtCore.QObject):
     def _build_right_panel(self) -> QtWidgets.QWidget:
         panel = QtWidgets.QWidget()
         panel.setStyleSheet("background:#0b1421;")
-        hlay = QtWidgets.QHBoxLayout(panel)
-        hlay.setContentsMargins(0, 0, 0, 0)
-        hlay.setSpacing(0)
+        root_lay = QtWidgets.QHBoxLayout(panel)
+        root_lay.setContentsMargins(0, 0, 0, 0)
+        root_lay.setSpacing(0)
 
-        # ── Colonne gauche : viewer image (s'étend pour remplir l'espace) ──
+        inner_splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
+        inner_splitter.setStyleSheet(
+            "QSplitter::handle { background:#1e3448; width:4px; }"
+            "QSplitter::handle:hover { background:#2778a2; }")
+        root_lay.addWidget(inner_splitter)
+
+        # ── Colonne gauche : viewer image ──
         left_col = QtWidgets.QWidget()
         left_col.setStyleSheet("background:#0b1421;")
+        left_col.setMinimumWidth(200)
         left_vlay = QtWidgets.QVBoxLayout(left_col)
         left_vlay.setContentsMargins(0, 0, 0, 0)
         left_vlay.setSpacing(0)
 
         self._sector_viewer = _SectorViewerWidget()
-        left_vlay.addWidget(self._sector_viewer, 1)  # stretch = 1 → remplit tout
+        left_vlay.addWidget(self._sector_viewer, 1)
 
         self._no_sel_label = QtWidgets.QLabel("Sélectionnez une station dans la liste")
         self._no_sel_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -1696,25 +1703,34 @@ class AnalyseHabitatController(QtCore.QObject):
         self._lock_label.setVisible(False)
         left_vlay.addWidget(self._lock_label)
 
-        hlay.addWidget(left_col, 1)  # stretch = 1 → prend toute la largeur disponible
+        inner_splitter.addWidget(left_col)
 
-        # ── Séparateur vertical ──
-        sep = QtWidgets.QFrame()
-        sep.setFrameShape(QtWidgets.QFrame.Shape.VLine)
-        sep.setStyleSheet("color:#1a3a54;")
-        hlay.addWidget(sep)
-
-        # ── Colonne droite fixe : sélecteur S1-S6 + formulaire ──
+        # ── Colonne droite : sélecteur S1-S6 + formulaire ──
         right_col = QtWidgets.QWidget()
-        right_col.setFixedWidth(340)
+        right_col.setMinimumWidth(340)
         right_col.setStyleSheet("background:#0d1825;")
         right_vlay = QtWidgets.QVBoxLayout(right_col)
         right_vlay.setContentsMargins(0, 0, 0, 0)
         right_vlay.setSpacing(0)
 
-        # Sélecteur de secteur (S1..S6 avec thumbnails) — tout en haut à droite
+        # Sélecteur de secteur (S1..S6 avec thumbnails) — scrollable horizontalement
         self._sector_selector = self._build_sector_selector()
-        right_vlay.addWidget(self._sector_selector)
+        _sel_scroll = QtWidgets.QScrollArea()
+        _sel_scroll.setWidget(self._sector_selector)
+        _sel_scroll.setWidgetResizable(False)
+        _sel_scroll.setFixedHeight(_HEADER_H + 2)
+        _sel_scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        _sel_scroll.setHorizontalScrollBarPolicy(
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        _sel_scroll.setVerticalScrollBarPolicy(
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        _sel_scroll.setStyleSheet(
+            "QScrollArea { background:#0d1825; border:none; }"
+            "QScrollBar:horizontal { background:#0d1e2e; height:6px; border-radius:3px; }"
+            "QScrollBar::handle:horizontal { background:#2778a2; border-radius:3px; }"
+            "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width:0; }")
+        self._sector_selector_scroll = _sel_scroll
+        right_vlay.addWidget(_sel_scroll)
 
         # Formulaire mono-secteur (scrollable) — en dessous du sélecteur
         scroll = QtWidgets.QScrollArea()
@@ -1738,9 +1754,12 @@ class AnalyseHabitatController(QtCore.QObject):
         scroll.setWidget(self._form_container)
         right_vlay.addWidget(scroll, 1)
 
-        hlay.addWidget(right_col)
+        inner_splitter.addWidget(right_col)
+        inner_splitter.setSizes([560, 420])
+        inner_splitter.setCollapsible(0, False)
+        inner_splitter.setCollapsible(1, False)
 
-        self._sector_selector.setVisible(False)
+        self._sector_selector_scroll.setVisible(False)
         self._sector_viewer.setVisible(False)
         scroll.setVisible(False)
         self._scroll = scroll
@@ -1790,7 +1809,6 @@ class AnalyseHabitatController(QtCore.QObject):
             self._sector_btn_list.append(cell)
             hlay.addWidget(cell)
 
-        hlay.addStretch()
         self._highlight_sector(0)
         return bar
 
@@ -2620,7 +2638,7 @@ class AnalyseHabitatController(QtCore.QObject):
     def _on_row_changed(self, row: int):
         if row < 0:
             self._current_video = None
-            self._sector_selector.setVisible(False)
+            self._sector_selector_scroll.setVisible(False)
             self._sector_viewer.setVisible(False)
             self._scroll.setVisible(False)
             self._no_sel_label.setVisible(True)
@@ -2635,14 +2653,14 @@ class AnalyseHabitatController(QtCore.QObject):
 
         # Vérification prérequis : atterrissage/décollage ou début/fin annotation
         if not self._video_has_bounds(self._current_video):
-            self._sector_selector.setVisible(False)
+            self._sector_selector_scroll.setVisible(False)
             self._sector_viewer.setVisible(False)
             self._scroll.setVisible(False)
             self._lock_label.setVisible(True)
             return
 
         self._lock_label.setVisible(False)
-        self._sector_selector.setVisible(True)
+        self._sector_selector_scroll.setVisible(True)
         self._sector_viewer.setVisible(True)
         self._scroll.setVisible(True)
         self._load_av_fields(self._current_video)
