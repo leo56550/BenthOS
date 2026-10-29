@@ -992,8 +992,8 @@ class _SectorViewerWidget(QtWidgets.QWidget):
         fps = cap_tmp.get(cv2.CAP_PROP_FPS)
         cap_tmp.release()
         self._fps = fps if fps > 0 else 25.0
-        # Curseur toujours à 0 (début du clip) ; mid_ms sert uniquement aux vignettes
-        self._pos_ms = clip_start_ms
+        # Position initiale au milieu du secteur (entre les deux rotations moteur)
+        self._pos_ms = mid_ms if mid_ms is not None else clip_start_ms
         self._read_and_show()
 
     def clear(self):
@@ -1753,6 +1753,19 @@ class AnalyseHabitatController(QtCore.QObject):
         self._sector_selector_scroll = _sel_scroll
         right_vlay.addWidget(_sel_scroll)
 
+        # Avertissement atterrissage manquant
+        self._no_landing_label = QtWidgets.QLabel(
+            "⚠  Atterrissage non défini — les secteurs peuvent inclure\n"
+            "des images filmées dans le bateau."
+        )
+        self._no_landing_label.setStyleSheet(
+            "color:#f0a030; font-size:10px; font-family:'Segoe UI',sans-serif;"
+            " background:#1a1200; border:1px solid #5a3a00;"
+            " border-radius:4px; padding:5px 8px;")
+        self._no_landing_label.setWordWrap(True)
+        self._no_landing_label.setVisible(False)
+        right_vlay.addWidget(self._no_landing_label)
+
         # Formulaire mono-secteur (scrollable) — en dessous du sélecteur
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
@@ -1830,17 +1843,22 @@ class AnalyseHabitatController(QtCore.QObject):
             self._sector_btn_list.append(cell)
             hlay.addWidget(cell)
 
+        # Largeur fixe calculée : 6 cellules + 5 espaces + marges gauche/droite
+        bar_w = 6 * _COL_W + 5 * hlay.spacing() + hlay.contentsMargins().left() + hlay.contentsMargins().right()
+        bar.setFixedWidth(bar_w)
+
         self._highlight_sector(0)
         return bar
 
     def _highlight_sector(self, idx: int):
+        # Les deux états utilisent border:2px pour éviter tout décalage de taille
         _sel = (
             "QFrame { background:#163050; border-radius:4px;"
             " border:2px solid #2778a2; }"
         )
         _unsel = (
             "QFrame { background:#111f2e; border-radius:4px;"
-            " border:1px solid #1e3448; }"
+            " border:2px solid #1e3448; }"
             "QFrame:hover { border-color:#2778a2; background:#162030; }"
         )
         for i, cell in enumerate(self._sector_btn_list):
@@ -2526,6 +2544,15 @@ class AnalyseHabitatController(QtCore.QObject):
                 return
 
             events.sort(key=lambda e: e["ts"])
+
+            # Filtrer les rotations antérieures à l'atterrissage
+            if self._landing_ms is not None:
+                landing_s = self._landing_ms / 1000.0
+                events = [e for e in events if e["ts"] >= landing_s]
+
+            if not events:
+                return
+
             # On ne prend que le premier groupe de 6
             group = events[:6]
             ts_list = [e["ts"] for e in group]
@@ -2664,6 +2691,8 @@ class AnalyseHabitatController(QtCore.QObject):
             self._scroll.setVisible(False)
             self._no_sel_label.setVisible(True)
             self._lock_label.setVisible(False)
+            if hasattr(self, '_no_landing_label'):
+                self._no_landing_label.setVisible(False)
             return
         list_item = self._list.item(row)
         vpath = list_item.data(QtCore.Qt.ItemDataRole.UserRole) if list_item else None
@@ -2678,6 +2707,8 @@ class AnalyseHabitatController(QtCore.QObject):
             self._sector_viewer.setVisible(False)
             self._scroll.setVisible(False)
             self._lock_label.setVisible(True)
+            if hasattr(self, '_no_landing_label'):
+                self._no_landing_label.setVisible(False)
             return
 
         self._lock_label.setVisible(False)
@@ -2687,6 +2718,9 @@ class AnalyseHabitatController(QtCore.QObject):
         self._load_av_fields(self._current_video)
         self._load_habitat_json(self._current_video)
         self._load_rotation_timestamps(self._current_video)
+        # Warning si l'atterrissage n'est pas défini
+        if hasattr(self, '_no_landing_label'):
+            self._no_landing_label.setVisible(self._landing_ms is None)
         self._start_frame_extraction(self._current_video)
         # Afficher secteur 0 par défaut
         self._current_sector_idx = 0
@@ -3040,7 +3074,7 @@ class AnalyseHabitatController(QtCore.QObject):
         )
         if reply != QtWidgets.QMessageBox.StandardButton.Yes:
             return
-        flat = self._data.get(video_path, {})
+        flat = self._data.setdefault(video_path, {})
         for key in list(flat.keys()):
             if isinstance(flat[key], list) and len(flat[key]) > sector_idx:
                 flat[key][sector_idx] = 0
