@@ -710,6 +710,7 @@ class _ImageCanvas(QtWidgets.QWidget):
         self._zoom = 1.0
         self._offset = QtCore.QPointF(0.0, 0.0)
         self._last_mouse: QtCore.QPointF | None = None
+        self._fit = True  # True → zoom calculé pour voir toute l'image (letterbox)
         self.setStyleSheet("background:#0b1520;")
         self.setMinimumHeight(100)
         self.setSizePolicy(
@@ -717,11 +718,17 @@ class _ImageCanvas(QtWidgets.QWidget):
             QtWidgets.QSizePolicy.Policy.Expanding,
         )
 
+    def _fit_zoom(self) -> float:
+        if not self._pixmap or self._pixmap.isNull() or self.width() == 0 or self.height() == 0:
+            return 1.0
+        return min(self.width() / self._pixmap.width(),
+                   self.height() / self._pixmap.height())
+
     def set_pixmap(self, pixmap: QtGui.QPixmap | None, reset: bool = True):
         self._pixmap = pixmap
         if reset:
-            self._zoom = 1.0
             self._offset = QtCore.QPointF(0.0, 0.0)
+            self._fit = True
         self.update()
 
     def paintEvent(self, event):
@@ -732,10 +739,11 @@ class _ImageCanvas(QtWidgets.QWidget):
             painter.setFont(QtGui.QFont("Segoe UI", 12))
             painter.drawText(self.rect(), QtCore.Qt.AlignmentFlag.AlignCenter, "—")
             return
-        pw = self._pixmap.width() * self._zoom
-        ph = self._pixmap.height() * self._zoom
-        x = (self.width() - pw) / 2.0 + self._offset.x()
-        y = (self.height() - ph) / 2.0 + self._offset.y()
+        zoom = self._fit_zoom() if self._fit else self._zoom
+        pw = self._pixmap.width() * zoom
+        ph = self._pixmap.height() * zoom
+        x = (self.width() - pw) / 2.0 + (0.0 if self._fit else self._offset.x())
+        y = (self.height() - ph) / 2.0 + (0.0 if self._fit else self._offset.y())
         painter.drawPixmap(
             QtCore.QRectF(x, y, pw, ph),
             self._pixmap,
@@ -745,6 +753,10 @@ class _ImageCanvas(QtWidgets.QWidget):
     def wheelEvent(self, event):
         if self._pixmap is None:
             return
+        # Sortir du mode fit et utiliser le zoom calculé comme base
+        if self._fit:
+            self._zoom = self._fit_zoom()
+            self._fit = False
         factor = 1.15 if event.angleDelta().y() > 0 else 1.0 / 1.15
         old_zoom = self._zoom
         new_zoom = max(0.1, min(10.0, old_zoom * factor))
@@ -769,6 +781,9 @@ class _ImageCanvas(QtWidgets.QWidget):
 
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            if self._fit:
+                self._zoom = self._fit_zoom()
+                self._fit = False
             self._last_mouse = event.position()
 
     def mouseMoveEvent(self, event):
@@ -786,15 +801,21 @@ class _ImageCanvas(QtWidgets.QWidget):
             self.zoom_fit()
 
     def zoom_in(self):
+        if self._fit:
+            self._zoom = self._fit_zoom()
+            self._fit = False
         self._zoom = min(10.0, self._zoom * 1.25)
         self.update()
 
     def zoom_out(self):
+        if self._fit:
+            self._zoom = self._fit_zoom()
+            self._fit = False
         self._zoom = max(0.1, self._zoom / 1.25)
         self.update()
 
     def zoom_fit(self):
-        self._zoom = 1.0
+        self._fit = True
         self._offset = QtCore.QPointF(0.0, 0.0)
         self.update()
 
