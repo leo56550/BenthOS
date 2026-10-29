@@ -365,6 +365,10 @@ class EvenementsController:
         self.capture_start_time = None
         self._undo_stack: list[dict] = []  # pile undo pour la pose d'événements
 
+        # Pré-remplir les catégories depuis le template pour que les boutons
+        # soient visibles dès l'arrivée sur la page, avant toute sélection de vidéo.
+        self._build_event_categories_from_template()
+
         self.left_frame_events = self.page.findChild(QtWidgets.QFrame, "frame_12")
         self.player_container_events = self.page.findChild(QtWidgets.QFrame, "video_timeline_container")
         self.choose_event_container = self.page.findChild(QtWidgets.QFrame, "choose_event_container")
@@ -822,6 +826,16 @@ class EvenementsController:
             return result
         except Exception:
             return {}
+
+    def _build_event_categories_from_template(self):
+        """Peuple event_dictionary depuis infoStationTemplate.json sans vidéo chargée."""
+        tpl_path = os.path.join(os.path.dirname(__file__), '..', 'infoStationTemplate.json')
+        try:
+            with open(tpl_path, 'r', encoding='utf-8') as f:
+                tpl = json.load(f)
+        except Exception:
+            return
+        self._build_event_categories_from_json(tpl)
 
     def _build_event_categories_from_json(self, data: dict):
         """Peuple event_dictionary et les tables de correspondance label↔clé depuis le JSON vidéo."""
@@ -2148,6 +2162,9 @@ class EvenementsController:
         sep2.setStyleSheet("border: none; border-top: 1px solid #1e3448; max-height: 1px;")
         menu_layout.addWidget(sep2)
 
+        # Construire les boutons dès l'init (template ou vidéo déjà chargée)
+        self._rebuild_event_buttons()
+
     def _event_capture_buttons(self):
         """Retourne la liste des boutons de capture d'événement à protéger (pos=0)."""
         return [b for b in [
@@ -2311,6 +2328,12 @@ class EvenementsController:
 
         # --- Catégories depuis event_dictionary (sans Déploiement) ---
         deployment_keys = {"déploiement", "deployment"}
+
+        if not self.event_dictionary or all(
+            k.lower() in deployment_keys for k in self.event_dictionary
+        ):
+            # Aucune catégorie chargée : utiliser le template par défaut
+            self._build_event_categories_from_template()
 
         if not self.event_dictionary or all(
             k.lower() in deployment_keys for k in self.event_dictionary
