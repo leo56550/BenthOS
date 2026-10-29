@@ -2970,13 +2970,117 @@ class AnalyseHabitatController(QtCore.QObject):
 
     def _on_export_csv_context_menu(self, pos):
         menu = QtWidgets.QMenu(self._btn_export_csv)
-        lbl = ("Générer tous les masques de saisie (un par station)"
-               if self._language == 'fr'
-               else "Generate all entry templates (one per station)")
-        action = menu.addAction(lbl)
+
+        fr = self._language == 'fr'
+
+        act_all = menu.addAction(
+            "Générer tous les masques de saisie (un par station)"
+            if fr else "Generate all entry templates (one per station)")
+
+        menu.addSeparator()
+
+        act_reset_sector = menu.addAction(
+            f"Remettre à zéro le masque de saisie du secteur S{self._current_sector_idx + 1}"
+            if fr else f"Reset entry template for sector S{self._current_sector_idx + 1}")
+        act_reset_sector.setEnabled(bool(self._current_video))
+
+        act_reset_video = menu.addAction(
+            "Remettre à zéro les masques de saisie de cette vidéo"
+            if fr else "Reset all entry templates for this video")
+        act_reset_video.setEnabled(bool(self._current_video))
+
+        act_reset_all = menu.addAction(
+            "Remettre à zéro les masques de saisie de toutes les vidéos"
+            if fr else "Reset entry templates for all videos")
+
         chosen = menu.exec(self._btn_export_csv.mapToGlobal(pos))
-        if chosen is action:
+        if chosen is act_all:
             self._export_all_saisie_csv()
+        elif chosen is act_reset_sector:
+            self._reset_sector_habitat(self._current_video, self._current_sector_idx)
+        elif chosen is act_reset_video:
+            self._reset_video_habitat(self._current_video)
+        elif chosen is act_reset_all:
+            self._reset_all_habitat()
+
+    def _reset_sector_habitat(self, video_path: str, sector_idx: int):
+        """Remet à zéro les données habitat d'un secteur pour une vidéo."""
+        fr = self._language == 'fr'
+        reply = QtWidgets.QMessageBox.question(
+            self._page,
+            "Confirmation" if fr else "Confirm",
+            (f"Remettre à zéro toutes les données du secteur S{sector_idx + 1} "
+             f"pour cette vidéo ?\nCette action est irréversible.")
+            if fr else
+            (f"Reset all data for sector S{sector_idx + 1} of this video?\n"
+             f"This cannot be undone."),
+            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+            QtWidgets.QMessageBox.StandardButton.No,
+        )
+        if reply != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+        flat = self._data.get(video_path, {})
+        for key in list(flat.keys()):
+            if isinstance(flat[key], list) and len(flat[key]) > sector_idx:
+                flat[key][sector_idx] = 0
+        self._persist_habitat(video_path)
+        self._sv_reload_form()
+
+    def _reset_video_habitat(self, video_path: str):
+        """Remet à zéro toutes les données habitat d'une vidéo."""
+        fr = self._language == 'fr'
+        reply = QtWidgets.QMessageBox.question(
+            self._page,
+            "Confirmation" if fr else "Confirm",
+            ("Remettre à zéro TOUS les secteurs de cette vidéo ?\nCette action est irréversible.")
+            if fr else
+            ("Reset ALL sectors for this video?\nThis cannot be undone."),
+            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+            QtWidgets.QMessageBox.StandardButton.No,
+        )
+        if reply != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+        self._data[video_path] = {}
+        json_path = self._habitat_json_path(video_path)
+        if os.path.isfile(json_path):
+            try:
+                os.remove(json_path)
+            except Exception as e:
+                print(f"[HABITAT] Impossible de supprimer {json_path}: {e}")
+        self._sv_reload_form()
+
+    def _reset_all_habitat(self):
+        """Remet à zéro les données habitat de toutes les vidéos."""
+        fr = self._language == 'fr'
+        reply = QtWidgets.QMessageBox.question(
+            self._page,
+            "Confirmation" if fr else "Confirm",
+            ("Remettre à zéro les données habitat de TOUTES les vidéos ?\n"
+             "Cette action est irréversible.")
+            if fr else
+            ("Reset habitat data for ALL videos?\nThis cannot be undone."),
+            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+            QtWidgets.QMessageBox.StandardButton.No,
+        )
+        if reply != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+        if not self._video_model:
+            return
+        for row in range(self._video_model.rowCount()):
+            item = self._video_model.item(row, 0)
+            if not item:
+                continue
+            vpath = str(item.data(QtCore.Qt.ItemDataRole.UserRole) or "")
+            if not vpath:
+                continue
+            self._data[vpath] = {}
+            json_path = self._habitat_json_path(vpath)
+            if os.path.isfile(json_path):
+                try:
+                    os.remove(json_path)
+                except Exception as e:
+                    print(f"[HABITAT] Impossible de supprimer {json_path}: {e}")
+        self._sv_reload_form()
 
     def _export_all_saisie_csv(self):
         """Génère un XLSX par station dans son dossier (2 barres de progression)."""
