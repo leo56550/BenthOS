@@ -1750,6 +1750,7 @@ class AnalyseHabitatController(QtCore.QObject):
             "QScrollBar:horizontal { background:#0d1e2e; height:6px; border-radius:3px; }"
             "QScrollBar::handle:horizontal { background:#2778a2; border-radius:3px; }"
             "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width:0; }")
+        _sel_scroll.setViewportMargins(4, 0, 4, 0)
         self._sector_selector_scroll = _sel_scroll
         right_vlay.addWidget(_sel_scroll)
 
@@ -1806,16 +1807,28 @@ class AnalyseHabitatController(QtCore.QObject):
         bar.setStyleSheet("background:#0d1825; border-bottom:2px solid #1a3a54;")
         hlay = QtWidgets.QHBoxLayout(bar)
         hlay.setContentsMargins(8, 6, 8, 6)
-        hlay.setSpacing(6)
+        hlay.setSpacing(8)
 
         self._sector_btn_list = []
         self._sector_photo_labels = []
         self._sector_num_labels: list[QtWidgets.QLabel] = []
 
+        _cell_h = _HEADER_H - 12
         for i in range(6):
             cell = QtWidgets.QFrame()
-            cell.setFixedSize(_COL_W, _HEADER_H - 12)
+            cell.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+            cell.setFixedSize(_COL_W, _cell_h)
             cell.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+            # Clipper les enfants aux coins arrondis (border-radius ne clippe pas les enfants en Qt)
+            _bmp = QtGui.QBitmap(_COL_W, _cell_h)
+            _bmp.fill(QtCore.Qt.GlobalColor.color0)
+            _bp = QtGui.QPainter(_bmp)
+            _bp.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+            _bp.setBrush(QtCore.Qt.GlobalColor.color1)
+            _bp.setPen(QtCore.Qt.PenStyle.NoPen)
+            _bp.drawRoundedRect(0, 0, _COL_W, _cell_h, 4, 4)
+            _bp.end()
+            cell.setMask(_bmp)
 
             cell_lay = QtWidgets.QVBoxLayout(cell)
             cell_lay.setContentsMargins(2, 2, 2, 2)
@@ -1844,7 +1857,7 @@ class AnalyseHabitatController(QtCore.QObject):
             hlay.addWidget(cell)
 
         # Largeur fixe calculée : 6 cellules + 5 espaces + marges gauche/droite
-        bar_w = 6 * _COL_W + 5 * hlay.spacing() + hlay.contentsMargins().left() + hlay.contentsMargins().right()
+        bar_w = 6 * _COL_W + 5 * 8 + 8 + 8  # 6*72 + 40 + 16 = 488
         bar.setFixedWidth(bar_w)
 
         self._highlight_sector(0)
@@ -1963,19 +1976,7 @@ class AnalyseHabitatController(QtCore.QObject):
     # ── Gestion secteur courant ───────────────────────────────────────────────
 
     def _initial_ms_for_sector(self, idx: int) -> int | None:
-        """Retourne le ms de la frame initiale : atterrissage pour S1, milieu du clip sinon."""
-        bounds = self._sector_bounds[idx] if idx < len(self._sector_bounds) else None
-        if bounds is None:
-            return None
-        clip_start = bounds[0]
-        # La logique atterrissage ne s'applique qu'à S1 (idx==0) :
-        # pour S2-S6, landing_ms < clip_start → on tomberait au début du clip (rotation)
-        if idx == 0 and self._landing_ms is not None:
-            lms = self._landing_ms
-            if clip_start <= lms <= bounds[1]:
-                return lms
-            if lms < clip_start:
-                return clip_start
+        """Retourne le ms initial du viewer = milieu entre rotation N et N+1 (= frame de la vignette)."""
         mid_ts = self._sector_mid_ts[idx] if idx < len(self._sector_mid_ts) else None
         return int(mid_ts * 1000) if mid_ts is not None else None
 

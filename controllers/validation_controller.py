@@ -1322,8 +1322,7 @@ class ValidationController:
                     obs["point_name"]["value"] = station_num
                 else:
                     obs["point_name"] = {"value": station_num}
-                obs["station_number"] = {"value": station_num}
-            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← video_observation.point_name/station_number = {station_num!r}")
+            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← video_observation.point_name = {station_num!r}")
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
             # Mise à jour immédiate dans la liste
@@ -1499,7 +1498,6 @@ class ValidationController:
                     obs["point_name"]["value"] = station_num
                 else:
                     obs["point_name"] = {"value": station_num}
-                obs["station_number"] = {"value": station_num}
 
             print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← ardoise tc={time_str!r} point={station_num!r}")
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
