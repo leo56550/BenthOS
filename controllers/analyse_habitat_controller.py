@@ -2566,12 +2566,13 @@ class AnalyseHabitatController(QtCore.QObject):
             for idx, ts in enumerate(ts_list):
                 if idx + 1 < len(ts_list):
                     end_ts = ts_list[idx + 1]
-                    mid = (ts + end_ts) / 2.0
                 else:
                     end_ts = ts + avg_interval
-                    mid = ts + avg_interval / 2.0
+                # Le secteur commence à rotation+3s : on saute la rotation elle-même
+                start_ts = ts + 3.0
+                mid = start_ts  # curseur et vignette au début du secteur utile
                 self._sector_mid_ts[idx] = mid
-                self._sector_bounds[idx] = (int(ts * 1000), int(end_ts * 1000))
+                self._sector_bounds[idx] = (int(start_ts * 1000), int(end_ts * 1000))
 
         except Exception as e:
             print(f"[ANALYSE-HABITAT] _load_rotation_timestamps: {e}")
