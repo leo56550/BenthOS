@@ -2979,6 +2979,42 @@ class AnalyseHabitatController(QtCore.QObject):
             if reply != QtWidgets.QMessageBox.StandardButton.Yes:
                 return
 
+        # ── Vérification secteurs traités ─────────────────────────────────────
+        hab_path = self._habitat_json_path(vpath)
+        _n_total = 6
+        _n_done  = 0
+        if os.path.isfile(hab_path):
+            try:
+                with open(hab_path, 'r', encoding='utf-8') as _f:
+                    _hab = json.load(_f)
+                _sectors = _hab.get("sectors", [])
+                _n_total = len(_sectors) if _sectors else 6
+                # Un secteur est "traité" s'il contient autre chose que la clé "index"
+                _n_done = sum(1 for s in _sectors if len(s) > 1)
+            except Exception as _exc:
+                print(f"[EXPORT] Erreur lecture habitat pour vérif secteurs: {_exc}")
+        print(f"[EXPORT] Vérif secteurs: hab_path={hab_path}, exists={os.path.isfile(hab_path)}, n_total={_n_total}, n_done={_n_done}")
+
+        if _n_done < _n_total:
+            _missing = _n_total - _n_done
+            _msg_fr = (
+                f"{_missing} secteur(s) sur {_n_total} n'ont pas encore été traités.\n\n"
+                "Exporter quand même le masque de saisie ?"
+            )
+            _msg_en = (
+                f"{_missing} sector(s) out of {_n_total} have not been processed yet.\n\n"
+                "Export the entry template anyway?"
+            )
+            _reply2 = QtWidgets.QMessageBox.warning(
+                self._page,
+                "Secteurs incomplets" if self._language == 'fr' else "Incomplete sectors",
+                _msg_fr if self._language == 'fr' else _msg_en,
+                QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+                QtWidgets.QMessageBox.StandardButton.No,
+            )
+            if _reply2 != QtWidgets.QMessageBox.StandardButton.Yes:
+                return
+
         total_steps = sum(max(len(fields), 1) for _, fields in _XLSX_LAYOUT)
 
         progress = QtWidgets.QProgressDialog(
