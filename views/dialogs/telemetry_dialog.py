@@ -119,6 +119,20 @@ class TelemetryDialog(QtWidgets.QDialog):
         self._profile_curve = self._pw_profile.plot(
             pen=pg.mkPen('#ff7840', width=1.5),
         )
+        self._profile_cursor_dot = pg.ScatterPlotItem(
+            size=10, symbol='o',
+            brush=pg.mkBrush('#00d4ff'),
+            pen=pg.mkPen('#ffffff', width=1),
+        )
+        self._pw_profile.addItem(self._profile_cursor_dot)
+        self._profile_t_arr: "np.ndarray | None" = None
+        self._profile_d_arr: "np.ndarray | None" = None
+        self._profile_x_arr: "np.ndarray | None" = None  # Delta (temps)
+        self._profile_last_idx: int = -1
+        self._pending_cursor_t: float = 0.0
+        self._cursor_timer = QtCore.QTimer(self)
+        self._cursor_timer.setInterval(500)
+        self._cursor_timer.timeout.connect(self._tick_cursors)
         right_lay.addWidget(self._pw_profile, stretch=1)
 
         # Alias : les graphes temporels s'ajoutent dans left_lay
@@ -343,8 +357,18 @@ class TelemetryDialog(QtWidgets.QDialog):
                 pw.autoRange()
         self._hscroll.setRange(0, 0)
         self._hscroll.setEnabled(False)
-        self._pw_profile.getViewBox().enableAutoRange()
-        self._pw_profile.getViewBox().autoRange()
+        _pvb = self._pw_profile.getViewBox()
+        _pvb.enableAutoRange()
+        _pvb.autoRange()
+        _pvb.disableAutoRange()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._cursor_timer.start()
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self._cursor_timer.stop()
 
     def set_language(self, language: str):
         """Met à jour la langue, le titre et les libellés des métriques."""
@@ -435,13 +459,23 @@ class TelemetryDialog(QtWidgets.QDialog):
             try:
                 t_arr = self.full_df["température"].values.astype(float)
                 d_arr = self.full_df["profondeur"].values.astype(float)
+                x_arr = self.full_df["Delta"].values.astype(float)
                 mask  = ~(np.isnan(t_arr) | np.isnan(d_arr))
                 self._profile_curve.setData(t_arr[mask], d_arr[mask])
-                self._pw_profile.getViewBox().enableAutoRange()
+                self._profile_t_arr = t_arr
+                self._profile_d_arr = d_arr
+                self._profile_x_arr = x_arr
+                self._profile_last_idx = -1
+                vb = self._pw_profile.getViewBox()
+                vb.enableAutoRange()
+                vb.autoRange()
+                vb.disableAutoRange()
             except Exception:
                 self._profile_curve.setData([], [])
+                self._profile_t_arr = self._profile_d_arr = self._profile_x_arr = None
         else:
             self._profile_curve.setData([], [])
+            self._profile_t_arr = self._profile_d_arr = self._profile_x_arr = None
 
     def _show_missing(self, key: str, stack: QtWidgets.QStackedWidget):
         """Bascule le stack sur la page 'données manquantes' (bandeau compact)."""
@@ -454,15 +488,44 @@ class TelemetryDialog(QtWidgets.QDialog):
         stack.setMaximumHeight(16777215)
 
     def set_cursor(self, t_s: float):
-        """Positionne le curseur vertical sur tous les graphes à t_s secondes."""
+        """Stocke le temps — la mise à jour graphique est cadencée par _cursor_timer."""
+        self._pending_cursor_t = t_s
+
+    def _tick_cursors(self):
+        """Cadence les mises à jour curseur — appelé par timer."""
+        t_s = self._pending_cursor_t
+
+        # Lignes verticales — bloquer les repaints individuels, un seul repaint groupé
         mm = int(t_s) // 60
         ss = int(t_s) % 60
         time_str = f"{mm:02d}:{ss:02d}"
-        for line in self._cursor_lines.values():
-            line.setPos(t_s)
-            lbl = getattr(line, 'label', None)
-            if lbl is not None:
-                lbl.setText(time_str)
+        for pw in self.plot_widgets.values():
+            pw.setUpdatesEnabled(False)
+        try:
+            for line in self._cursor_lines.values():
+                line.setPos(t_s)
+                lbl = getattr(line, 'label', None)
+                if lbl is not None:
+                    lbl.setText(time_str)
+        finally:
+            for pw in self.plot_widgets.values():
+                pw.setUpdatesEnabled(True)
+
+        # Point sur le profil T°/profondeur
+        if (self._profile_x_arr is not None
+                and self._profile_t_arr is not None
+                and self._profile_d_arr is not None
+                and len(self._profile_x_arr) > 0):
+            idx = int(np.searchsorted(self._profile_x_arr, t_s, side='left'))
+            idx = min(idx, len(self._profile_x_arr) - 1)
+            if idx != self._profile_last_idx:
+                self._profile_last_idx = idx
+                temp_val  = self._profile_t_arr[idx]
+                depth_val = self._profile_d_arr[idx]
+                if not (np.isnan(temp_val) or np.isnan(depth_val)):
+                    self._profile_cursor_dot.setData([temp_val], [depth_val])
+                else:
+                    self._profile_cursor_dot.setData([], [])
 
     def _on_graph_clicked(self, event, pw):
         """Émet time_clicked (en secondes) quand l'utilisateur clique sur un graphe."""
