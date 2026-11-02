@@ -484,6 +484,11 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.btn_telemetry.setEnabled(False)
         self.btn_telemetry.setToolTip("Afficher / masquer le graphe de télémétrie")
         self.btn_telemetry.toggled.connect(self._on_telemetry_toggled)
+        self.btn_telemetry.setContextMenuPolicy(
+            QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self.btn_telemetry.customContextMenuRequested.connect(
+            self._on_telemetry_context_menu)
+        self._current_csv_path: str | None = None
         buttons_layout.addWidget(self.btn_telemetry)
 
         # ── Corrections panel ─────────────────────────────────────────────
@@ -1379,6 +1384,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
     def load_dynamic_metadata(self, csv_path: str):
         """Charge le CSV de télémétrie, normalise les noms de colonnes et met à jour le dialog."""
+        self._current_csv_path = csv_path
         try:
             df = pd.read_csv(csv_path, sep=None, engine='python')
             df.columns = df.columns.str.strip()
@@ -1433,6 +1439,43 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.telemetry_dialog.show()
         else:
             self.telemetry_dialog.hide()
+
+    def _on_telemetry_context_menu(self, pos):
+        menu = QtWidgets.QMenu(self.btn_telemetry)
+        menu.setStyleSheet(
+            "QMenu { background:#111820; color:#c8d8e8; border:1px solid #2778a2; }"
+            "QMenu::item:selected { background:#1a3a50; }"
+        )
+        act = menu.addAction("Exporter profil température/profondeur")
+        act.setEnabled(
+            self._current_csv_path is not None
+            and hasattr(self.telemetry_dialog, '_profile_curve')
+        )
+        chosen = menu.exec(self.btn_telemetry.mapToGlobal(pos))
+        if chosen is act:
+            self._export_profile_image()
+
+    def _export_profile_image(self):
+        if not self._current_csv_path:
+            return
+        from pyqtgraph.exporters import ImageExporter
+        folder = os.path.dirname(os.path.normpath(self._current_csv_path))
+        stem   = os.path.splitext(os.path.basename(self._current_csv_path))[0]
+        dest   = os.path.join(folder, f"{stem}_profil_temperature.png")
+        try:
+            exporter = ImageExporter(self.telemetry_dialog._pw_profile.plotItem)
+            exporter.parameters()['width']  = 800
+            exporter.parameters()['height'] = 600
+            exporter.export(dest)
+            QtWidgets.QMessageBox.information(
+                self, "Export réussi",
+                f"Profil exporté :\n{dest}"
+            )
+        except Exception as exc:
+            QtWidgets.QMessageBox.warning(
+                self, "Erreur export",
+                f"Impossible d'exporter le profil :\n{exc}"
+            )
 
     def play_all(self):
         """Lance la lecture sur le flux L et (en stéréo) le flux R."""

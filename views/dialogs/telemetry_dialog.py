@@ -79,6 +79,51 @@ class TelemetryDialog(QtWidgets.QDialog):
         main_layout.setSpacing(4)
         main_layout.setContentsMargins(6, 6, 6, 6)
 
+        # Splitter H : graphes temporels (gauche) | profil T°/profondeur (droite)
+        self._h_splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
+        self._h_splitter.setStyleSheet(
+            "QSplitter::handle { background: #1e3448; width: 4px; }"
+            "QSplitter::handle:hover { background: #2778a2; }"
+        )
+        main_layout.addWidget(self._h_splitter, stretch=1)
+
+        # Panneau gauche — graphes temporels
+        left_w = QtWidgets.QWidget()
+        left_lay = QtWidgets.QVBoxLayout(left_w)
+        left_lay.setSpacing(4)
+        left_lay.setContentsMargins(0, 0, 0, 0)
+        self._h_splitter.addWidget(left_w)
+
+        # Panneau droit — profil T°/profondeur
+        right_w = QtWidgets.QWidget()
+        right_lay = QtWidgets.QVBoxLayout(right_w)
+        right_lay.setSpacing(4)
+        right_lay.setContentsMargins(0, 0, 0, 0)
+        self._h_splitter.addWidget(right_w)
+        self._h_splitter.setSizes([650, 250])
+        self._h_splitter.setCollapsible(1, False)
+
+        _profile_title = "Profil T°/Profondeur" if True else "T°/Depth Profile"
+        self._profile_title_fr = "Profil T°/Profondeur"
+        self._profile_title_en = "T°/Depth Profile"
+        self._pw_profile = pg.PlotWidget(title=_profile_title)
+        self._pw_profile.setBackground('#111820')
+        self._pw_profile.showGrid(x=True, y=True, alpha=0.3)
+        self._pw_profile.invertY(True)
+        self._pw_profile.showAxis('top')
+        self._pw_profile.hideAxis('bottom')
+        self._pw_profile.setLabel('top',  'Température (°C)', color='#ff4d4d', size='10pt')
+        self._pw_profile.setLabel('left', 'Profondeur (m)',   color='#4dff88', size='10pt')
+        self._pw_profile.getAxis('top').setPen(pg.mkPen('#ff4d4d'))
+        self._pw_profile.getAxis('left').setPen(pg.mkPen('#4dff88'))
+        self._profile_curve = self._pw_profile.plot(
+            pen=pg.mkPen('#ff7840', width=1.5),
+        )
+        right_lay.addWidget(self._pw_profile, stretch=1)
+
+        # Alias : les graphes temporels s'ajoutent dans left_lay
+        _time_lay = left_lay
+
         for key, (label, color) in self.metrics.items():
             # ── Stack : page 0 = graph  |  page 1 = compact "manquant" ──
             stack = QtWidgets.QStackedWidget()
@@ -125,7 +170,7 @@ class TelemetryDialog(QtWidgets.QDialog):
 
             self.plots[key]  = curve
             self.stacks[key] = stack
-            main_layout.addWidget(stack, stretch=3)
+            _time_lay.addWidget(stack, stretch=3)
 
         # ── Graphe RGB Lux (3 courbes sur un même PlotWidget) ────────────────
         _lux_label = "Luminosité RGB (Lux)"
@@ -168,7 +213,7 @@ class TelemetryDialog(QtWidgets.QDialog):
         stack_lux.addWidget(pw_lux)
         stack_lux.addWidget(missing_lux)
         self.stacks["lux_rgb"] = stack_lux
-        main_layout.addWidget(stack_lux, stretch=3)
+        _time_lay.addWidget(stack_lux, stretch=3)
 
         # ── Bouton Réinitialiser ─────────────────────────────────────────────
         self._btn_reset = QtWidgets.QPushButton("RÉINITIALISER")
@@ -183,7 +228,7 @@ class TelemetryDialog(QtWidgets.QDialog):
         btn_row = QtWidgets.QHBoxLayout()
         btn_row.addStretch()
         btn_row.addWidget(self._btn_reset)
-        main_layout.addLayout(btn_row)
+        _time_lay.addLayout(btn_row)
 
         # ── Scrollbar horizontal (navigation dans le temps) ──────────────────
         self._hscroll = QtWidgets.QScrollBar(QtCore.Qt.Orientation.Horizontal)
@@ -202,7 +247,7 @@ class TelemetryDialog(QtWidgets.QDialog):
             " { background: none; }"
         )
         self._hscroll.valueChanged.connect(self._on_hscroll)
-        main_layout.addWidget(self._hscroll)
+        _time_lay.addWidget(self._hscroll)
 
     # ── Language ──────────────────────────────────────────────────────────
 
@@ -289,9 +334,7 @@ class TelemetryDialog(QtWidgets.QDialog):
     def _reset_all_views(self):
         """Remet tous les graphes visibles sur la plage exacte des données."""
         if self._master_vb is not None and hasattr(self, '_x_data_min'):
-            # Réinitialise X sur les bornes exactes des données (évite autoRange élargi)
             self._master_vb.setXRange(self._x_data_min, self._x_data_max, padding=0.02)
-            # Laisse chaque graphe auto-ranger son Y indépendamment
             for pw in self.plot_widgets.values():
                 pw.getViewBox().enableAutoRange(axis='y')
         else:
@@ -300,12 +343,22 @@ class TelemetryDialog(QtWidgets.QDialog):
                 pw.autoRange()
         self._hscroll.setRange(0, 0)
         self._hscroll.setEnabled(False)
+        self._pw_profile.getViewBox().enableAutoRange()
+        self._pw_profile.getViewBox().autoRange()
 
     def set_language(self, language: str):
         """Met à jour la langue, le titre et les libellés des métriques."""
         self.current_language = language
         self.setWindowTitle(self.translate("Analyse Télémétrie", "Telemetry Analysis"))
         self._btn_reset.setText(self.translate("RÉINITIALISER", "RESET VIEW"))
+        self._pw_profile.setTitle(
+            self.translate(self._profile_title_fr, self._profile_title_en))
+        self._pw_profile.setLabel('top',
+            self.translate('Température (°C)', 'Temperature (°C)'),
+            color='#ff4d4d', size='10pt')
+        self._pw_profile.setLabel('left',
+            self.translate('Profondeur (m)', 'Depth (m)'),
+            color='#4dff88', size='10pt')
         missing_suffix = self.translate("données manquantes", "missing data")
         for key, (fr_label, en_label) in self._METRIC_TRANSLATIONS.items():
             label = fr_label if language == 'fr' else en_label
@@ -374,6 +427,21 @@ class TelemetryDialog(QtWidgets.QDialog):
         if self._video_duration_s > x_max:
             x_max = self._video_duration_s
         self._init_scroll_links(float(x_data.min()), x_max)
+
+        # ── Profil T°/profondeur ─────────────────────────────────────────────
+        has_temp  = "température" in self.full_df.columns
+        has_depth = "profondeur"  in self.full_df.columns
+        if has_temp and has_depth:
+            try:
+                t_arr = self.full_df["température"].values.astype(float)
+                d_arr = self.full_df["profondeur"].values.astype(float)
+                mask  = ~(np.isnan(t_arr) | np.isnan(d_arr))
+                self._profile_curve.setData(t_arr[mask], d_arr[mask])
+                self._pw_profile.getViewBox().enableAutoRange()
+            except Exception:
+                self._profile_curve.setData([], [])
+        else:
+            self._profile_curve.setData([], [])
 
     def _show_missing(self, key: str, stack: QtWidgets.QStackedWidget):
         """Bascule le stack sur la page 'données manquantes' (bandeau compact)."""
