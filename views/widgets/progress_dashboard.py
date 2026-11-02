@@ -628,14 +628,16 @@ class _DonutExplBreakdown(_DonutBase):
 class _DonutCard(_DonutBase):
     double_clicked = QtCore.pyqtSignal()
 
-    def __init__(self, title: str, color: str, compact: bool = False, parent=None):
+    def __init__(self, title: str, color: str, compact: bool = False,
+                 frac_mode: bool = False, parent=None):
         super().__init__(compact=compact, parent=parent)
-        self._title  = title
-        self._color  = QtGui.QColor(color)
-        self._value  = 0
-        self._total  = 0
-        self._target = 0.0
-        self._angle  = 0.0
+        self._title     = title
+        self._color     = QtGui.QColor(color)
+        self._value     = 0
+        self._total     = 0
+        self._target    = 0.0
+        self._angle     = 0.0
+        self._frac_mode = frac_mode
 
     def set_data(self, value: int, total: int, delay_ms: int = 0):
         self._value  = value
@@ -671,15 +673,20 @@ class _DonutCard(_DonutBase):
         self._paint_arc(p, rect, 90.0, -self._angle, self._color)
 
         pct = int(self._value / self._total * 100) if self._total > 0 else 0
-        big_sz = 13 if self._compact else 20
+        if self._frac_mode:
+            big_sz  = 12 if self._compact else 18
+            big_lbl = f"{self._value}/{self._total}"
+        else:
+            big_sz  = 13 if self._compact else 20
+            big_lbl = f"{pct}%"
 
         p.setFont(QtGui.QFont("Segoe UI", big_sz, QtGui.QFont.Weight.Bold))
         p.setPen(QtGui.QColor("#dff0fa"))
         p.drawText(QtCore.QRectF(cx - ds/2, cy - (16 if self._compact else 24), ds,
                                  big_sz + 4),
-                   QtCore.Qt.AlignmentFlag.AlignCenter, f"{pct}%")
+                   QtCore.Qt.AlignmentFlag.AlignCenter, big_lbl)
 
-        if not self._compact:
+        if not self._compact and not self._frac_mode:
             p.setFont(QtGui.QFont("Segoe UI", 7))
             p.setPen(QtGui.QColor("#2e4a5e"))
             p.drawText(QtCore.QRectF(cx - ds/2, cy + 5, ds, 14),
@@ -990,7 +997,7 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
         self._card_ardoise = _DonutExplBreakdown("Validation", compact=c)
         self._card_meta    = _DonutMetaSplit("Métadonnées", compact=c)
         self._card_derush  = _DonutDerushSplit("Évènements", compact=c)
-        self._card_habitat = _DonutCard("Habitat", "#34d399", compact=c)
+        self._card_habitat = _DonutCard("Habitat", "#34d399", compact=c, frac_mode=True)
 
         self._card_ardoise.double_clicked.connect(self._show_expl_popup)
         self._card_ardoise.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
@@ -1039,7 +1046,10 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
             stats["optional_filled"],  max(stats["optional_total"],  1),
             delay_ms=320)
         self._card_derush.set_data(stats["derushees"], stats["annotations"], max(active, 1), delay_ms=480)
-        self._card_habitat.set_data(0, max(active, 1),                                 delay_ms=640)
+        _hab_det   = stats.get("habitat_detail", [])
+        _n_vids    = len(_hab_det) or 1
+        _hab_done  = round(sum(d["n_done"] for d in _hab_det) / _n_vids)
+        self._card_habitat.set_data(_hab_done, 6,                                        delay_ms=640)
 
         self._stack.setCurrentIndex(1)
 
@@ -1278,6 +1288,7 @@ class _MiniRing(QtWidgets.QWidget):
         super().__init__(parent)
         self._color  = QtGui.QColor(color)
         self._pct    = 0
+        self._label  = "0%"
         self._p_anim = 0.0
         self._elapsed = QtCore.QElapsedTimer()
         self._elapsed.start()
@@ -1288,6 +1299,16 @@ class _MiniRing(QtWidgets.QWidget):
 
     def set_pct(self, pct: int, delay_ms: int = 0):
         self._pct    = max(0, min(100, pct))
+        self._label  = f"{self._pct}%"
+        self._p_anim = 0.0
+        if delay_ms > 0:
+            QtCore.QTimer.singleShot(delay_ms, self._start)
+        else:
+            self._start()
+
+    def set_data(self, done: int, total: int, delay_ms: int = 0):
+        self._pct    = int(done / total * 100) if total > 0 else 0
+        self._label  = f"{done}/{total}"
         self._p_anim = 0.0
         if delay_ms > 0:
             QtCore.QTimer.singleShot(delay_ms, self._start)
@@ -1335,7 +1356,7 @@ class _MiniRing(QtWidgets.QWidget):
         p.setPen(QtGui.QColor("#c8e0f0"))
         p.drawText(QtCore.QRectF(cx - _MINI_D / 2, top, _MINI_D, _MINI_D),
                    QtCore.Qt.AlignmentFlag.AlignCenter,
-                   f"{self._pct}%")
+                   self._label)
         p.end()
 
 
@@ -1583,10 +1604,12 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
 
         self._habitat_done   = stats.get("habitat_done", 0)
         self._habitat_detail = stats.get("habitat_detail", [])
-        hab_pct = int(self._habitat_done / total * 100)
-        self._r_habitat.set_pct(hab_pct, delay_ms=400)
+        _n_vids   = len(self._habitat_detail) or 1
+        _hab_done = round(sum(d["n_done"] for d in self._habitat_detail) / _n_vids)
+        hab_pct   = int(_hab_done / 6 * 100)
+        self._r_habitat.set_data(_hab_done, 6, delay_ms=400)
         self._r_habitat.setToolTip(
-            f"Analyse Habitat\nStations traitées : {self._habitat_done} / {total} ({hab_pct}%)\n"
+            f"Analyse Habitat\nSecteurs traités : {_hab_done} / 6 ({hab_pct}%)\n"
             f"Double-cliquer pour le détail par station")
 
     def _show_expl_popup(self):
