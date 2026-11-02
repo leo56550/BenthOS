@@ -1611,7 +1611,7 @@ class AnalyseHabitatController(QtCore.QObject):
         )
         self._left_splitter.addWidget(self._list)
         self._left_splitter.addWidget(self._build_analysis_panel_compact())
-        self._left_splitter.setSizes([200, 90])
+        self._left_splitter.setSizes([400, 110])
         self._left_splitter.setCollapsible(0, False)
         self._left_splitter.setCollapsible(1, False)
         vlay.addWidget(self._left_splitter, 1)
@@ -1622,9 +1622,12 @@ class AnalyseHabitatController(QtCore.QObject):
         """Panneau compact placé en bas du panneau gauche (analyseur habitat + masque saisie)."""
         outer = QtWidgets.QWidget()
         outer.setStyleSheet("background:#0d1825; border-top:1px solid #1e3448;")
+        outer.setMaximumHeight(110)
+        outer.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,
+                            QtWidgets.QSizePolicy.Policy.Maximum)
         outer_lay = QtWidgets.QVBoxLayout(outer)
-        outer_lay.setContentsMargins(10, 8, 10, 10)
-        outer_lay.setSpacing(5)
+        outer_lay.setContentsMargins(10, 8, 10, 8)
+        outer_lay.setSpacing(4)
 
         # Stub pour compatibilité _retranslate_ui (pas de toggle réel)
         self._av_toggle_btn = QtWidgets.QToolButton()
