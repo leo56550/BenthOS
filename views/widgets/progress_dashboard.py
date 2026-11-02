@@ -180,7 +180,7 @@ class _StatsWorker(QtCore.QThread):
             if point_name_val and expl_val and expl_val != "?":
                 ardoise += 1
 
-            if expl_val and expl_val != "?":
+            if expl_val:
                 key = expl_val.lower()
                 expl_breakdown[key] = expl_breakdown.get(key, 0) + 1
 
@@ -229,6 +229,7 @@ _EXPL_COLORS = {
     "non": "#f87171", "no":  "#f87171",
     "habitat":       "#fbbf24",
     "communication": "#60a5fa",
+    "?":             "#4a6e88",
 }
 _EXPL_DEFAULT_COLOR = "#6a8fa8"
 _EXPL_LABELS = {
@@ -236,6 +237,7 @@ _EXPL_LABELS = {
     "non": "Non", "no":  "Non",
     "habitat":       "Habitat",
     "communication": "Communication",
+    "?":             "?",
 }
 
 
@@ -500,6 +502,108 @@ class _DonutBiColor(_DonutBase):
                    f"● {self._trashed}" if self._compact else f"● Jetées  {self._trashed}")
 
         self._paint_title(p, self._title, w, y_leg + (26 if self._compact else 30))
+        p.end()
+
+
+# ── Donut exploitabilité (multi-segments) ────────────────────────────────────
+
+_EXPL_DRAW_ORDER = ["oui", "habitat", "communication", "non", "?"]
+
+
+class _DonutExplBreakdown(_DonutBase):
+    """Donut Validation : un arc coloré par statut d'exploitabilité."""
+    double_clicked = QtCore.pyqtSignal()
+
+    def __init__(self, title: str, compact: bool = False, parent=None):
+        super().__init__(compact=compact, parent=parent)
+        self._title     = title
+        self._breakdown: dict[str, int] = {}
+        self._total     = 1
+        self._qualified = 0
+        self._p         = 0.0
+
+    def set_data(self, breakdown: dict, total: int, delay_ms: int = 0):
+        merged: dict[str, int] = {}
+        for k, v in breakdown.items():
+            key = "oui" if k == "yes" else "non" if k == "no" else k
+            merged[key] = merged.get(key, 0) + v
+        self._breakdown = merged
+        self._total     = total or 1
+        self._qualified = sum(merged.values())
+        self._p         = 0.0
+        lines = [f"{_EXPL_LABELS.get(k, k.capitalize())} : {v}"
+                 for k, v in merged.items() if v > 0]
+        self.setToolTip("Validation exploitabilité\n" + "\n".join(lines)
+                        + f"\nTotal : {total}")
+        self.update()
+        self._start_anim(delay_ms)
+
+    def _step(self):
+        t = min(self._elapsed.elapsed() / _ANIM_DURATION_MS, 1.0)
+        self._p = _ease_out_quart(t)
+        self.update()
+        if t >= 1.0:
+            self._p = 1.0
+            self._timer.stop()
+
+    def mouseDoubleClickEvent(self, _event):
+        self.double_clicked.emit()
+
+    def paintEvent(self, _event):
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QtGui.QPainter.RenderHint.TextAntialiasing)
+
+        ds = self._ds
+        w  = self.width()
+        cx, top = w // 2, 6 if self._compact else 10
+        rect = QtCore.QRectF(cx - ds / 2, top, ds, ds)
+        cy   = top + ds / 2.0
+
+        self._paint_track(p, rect)
+
+        angle = 90.0
+        for key in _EXPL_DRAW_ORDER:
+            count = self._breakdown.get(key, 0)
+            if count <= 0:
+                continue
+            span  = count / self._total * 360.0 * self._p
+            color = QtGui.QColor(_EXPL_COLORS.get(key, _EXPL_DEFAULT_COLOR))
+            self._paint_arc(p, rect, angle, -span, color)
+            angle -= span
+
+        big_sz = 13 if self._compact else 20
+        p.setFont(QtGui.QFont("Segoe UI", big_sz, QtGui.QFont.Weight.Bold))
+        p.setPen(QtGui.QColor("#dff0fa"))
+        p.drawText(QtCore.QRectF(cx - ds/2, cy - (16 if self._compact else 24), ds, big_sz + 4),
+                   QtCore.Qt.AlignmentFlag.AlignCenter, str(self._qualified))
+
+        if not self._compact:
+            p.setFont(QtGui.QFont("Segoe UI", 7))
+            p.setPen(QtGui.QColor("#2e4a5e"))
+            p.drawText(QtCore.QRectF(cx - ds/2, cy + 5, ds, 14),
+                       QtCore.Qt.AlignmentFlag.AlignCenter, f"/ {self._total}")
+
+        # Légende : 2 colonnes, items dans l'ordre
+        y_leg  = top + ds + 4
+        leg_sz = 6 if self._compact else 7
+        p.setFont(QtGui.QFont("Segoe UI", leg_sz))
+        items = [(k, self._breakdown[k]) for k in _EXPL_DRAW_ORDER
+                 if self._breakdown.get(k, 0) > 0]
+        col_w = w // 2
+        for i, (key, cnt) in enumerate(items):
+            color = QtGui.QColor(_EXPL_COLORS.get(key, _EXPL_DEFAULT_COLOR))
+            lbl   = _EXPL_LABELS.get(key, key.capitalize())
+            p.setPen(color)
+            row_i = i // 2
+            col_i = i % 2
+            p.drawText(QtCore.QRectF(col_i * col_w, y_leg + row_i * 12, col_w, 12),
+                       QtCore.Qt.AlignmentFlag.AlignCenter,
+                       f"● {lbl}  {cnt}")
+
+        n_rows = (len(items) + 1) // 2
+        title_y = y_leg + n_rows * 12 + (4 if self._compact else 6)
+        self._paint_title(p, self._title, w, title_y)
         p.end()
 
 
@@ -867,7 +971,7 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
 
         # Page 1 — tous les donuts côte à côte
         self._card_kept    = _DonutBiColor("Qualification", compact=c)
-        self._card_ardoise = _DonutCard("Validation", "#fbbf24", compact=c)
+        self._card_ardoise = _DonutExplBreakdown("Validation", compact=c)
         self._card_meta    = _DonutMetaSplit("Métadonnées", compact=c)
         self._card_derush  = _DonutDerushSplit("Évènements", compact=c)
         self._card_habitat = _DonutCard("Habitat", "#34d399", compact=c)
@@ -913,7 +1017,7 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
             f"Qualification\nGardées : {active}\nJetées : {trashed}\nTotal : {total}")
 
         self._card_kept.set_data(active, trashed, total=total,                         delay_ms=0)
-        self._card_ardoise.set_data(stats["ardoise"],   max(active, 1),                delay_ms=160)
+        self._card_ardoise.set_data(self._expl_breakdown, max(active, 1),              delay_ms=160)
         self._card_meta.set_data(
             stats["essential_filled"], max(stats["essential_total"], 1),
             stats["optional_filled"],  max(stats["optional_total"],  1),
@@ -1291,12 +1395,79 @@ class _MiniRingBiColor(QtWidgets.QWidget):
                                 QtCore.Qt.PenCapStyle.RoundCap))
             p.drawArc(rect, int((90 - kept_angle) * 16), int(-trashed_angle * 16))
 
-        kept_pct = int(self._kept / self._total * 100)
-        p.setFont(QtGui.QFont("Segoe UI", 7, QtGui.QFont.Weight.Bold))
-        p.setPen(self._C_KEPT)
-        p.drawText(QtCore.QRectF(cx - _MINI_D / 2, top, _MINI_D, _MINI_D),
-                   QtCore.Qt.AlignmentFlag.AlignCenter,
-                   f"{kept_pct}%")
+        p.end()
+
+
+class _MiniRingExpl(QtWidgets.QWidget):
+    """Mini anneau multi-couleur pour la toolbar : un arc par statut d'exploitabilité."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._breakdown: dict[str, int] = {}
+        self._total  = 1
+        self._p_anim = 0.0
+        self._elapsed = QtCore.QElapsedTimer()
+        self._elapsed.start()
+        self._timer = QtCore.QTimer(self)
+        self._timer.timeout.connect(self._step)
+        self.setFixedSize(_MINI_W, _MINI_H)
+
+    def set_data(self, breakdown: dict, total: int, delay_ms: int = 0):
+        merged: dict[str, int] = {}
+        for k, v in breakdown.items():
+            key = "oui" if k == "yes" else "non" if k == "no" else k
+            merged[key] = merged.get(key, 0) + v
+        self._breakdown = merged
+        self._total     = total or 1
+        self._p_anim    = 0.0
+        lines = [f"{_EXPL_LABELS.get(k, k.capitalize())} : {v}"
+                 for k, v in merged.items() if v > 0]
+        self.setToolTip("Validation\n" + "\n".join(lines) + f"\nTotal : {total}")
+        if delay_ms > 0:
+            QtCore.QTimer.singleShot(delay_ms, self._start)
+        else:
+            self._start()
+
+    def _start(self):
+        self._elapsed.restart()
+        self._timer.start(16)
+
+    def _step(self):
+        t = min(self._elapsed.elapsed() / _ANIM_DURATION_MS, 1.0)
+        self._p_anim = _ease_out_quart(t)
+        self.update()
+        if t >= 1.0:
+            self._p_anim = 1.0
+            self._timer.stop()
+
+    def paintEvent(self, _event):
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+
+        w, h = self.width(), self.height()
+        cx   = w // 2
+        top  = (h - _MINI_D) // 2
+        rect = QtCore.QRectF(cx - _MINI_D / 2, top, _MINI_D, _MINI_D)
+
+        p.setPen(QtGui.QPen(QtGui.QColor("#1e3a52"), _MINI_RW,
+                            QtCore.Qt.PenStyle.SolidLine,
+                            QtCore.Qt.PenCapStyle.FlatCap))
+        p.drawArc(rect, 0, 360 * 16)
+
+        angle = 90.0
+        for key in _EXPL_DRAW_ORDER:
+            count = self._breakdown.get(key, 0)
+            if count <= 0:
+                continue
+            span = count / self._total * 360.0 * self._p_anim
+            if span > 0.3:
+                color = QtGui.QColor(_EXPL_COLORS.get(key, _EXPL_DEFAULT_COLOR))
+                p.setPen(QtGui.QPen(color, _MINI_RW,
+                                    QtCore.Qt.PenStyle.SolidLine,
+                                    QtCore.Qt.PenCapStyle.RoundCap))
+                p.drawArc(rect, int(angle * 16), int(-span * 16))
+            angle -= count / self._total * 360.0 * self._p_anim
+
         p.end()
 
 
@@ -1316,7 +1487,7 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
         lay.setSpacing(10)
 
         self._r_kept    = _MiniRingBiColor()
-        self._r_ardoise = _MiniRing("#fbbf24", "Validation")
+        self._r_ardoise = _MiniRingExpl()
         self._r_meta    = _MiniRingDual("Métadonnées")
         self._r_derush  = _MiniRing("#a78bfa", "Évènements")
         self._r_habitat = _MiniRing("#34d399", "Habitat")
@@ -1325,11 +1496,11 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
         self._r_habitat.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
 
         _pairs = [
-            ("Qualif.",  "#34d399", self._r_kept),
-            ("Valid.",   "#fbbf24", self._r_ardoise),
-            ("Méta.",    "#5DBB63", self._r_meta),
-            ("Évènts.", "#a78bfa", self._r_derush),
-            ("Habitat",  "#34d399", self._r_habitat),
+            ("Qualification", "#34d399", self._r_kept),
+            ("Validation",    "#fbbf24", self._r_ardoise),
+            ("Métadonnées",   "#5DBB63", self._r_meta),
+            ("Évènements",    "#a78bfa", self._r_derush),
+            ("Habitat",       "#34d399", self._r_habitat),
         ]
         for title, color, ring in _pairs:
             lbl = QtWidgets.QLabel(title)
@@ -1367,21 +1538,7 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
 
         self._r_kept.set_data(active, trashed2, total_all, delay_ms=0)
 
-        self._r_ardoise.set_pct(int(stats["ardoise"] / total * 100), delay_ms=100)
-        _expl_lines = []
-        _order = ["oui", "yes", "habitat", "communication", "non", "no"]
-        _labels = {"oui": "Oui", "yes": "Oui", "non": "Non", "no": "Non",
-                   "habitat": "Habitat", "communication": "Communication"}
-        for _k in sorted(self._expl_breakdown,
-                         key=lambda k: (_order.index(k) if k in _order else 99, k)):
-            _n = self._expl_breakdown[_k]
-            _pct_k = int(_n / total * 100)
-            _expl_lines.append(f"  {_labels.get(_k, _k.capitalize())} : {_n} ({_pct_k}%)")
-        _expl_block = "\n".join(_expl_lines) if _expl_lines else "  —"
-        self._r_ardoise.setToolTip(
-            f"Validation\nArdoise renseignée : {stats['ardoise']} / {total} "
-            f"({int(stats['ardoise']/total*100)}%)\n"
-            f"Répartition exploitabilité :\n{_expl_block}")
+        self._r_ardoise.set_data(self._expl_breakdown, total, delay_ms=100)
 
         self._r_meta.set_data(int(ess_f / ess_t * 100), int(opt_f / opt_t * 100), delay_ms=200)
         self._r_meta.setToolTip(
