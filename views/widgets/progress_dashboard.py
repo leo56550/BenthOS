@@ -997,7 +997,6 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
         self._card_ardoise = _DonutExplBreakdown("Validation", compact=c)
         self._card_meta    = _DonutMetaSplit("Métadonnées", compact=c)
         self._card_derush  = _DonutDerushSplit("Évènements", compact=c)
-        self._card_habitat = _DonutCard("Habitat", "#34d399", compact=c, frac_mode=True)
 
         self._card_ardoise.double_clicked.connect(self._show_expl_popup)
         self._card_ardoise.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
@@ -1011,7 +1010,7 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
         cards_lay.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         for i, card in enumerate([
             self._card_kept, self._card_ardoise, self._card_meta,
-            self._card_derush, self._card_habitat,
+            self._card_derush,
         ]):
             if i > 0:
                 cards_lay.addWidget(_VSep())
@@ -1046,11 +1045,6 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
             stats["optional_filled"],  max(stats["optional_total"],  1),
             delay_ms=320)
         self._card_derush.set_data(stats["derushees"], stats["annotations"], max(active, 1), delay_ms=480)
-        _hab_det   = stats.get("habitat_detail", [])
-        _n_vids    = len(_hab_det) or 1
-        _hab_done  = round(sum(d["n_done"] for d in _hab_det) / _n_vids)
-        self._card_habitat.set_data(_hab_done, 6,                                        delay_ms=640)
-
         self._stack.setCurrentIndex(1)
 
     def _show_expl_popup(self):
@@ -1064,7 +1058,6 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
             self._card_ardoise.setToolTip("Double-click to see breakdown by exploitability status")
             self._card_meta._title    = "Metadata"
             self._card_derush._title  = "Events"
-            self._card_habitat._title = "Habitat"
         else:
             self._card_kept._title    = "Qualification"
             self._card_ardoise._title = "Validation"
@@ -1072,9 +1065,8 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
                 "Double-cliquer pour voir la répartition par statut d'exploitabilité")
             self._card_meta._title    = "Métadonnées"
             self._card_derush._title  = "Évènements"
-            self._card_habitat._title = "Habitat"
         for card in (self._card_kept, self._card_ardoise,
-                     self._card_meta, self._card_derush, self._card_habitat):
+                     self._card_meta, self._card_derush):
             card.update()
 
 
@@ -1530,8 +1522,6 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
         super().__init__(parent)
         self._worker: _StatsWorker | None = None
         self._expl_breakdown: dict[str, int] = {}
-        self._habitat_detail: list[dict] = []
-        self._habitat_done = 0
         self._stats: dict = {}
 
         lay = QtWidgets.QHBoxLayout(self)
@@ -1542,17 +1532,12 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
         self._r_ardoise = _MiniRingExpl()
         self._r_meta    = _MiniRingDual("Métadonnées")
         self._r_derush  = _MiniRing("#a78bfa", "Évènements")
-        self._r_habitat = _MiniRing("#34d399", "Habitat")
-
-        self._r_habitat.double_clicked.connect(self._show_habitat_popup)
-        self._r_habitat.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
 
         _pairs = [
             ("Qualification", "#34d399", self._r_kept),
             ("Validation",    "#fbbf24", self._r_ardoise),
             ("Métadonnées",   "#5DBB63", self._r_meta),
             ("Évènements",    "#a78bfa", self._r_derush),
-            ("Habitat",       "#34d399", self._r_habitat),
         ]
         for title, color, ring in _pairs:
             lbl = QtWidgets.QLabel(title)
@@ -1566,10 +1551,14 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
 
         self.setFixedHeight(_MINI_H + 6)
 
-    def refresh(self, video_paths: list, trash_count: int):
+    def refresh(self, video_paths: list, trash_count: int, target: str | None = None):
+        """Relance le calcul complet. `target` restreint la mise à jour visuelle :
+        None=tout, 'meta'=anneau Métadonnées, 'events'=anneau Évènements,
+        'ardoise'=anneau Validation, 'kept'=anneau Qualification."""
         if self._worker and self._worker.isRunning():
             self._worker.terminate()
             self._worker.wait(200)
+        self._refresh_target = target
         self._worker = _StatsWorker(video_paths, trash_count, self)
         self._worker.stats_ready.connect(self._on_stats_ready)
         self._worker.start()
@@ -1588,39 +1577,29 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
         land   = stats["derushees"]
         anno   = stats["annotations"]
 
-        self._r_kept.set_data(active, trashed2, total_all, delay_ms=0)
+        t = getattr(self, '_refresh_target', None)
 
-        self._r_ardoise.set_data(self._expl_breakdown, total, delay_ms=100)
+        if t is None or t == 'kept':
+            self._r_kept.set_data(active, trashed2, total_all, delay_ms=0)
 
-        self._r_meta.set_data(int(ess_f / ess_t * 100), int(opt_f / opt_t * 100), delay_ms=200)
-        self._r_meta.setToolTip(
-            f"Métadonnées\n● Essentielles : {ess_f} / {ess_t} ({int(ess_f/ess_t*100)}%)\n"
-            f"● Optionnelles : {opt_f} / {opt_t} ({int(opt_f/opt_t*100)}%)")
+        if t is None or t == 'ardoise':
+            self._r_ardoise.set_data(self._expl_breakdown, total, delay_ms=100)
 
-        self._r_derush.set_pct(int(land / total * 100), delay_ms=300)
-        self._r_derush.setToolTip(
-            f"Évènements\nAtt./Déc. : {land} / {total} ({int(land/total*100)}%)\n"
-            f"Début/Fin ann. : {anno} / {total} ({int(anno/total*100)}%)")
+        if t is None or t == 'meta':
+            self._r_meta.set_data(int(ess_f / ess_t * 100), int(opt_f / opt_t * 100), delay_ms=200)
+            self._r_meta.setToolTip(
+                f"Métadonnées\n● Essentielles : {ess_f} / {ess_t} ({int(ess_f/ess_t*100)}%)\n"
+                f"● Optionnelles : {opt_f} / {opt_t} ({int(opt_f/opt_t*100)}%)")
 
-        self._habitat_done   = stats.get("habitat_done", 0)
-        self._habitat_detail = stats.get("habitat_detail", [])
-        _n_vids   = len(self._habitat_detail) or 1
-        _hab_done = round(sum(d["n_done"] for d in self._habitat_detail) / _n_vids)
-        hab_pct   = int(_hab_done / 6 * 100)
-        self._r_habitat.set_data(_hab_done, 6, delay_ms=400)
-        self._r_habitat.setToolTip(
-            f"Analyse Habitat\nSecteurs traités : {_hab_done} / 6 ({hab_pct}%)\n"
-            f"Double-cliquer pour le détail par station")
+        if t is None or t == 'events':
+            self._r_derush.set_pct(int(land / total * 100), delay_ms=300)
+            self._r_derush.setToolTip(
+                f"Évènements\nAtt./Déc. : {land} / {total} ({int(land/total*100)}%)\n"
+                f"Début/Fin ann. : {anno} / {total} ({int(anno/total*100)}%)")
 
     def _show_expl_popup(self):
         self._expl_popup = _ExploitabilityPopup(self._expl_breakdown, None)
         self._expl_popup.show()
-
-    def _show_habitat_popup(self):
-        total = self._stats.get("total", 0) or len(self._habitat_detail) or 1
-        self._hab_popup = _HabitatPopup(
-            self._habitat_detail, self._habitat_done, total, None)
-        self._hab_popup.show()
 
     def set_language(self, lang: str):
         if lang == 'en':
@@ -1628,11 +1607,9 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
             self._r_ardoise.setToolTip("Validation")
             self._r_meta.setToolTip("Metadata")
             self._r_derush.setToolTip("Events (landing/takeoff + annotations)")
-            self._r_habitat.setToolTip("Habitat — double-click for details")
         else:
             self._r_kept.setToolTip("Qualification")
             self._r_ardoise.setToolTip("Validation")
             self._r_meta.setToolTip("Métadonnées")
             self._r_derush.setToolTip("Évènements (att./déc. + annotations)")
-            self._r_habitat.setToolTip("Habitat — double-cliquer pour le détail")
         # Après chargement, les tooltips seront regénérés par _on_stats_ready

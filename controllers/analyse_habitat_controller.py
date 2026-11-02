@@ -225,7 +225,7 @@ _XLSX_LAYOUT: list[tuple[str, list]] = [
     ("Captures écran", []),
 ]
 
-_COL_W   = 72   # largeur d'un secteur (plus large pour la flèche combobox)
+_COL_W   = 80   # largeur d'un secteur
 _LABEL_W = 240  # largeur de la colonne label
 _THUMB_H = 90   # hauteur des thumbnails dans la barre d'en-tête
 _HEADER_H = _THUMB_H + 28  # hauteur totale de la barre d'en-tête
@@ -1847,13 +1847,13 @@ class AnalyseHabitatController(QtCore.QObject):
             self._sector_photo_labels.append(thumb)
 
             lbl = QtWidgets.QLabel(f"S{i + 1}")
+            lbl.setFixedHeight(14)
             lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             lbl.setStyleSheet(
                 "color:#2778a2; font-weight:bold; font-size:11px;"
                 " font-family:'Segoe UI',sans-serif;"
                 " background:transparent; border:none;")
             cell_lay.addWidget(lbl)
-            self._sector_num_labels.append(lbl)
 
             cell.mousePressEvent = lambda e, idx=i: self._on_sector_clicked(idx)
             self._sector_btn_list.append(cell)
@@ -1867,10 +1867,14 @@ class AnalyseHabitatController(QtCore.QObject):
         return bar
 
     def _highlight_sector(self, idx: int):
-        # Les deux états utilisent border:2px pour éviter tout décalage de taille
         _sel = (
             "QFrame { background:#163050; border-radius:4px;"
             " border:2px solid #2778a2; }"
+        )
+        _done = (
+            "QFrame { background:#111f2e; border-radius:4px;"
+            " border:2px solid #22c55e; }"
+            "QFrame:hover { border-color:#4ade80; background:#0d1f14; }"
         )
         _unsel = (
             "QFrame { background:#111f2e; border-radius:4px;"
@@ -1878,7 +1882,12 @@ class AnalyseHabitatController(QtCore.QObject):
             "QFrame:hover { border-color:#2778a2; background:#162030; }"
         )
         for i, cell in enumerate(self._sector_btn_list):
-            cell.setStyleSheet(_sel if i == idx else _unsel)
+            if i == idx:
+                cell.setStyleSheet(_sel)
+            elif self._sv_sector_is_complete(i):
+                cell.setStyleSheet(_done)
+            else:
+                cell.setStyleSheet(_unsel)
 
     def _build_single_sector_form(self, parent_lay: QtWidgets.QVBoxLayout):
         """Construit le formulaire de saisie pour un secteur à la fois."""
@@ -2322,18 +2331,16 @@ class AnalyseHabitatController(QtCore.QObject):
         return total_rec == 100
 
     def _sv_update_badges(self):
-        """Met à jour la couleur des labels S1-S6 selon la complétion de chaque secteur."""
+        """Met à jour la couleur des labels S1-S6, les barres de statut et le compteur liste."""
         for i, lbl in enumerate(self._sector_num_labels):
-            if self._sv_sector_is_complete(i):
-                lbl.setStyleSheet(
-                    "color:#22c55e; font-weight:bold; font-size:11px;"
-                    " font-family:'Segoe UI',sans-serif;"
-                    " background:transparent; border:none;")
-            else:
-                lbl.setStyleSheet(
-                    "color:#2778a2; font-weight:bold; font-size:11px;"
-                    " font-family:'Segoe UI',sans-serif;"
-                    " background:transparent; border:none;")
+            done = self._sv_sector_is_complete(i)
+            lbl.setStyleSheet(
+                ("color:#22c55e;" if done else "color:#2778a2;") +
+                " font-weight:bold; font-size:11px;"
+                " font-family:'Segoe UI',sans-serif;"
+                " background:transparent; border:none;")
+        self._highlight_sector(self._current_sector_idx)
+        self._refresh_list_item_count()
 
     def _sv_refresh_totals(self):
         if not self._current_video:
@@ -2779,6 +2786,46 @@ class AnalyseHabitatController(QtCore.QObject):
             item.setFont(font)
             item.setToolTip("Masque de saisie CSV déjà généré dans ce dossier" if has_mask else "")
 
+    def _refresh_list_item_count(self):
+        """Met à jour les indicateurs de l'item sélectionné dans la liste."""
+        row = self._list.currentRow()
+        item = self._list.item(row) if row >= 0 else None
+        if not item or not self._current_video:
+            return
+        status = self._sectors_status(self._current_video)
+        dots  = "".join("■" if done else "□" for done in status)
+        n_done = sum(status)
+        code = _get_codestation(self._current_video) or item.text().split("  ")[0]
+        has_mask = self._mask_csv_exists(self._current_video)
+        suffix = f"  {dots}  {n_done}/6" + ("  ✓" if has_mask else "")
+        item.setText(f"{code}{suffix}")
+
+    @staticmethod
+    def _sectors_status(vpath: str) -> list[bool]:
+        """Retourne une liste de 6 booléens : True si le secteur est complet."""
+        hab_path = AnalyseHabitatController._habitat_json_path(vpath)
+        status = [False] * 6
+        try:
+            with open(hab_path, 'r', encoding='utf-8') as f:
+                hab = json.load(f)
+        except Exception:
+            return status
+        _rec_keys = {k for k, _ in _RECOUVREMENT_TYPES}
+        for s in hab.get("sectors", []):
+            idx = s.get("index", 0) - 1
+            if not (0 <= idx < 6):
+                continue
+            if not s.get("topographie", 0) or not s.get("complexite", 0):
+                continue
+            rec = s.get("recouvrement_visible", {})
+            if sum(v for k, v in rec.items() if k in _rec_keys) == 100:
+                status[idx] = True
+        return status
+
+    @staticmethod
+    def _count_complete_sectors(vpath: str) -> int:
+        return sum(AnalyseHabitatController._sectors_status(vpath))
+
     def _rebuild_list(self, *_):
         self._list.blockSignals(True)
         self._list.clear()
@@ -2807,8 +2854,11 @@ class AnalyseHabitatController(QtCore.QObject):
 
         for _, display, vpath_str, expl in entries:
             has_mask = self._mask_csv_exists(vpath_str)
-            text = display + ("  ✓ Masque généré" if has_mask else "")
-            list_item = QtWidgets.QListWidgetItem(text)
+            status = self._sectors_status(vpath_str)
+            dots = "".join("■" if done else "□" for done in status)
+            n_done = sum(status)
+            suffix = f"  {dots}  {n_done}/6" + ("  ✓" if has_mask else "")
+            list_item = QtWidgets.QListWidgetItem(f"{display}{suffix}")
             list_item.setData(QtCore.Qt.ItemDataRole.UserRole, vpath_str)
             if expl == "oui":
                 list_item.setForeground(QtGui.QBrush(QtGui.QColor("#4ade80")))

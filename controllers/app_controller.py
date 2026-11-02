@@ -225,8 +225,10 @@ class AppController(QtCore.QObject):
 
         self.qualif_ctrl.video_model.rowsInserted.connect(self.refresh_status_bar)
         self.qualif_ctrl.video_model.rowsRemoved.connect(self.refresh_status_bar)
-        self.qualif_ctrl.video_model.rowsInserted.connect(self._refresh_dashboard)
-        self.qualif_ctrl.video_model.rowsRemoved.connect(self._refresh_dashboard)
+        self.qualif_ctrl.video_model.rowsInserted.connect(
+            lambda *_: self._refresh_dashboard(target="kept"))
+        self.qualif_ctrl.video_model.rowsRemoved.connect(
+            lambda *_: self._refresh_dashboard(target="kept"))
 
         # Carte : propager les clics sur les marqueurs vers tous les controllers
         bridge = self.qualif_ctrl.bridge
@@ -465,7 +467,7 @@ class AppController(QtCore.QObject):
         if vp:
             self.qualif_ctrl.refresh_completion_color_for_video(vp)
             self._refresh_point_name_for_video(vp)
-        self._refresh_dashboard()
+        self._refresh_dashboard(target="meta")
         self.analyse_habitat_ctrl._rebuild_list()
 
     def _on_map_marker_coords_updated(self, video_name: str, lat: float, lon: float):
@@ -796,7 +798,7 @@ class AppController(QtCore.QObject):
     def _on_qualification_changed(self):
         """Appelé quand l'exploitabilité ou les propriétés campagne changent."""
         self.refresh_status_bar()
-        self._refresh_dashboard()
+        self._refresh_dashboard(target="ardoise")
         current_page = self.window.stackedWidget.currentWidget()
         if current_page == self.window.page_metadonnees:
             self.metadonnees_ctrl.refresh_feuille_terrain()
@@ -814,7 +816,7 @@ class AppController(QtCore.QObject):
     def _on_events_changed(self, *_):
         """Callback déclenché quand des événements sont ajoutés/supprimés/modifiés."""
         self.metadonnees_ctrl.refresh_feuille_terrain()
-        self._refresh_dashboard()
+        self._refresh_dashboard(target="events")
         for ctrl in (self.evenements_ctrl, self.validation_ctrl):
             if hasattr(ctrl, '_refresh_sector_view_if_active'):
                 ctrl._refresh_sector_view_if_active()
@@ -1763,8 +1765,9 @@ class AppController(QtCore.QObject):
               f"csv_folder={getattr(self.metadonnees_ctrl,'_csv_folder','')!r}")
         self.qualif_ctrl.update_minimap(video_name, show_dialog=True, extra_points=extra_points)
 
-    def _refresh_dashboard(self, *_):
-        """Recalcule les donuts du panneau Avancement."""
+    def _refresh_dashboard(self, *_, target: str | None = None):
+        """Recalcule les donuts du panneau Avancement.
+        `target` restreint la mise à jour visuelle (None=tout, 'meta', 'events', …)."""
         model = self.qualif_ctrl.video_model
         paths = [
             model.item(row, 0).data(QtCore.Qt.ItemDataRole.UserRole)
@@ -1773,7 +1776,7 @@ class AppController(QtCore.QObject):
         ]
         trash_count = self.qualif_ctrl.trash_model.rowCount()
         if hasattr(self.window, 'inline_donuts'):
-            self.window.inline_donuts.refresh(paths, trash_count)
+            self.window.inline_donuts.refresh(paths, trash_count, target=target)
 
     def refresh_status_bar(self, *_):
         """Recalcule et affiche les stats de campagne dans la barre de statut."""
