@@ -437,10 +437,10 @@ class _DonutBiColor(_DonutBase):
         self._total   = 0
         self._p       = 0.0   # animation progress 0→1
 
-    def set_data(self, kept: int, trashed: int, delay_ms: int = 0):
+    def set_data(self, kept: int, trashed: int, total: int | None = None, delay_ms: int = 0):
         self._kept    = kept
         self._trashed = trashed
-        self._total   = kept + trashed
+        self._total   = total if total is not None else (kept + trashed)
         self._p       = 0.0
         self.update()
         self._start_anim(delay_ms)
@@ -473,16 +473,14 @@ class _DonutBiColor(_DonutBase):
         self._paint_arc(p, rect,  90.0,               -kept_drawn,    self._C_KEPT)
         self._paint_arc(p, rect,  90.0 - kept_drawn,  -trashed_drawn, self._C_TRASHED)
 
+        # Chiffres dans le trou : gardées (grand, vert) / jetées (petit, rouge)
         cy = top + ds / 2.0
-        big_sz  = 13 if self._compact else 22
-        small_sz = 8 if self._compact else 12
-
+        big_sz   = 13 if self._compact else 22
+        small_sz =  8 if self._compact else 12
         p.setFont(QtGui.QFont("Segoe UI", big_sz, QtGui.QFont.Weight.Bold))
         p.setPen(self._C_KEPT)
-        p.drawText(QtCore.QRectF(cx - ds/2, cy - (18 if self._compact else 30), ds,
-                                 big_sz + 4),
+        p.drawText(QtCore.QRectF(cx - ds/2, cy - (18 if self._compact else 30), ds, big_sz + 4),
                    QtCore.Qt.AlignmentFlag.AlignCenter, str(self._kept))
-
         p.setFont(QtGui.QFont("Segoe UI", small_sz, QtGui.QFont.Weight.Bold))
         p.setPen(self._C_TRASHED)
         p.drawText(QtCore.QRectF(cx - ds/2, cy + (2 if self._compact else 2), ds, small_sz + 4),
@@ -907,17 +905,21 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
     def _on_stats_ready(self, stats: dict):
         self._spinner.stop()
         self._expl_breakdown = stats.get("expl_breakdown", {})
-        total = stats["total"]
-        kept = total - stats["trashed"]
+        active  = stats["total"]
+        trashed = stats["trashed"]
+        total   = active + trashed
 
-        self._card_kept.set_data(kept, stats["trashed"],                               delay_ms=0)
-        self._card_ardoise.set_data(stats["ardoise"],   total,                         delay_ms=160)
+        self._card_kept.setToolTip(
+            f"Qualification\nGardées : {active}\nJetées : {trashed}\nTotal : {total}")
+
+        self._card_kept.set_data(active, trashed, total=total,                         delay_ms=0)
+        self._card_ardoise.set_data(stats["ardoise"],   max(active, 1),                delay_ms=160)
         self._card_meta.set_data(
             stats["essential_filled"], max(stats["essential_total"], 1),
             stats["optional_filled"],  max(stats["optional_total"],  1),
             delay_ms=320)
-        self._card_derush.set_data(stats["derushees"], stats["annotations"], total,    delay_ms=480)
-        self._card_habitat.set_data(0, max(total, 1),                                  delay_ms=640)
+        self._card_derush.set_data(stats["derushees"], stats["annotations"], max(active, 1), delay_ms=480)
+        self._card_habitat.set_data(0, max(active, 1),                                 delay_ms=640)
 
         self._stack.setCurrentIndex(1)
 
@@ -1217,6 +1219,87 @@ class _MiniRing(QtWidgets.QWidget):
         p.end()
 
 
+class _MiniRingBiColor(QtWidgets.QWidget):
+    """Mini anneau bicolore vert/rouge pour la toolbar : gardées vs jetées."""
+
+    _C_KEPT    = QtGui.QColor("#34d399")
+    _C_TRASHED = QtGui.QColor("#f87171")
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._kept    = 0
+        self._trashed = 0
+        self._total   = 1
+        self._p_anim  = 0.0
+        self._elapsed = QtCore.QElapsedTimer()
+        self._elapsed.start()
+        self._timer   = QtCore.QTimer(self)
+        self._timer.timeout.connect(self._step)
+        self.setFixedSize(_MINI_W, _MINI_H)
+
+    def set_data(self, kept: int, trashed: int, total: int, delay_ms: int = 0):
+        self._kept    = kept
+        self._trashed = trashed
+        self._total   = total or 1
+        self._p_anim  = 0.0
+        self.setToolTip(
+            f"Qualification\nGardées : {kept}\nJetées : {trashed}\nTotal : {total}")
+        if delay_ms > 0:
+            QtCore.QTimer.singleShot(delay_ms, self._start)
+        else:
+            self._start()
+
+    def _start(self):
+        self._elapsed.restart()
+        self._timer.start(16)
+
+    def _step(self):
+        t = min(self._elapsed.elapsed() / _ANIM_DURATION_MS, 1.0)
+        self._p_anim = _ease_out_quart(t)
+        self.update()
+        if t >= 1.0:
+            self._p_anim = 1.0
+            self._timer.stop()
+
+    def paintEvent(self, _event):
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QtGui.QPainter.RenderHint.TextAntialiasing)
+
+        w, h = self.width(), self.height()
+        cx   = w // 2
+        top  = (h - _MINI_D) // 2
+        rect = QtCore.QRectF(cx - _MINI_D / 2, top, _MINI_D, _MINI_D)
+
+        p.setPen(QtGui.QPen(QtGui.QColor("#1e3a52"), _MINI_RW,
+                            QtCore.Qt.PenStyle.SolidLine,
+                            QtCore.Qt.PenCapStyle.FlatCap))
+        p.drawArc(rect, 0, 360 * 16)
+
+        kept_angle    = self._kept    / self._total * 360.0 * self._p_anim
+        trashed_angle = self._trashed / self._total * 360.0 * self._p_anim
+
+        if kept_angle > 0.3:
+            p.setPen(QtGui.QPen(self._C_KEPT, _MINI_RW,
+                                QtCore.Qt.PenStyle.SolidLine,
+                                QtCore.Qt.PenCapStyle.RoundCap))
+            p.drawArc(rect, int(90 * 16), int(-kept_angle * 16))
+
+        if trashed_angle > 0.3:
+            p.setPen(QtGui.QPen(self._C_TRASHED, _MINI_RW,
+                                QtCore.Qt.PenStyle.SolidLine,
+                                QtCore.Qt.PenCapStyle.RoundCap))
+            p.drawArc(rect, int((90 - kept_angle) * 16), int(-trashed_angle * 16))
+
+        kept_pct = int(self._kept / self._total * 100)
+        p.setFont(QtGui.QFont("Segoe UI", 7, QtGui.QFont.Weight.Bold))
+        p.setPen(self._C_KEPT)
+        p.drawText(QtCore.QRectF(cx - _MINI_D / 2, top, _MINI_D, _MINI_D),
+                   QtCore.Qt.AlignmentFlag.AlignCenter,
+                   f"{kept_pct}%")
+        p.end()
+
+
 class ProgressToolbarStrip(QtWidgets.QWidget):
     """Bande de 5 mini-donuts à incruster dans la toolbar."""
 
@@ -1232,7 +1315,7 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
         lay.setContentsMargins(8, 2, 8, 2)
         lay.setSpacing(10)
 
-        self._r_kept    = _MiniRing("#34d399", "Qualification")
+        self._r_kept    = _MiniRingBiColor()
         self._r_ardoise = _MiniRing("#fbbf24", "Validation")
         self._r_meta    = _MiniRingDual("Métadonnées")
         self._r_derush  = _MiniRing("#a78bfa", "Évènements")
@@ -1271,8 +1354,10 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
     def _on_stats_ready(self, stats: dict):
         self._stats = stats
         self._expl_breakdown = stats.get("expl_breakdown", {})
-        total  = stats["total"] or 1
-        kept   = total - stats["trashed"]
+        active   = stats["total"]
+        trashed2 = stats["trashed"]
+        total_all = (active + trashed2) or 1
+        total    = active or 1          # dénominateur pour Valid./Méta./Évts./Habitat
         ess_f  = stats["essential_filled"]
         ess_t  = max(stats["essential_total"], 1)
         opt_f  = stats["optional_filled"]
@@ -1280,10 +1365,7 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
         land   = stats["derushees"]
         anno   = stats["annotations"]
 
-        self._r_kept.set_pct(int(kept / total * 100), delay_ms=0)
-        self._r_kept.setToolTip(
-            f"Qualification\nGardées : {kept} / {total} ({int(kept/total*100)}%)\n"
-            f"Jetées : {stats['trashed']}")
+        self._r_kept.set_data(active, trashed2, total_all, delay_ms=0)
 
         self._r_ardoise.set_pct(int(stats["ardoise"] / total * 100), delay_ms=100)
         _expl_lines = []
