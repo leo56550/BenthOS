@@ -554,35 +554,52 @@ class _DonutExplBreakdown(_DonutBase):
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         p.setRenderHint(QtGui.QPainter.RenderHint.TextAntialiasing)
 
-        ds = self._ds
-        w  = self.width()
+        ds  = self._ds
+        w   = self.width()
         cx, top = w // 2, 6 if self._compact else 10
         rect = QtCore.QRectF(cx - ds / 2, top, ds, ds)
         cy   = top + ds / 2.0
+        _bg  = QtGui.QColor("#111f2d")
 
-        self._paint_track(p, rect)
+        # Fond du disque
+        p.setPen(QtCore.Qt.PenStyle.NoPen)
+        p.setBrush(_bg)
+        p.drawEllipse(rect)
 
+        # Secteurs du camembert
         angle = 90.0
         for key in _EXPL_DRAW_ORDER:
             count = self._breakdown.get(key, 0)
             if count <= 0:
                 continue
-            span  = count / self._total * 360.0 * self._p
-            color = QtGui.QColor(_EXPL_COLORS.get(key, _EXPL_DEFAULT_COLOR))
-            self._paint_arc(p, rect, angle, -span, color)
-            angle -= span
+            span = count / self._total * 360.0 * self._p
+            if span > 0.1:
+                p.setBrush(QtGui.QColor(_EXPL_COLORS.get(key, _EXPL_DEFAULT_COLOR)))
+                p.setPen(QtGui.QPen(_bg, 1.0))
+                p.drawPie(rect, int(angle * 16), int(-span * 16))
+            angle -= count / self._total * 360.0 * self._p
 
+        # Trou central
+        _hole = ds * 0.52
+        _hr   = QtCore.QRectF(cx - _hole / 2, top + (ds - _hole) / 2, _hole, _hole)
+        p.setPen(QtCore.Qt.PenStyle.NoPen)
+        p.setBrush(_bg)
+        p.drawEllipse(_hr)
+
+        # % qualifiées + count
+        pct    = int(self._qualified / self._total * 100)
         big_sz = 13 if self._compact else 20
         p.setFont(QtGui.QFont("Segoe UI", big_sz, QtGui.QFont.Weight.Bold))
         p.setPen(QtGui.QColor("#dff0fa"))
         p.drawText(QtCore.QRectF(cx - ds/2, cy - (16 if self._compact else 24), ds, big_sz + 4),
-                   QtCore.Qt.AlignmentFlag.AlignCenter, str(self._qualified))
+                   QtCore.Qt.AlignmentFlag.AlignCenter, f"{pct}%")
 
         if not self._compact:
             p.setFont(QtGui.QFont("Segoe UI", 7))
-            p.setPen(QtGui.QColor("#2e4a5e"))
+            p.setPen(QtGui.QColor("#4a6e88"))
             p.drawText(QtCore.QRectF(cx - ds/2, cy + 5, ds, 14),
-                       QtCore.Qt.AlignmentFlag.AlignCenter, f"/ {self._total}")
+                       QtCore.Qt.AlignmentFlag.AlignCenter,
+                       f"{self._qualified} / {self._total}")
 
         # Légende : 2 colonnes, items dans l'ordre
         y_leg  = top + ds + 4
@@ -595,13 +612,12 @@ class _DonutExplBreakdown(_DonutBase):
             color = QtGui.QColor(_EXPL_COLORS.get(key, _EXPL_DEFAULT_COLOR))
             lbl   = _EXPL_LABELS.get(key, key.capitalize())
             p.setPen(color)
-            row_i = i // 2
-            col_i = i % 2
+            row_i, col_i = i // 2, i % 2
             p.drawText(QtCore.QRectF(col_i * col_w, y_leg + row_i * 12, col_w, 12),
                        QtCore.Qt.AlignmentFlag.AlignCenter,
                        f"● {lbl}  {cnt}")
 
-        n_rows = (len(items) + 1) // 2
+        n_rows  = (len(items) + 1) // 2
         title_y = y_leg + n_rows * 12 + (4 if self._compact else 6)
         self._paint_title(p, self._title, w, title_y)
         p.end()
@@ -1443,31 +1459,46 @@ class _MiniRingExpl(QtWidgets.QWidget):
     def paintEvent(self, _event):
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QtGui.QPainter.RenderHint.TextAntialiasing)
 
-        w, h = self.width(), self.height()
-        cx   = w // 2
-        top  = (h - _MINI_D) // 2
-        rect = QtCore.QRectF(cx - _MINI_D / 2, top, _MINI_D, _MINI_D)
+        w, h  = self.width(), self.height()
+        cx    = w // 2
+        top   = (h - _MINI_D) // 2
+        rect  = QtCore.QRectF(cx - _MINI_D / 2, top, _MINI_D, _MINI_D)
+        _bg   = QtGui.QColor("#111f2d")
 
-        p.setPen(QtGui.QPen(QtGui.QColor("#1e3a52"), _MINI_RW,
-                            QtCore.Qt.PenStyle.SolidLine,
-                            QtCore.Qt.PenCapStyle.FlatCap))
-        p.drawArc(rect, 0, 360 * 16)
+        # Fond
+        p.setPen(QtCore.Qt.PenStyle.NoPen)
+        p.setBrush(_bg)
+        p.drawEllipse(rect)
 
+        # Secteurs du camembert
         angle = 90.0
         for key in _EXPL_DRAW_ORDER:
             count = self._breakdown.get(key, 0)
             if count <= 0:
                 continue
             span = count / self._total * 360.0 * self._p_anim
-            if span > 0.3:
-                color = QtGui.QColor(_EXPL_COLORS.get(key, _EXPL_DEFAULT_COLOR))
-                p.setPen(QtGui.QPen(color, _MINI_RW,
-                                    QtCore.Qt.PenStyle.SolidLine,
-                                    QtCore.Qt.PenCapStyle.RoundCap))
-                p.drawArc(rect, int(angle * 16), int(-span * 16))
+            if span > 0.1:
+                p.setBrush(QtGui.QColor(_EXPL_COLORS.get(key, _EXPL_DEFAULT_COLOR)))
+                p.setPen(QtGui.QPen(_bg, 0.8))
+                p.drawPie(rect, int(angle * 16), int(-span * 16))
             angle -= count / self._total * 360.0 * self._p_anim
 
+        # Trou central (donut)
+        _hole = _MINI_D * 0.50
+        _hr   = QtCore.QRectF(cx - _hole / 2, top + (_MINI_D - _hole) / 2, _hole, _hole)
+        p.setPen(QtCore.Qt.PenStyle.NoPen)
+        p.setBrush(_bg)
+        p.drawEllipse(_hr)
+
+        # % qualifiées dans le trou
+        qualified = sum(self._breakdown.values())
+        pct = int(qualified / self._total * 100)
+        p.setFont(QtGui.QFont("Segoe UI", 6, QtGui.QFont.Weight.Bold))
+        p.setPen(QtGui.QColor("#c8e0f0"))
+        p.drawText(QtCore.QRectF(cx - _MINI_D / 2, top, _MINI_D, _MINI_D),
+                   QtCore.Qt.AlignmentFlag.AlignCenter, f"{pct}%")
         p.end()
 
 
