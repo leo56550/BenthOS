@@ -265,6 +265,15 @@ class AppController(QtCore.QObject):
             window.btn_load_history.customContextMenuRequested.connect(
                 self._show_load_history_context_menu)
 
+        # Profils TP batch : connecter tous les players
+        for _player in [
+            getattr(self.validation_ctrl,  'player',       None),
+            getattr(self.evenements_ctrl,  'event_player', None),
+            getattr(self.extraction_ctrl,  'video_player', None),
+        ]:
+            if _player is not None and hasattr(_player, 'batch_tp_profiles_requested'):
+                _player.batch_tp_profiles_requested.connect(self._batch_export_tp_profiles)
+
         if hasattr(window, 'btn_synthese_infostation'):
             window.btn_synthese_infostation.clicked.connect(
                 self._generate_synthese_infostation)
@@ -1058,6 +1067,156 @@ class AppController(QtCore.QObject):
                 self.translate(f"{len(files)} *_masque_saisie.xlsx supprimé(s).",
                                f"{len(files)} *_masque_saisie.xlsx deleted.")
             )
+
+    def _batch_export_tp_profiles(self):
+        """Génère les profils température/profondeur pour toutes les vidéos de la campagne."""
+        from services.motor_service import find_video_csv
+        import pandas as pd
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+
+        model = self.qualif_ctrl.video_model
+        trash = self.qualif_ctrl.trash_model
+        all_paths = []
+        for m in (model, trash):
+            for row in range(m.rowCount()):
+                item = m.item(row, 0)
+                if item:
+                    vpath = item.data(QtCore.Qt.ItemDataRole.UserRole)
+                    if vpath:
+                        all_paths.append(str(vpath))
+
+        if not all_paths:
+            QtWidgets.QMessageBox.information(
+                self.window,
+                self.translate("Aucune vidéo", "No videos"),
+                self.translate("Aucune vidéo chargée dans la campagne.",
+                               "No video loaded in the campaign."))
+            return
+
+        _P_ATM_HPA   = 1013.25
+        _HPA_TO_METER = 1.0 / 100.55
+        _ALIASES = {
+            'delta(s)': 'Delta', 'delta_s': 'Delta', 'delta': 'Delta',
+            'tempc': 'température', 'temp_c': 'température', 'temp': 'température',
+            'temperature': 'température', 'water_temp': 'température',
+            'pression': 'pression', 'pressure': 'pression', 'press': 'pression',
+        }
+
+        # Compter les profils déjà existants
+        existing = []
+        for vpath in all_paths:
+            csv_path = find_video_csv(vpath)
+            if os.path.isfile(csv_path):
+                stem = os.path.splitext(os.path.basename(csv_path))[0]
+                dest = os.path.join(os.path.dirname(os.path.normpath(csv_path)),
+                                    f"{stem}_profil_temperature.png")
+                if os.path.isfile(dest):
+                    existing.append(dest)
+        if existing:
+            reply = QtWidgets.QMessageBox.question(
+                self.window,
+                self.translate("Profils existants", "Existing profiles"),
+                self.translate(
+                    f"{len(existing)} profil(s) TP existent déjà et seront écrasés.\n"
+                    f"Continuer ?",
+                    f"{len(existing)} TP profile(s) already exist and will be overwritten.\n"
+                    f"Continue?"),
+                QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+                QtWidgets.QMessageBox.StandardButton.No,
+            )
+            if reply != QtWidgets.QMessageBox.StandardButton.Yes:
+                return
+
+        progress = QtWidgets.QProgressDialog(
+            self.translate("Export des profils TP…", "Exporting TP profiles…"),
+            self.translate("Annuler", "Cancel"),
+            0, len(all_paths), self.window)
+        progress.setWindowTitle(self.translate("Profils TP", "TP profiles"))
+        progress.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
+        progress.setMinimumWidth(380)
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+
+        done, skipped, errors = 0, 0, []
+        for i, vpath in enumerate(all_paths):
+            if progress.wasCanceled():
+                break
+            stem_preview = os.path.splitext(os.path.basename(vpath))[0]
+            progress.setLabelText(
+                self.translate(f"Traitement : {stem_preview}  ({i+1}/{len(all_paths)})",
+                               f"Processing: {stem_preview}  ({i+1}/{len(all_paths)})"))
+            progress.setValue(i)
+            QtWidgets.QApplication.processEvents()
+
+            csv_path = find_video_csv(vpath)
+            if not os.path.isfile(csv_path):
+                skipped += 1
+                continue
+            try:
+                df = pd.read_csv(csv_path, sep=None, engine='python')
+                df.columns = df.columns.str.strip()
+                rename_map = {c: _ALIASES[c.lower()] for c in df.columns if c.lower() in _ALIASES}
+                df.rename(columns=rename_map, inplace=True)
+                if 'Delta' not in df.columns:
+                    errors.append(f"{os.path.basename(csv_path)}: colonne Delta introuvable")
+                    continue
+                for col in ['Delta', 'température', 'pression']:
+                    if col in df.columns and df[col].dtype == object:
+                        df[col] = pd.to_numeric(
+                            df[col].astype(str).str.replace(',', '.'), errors='coerce')
+                if 'pression' in df.columns:
+                    df['profondeur'] = (df['pression'] - _P_ATM_HPA) * _HPA_TO_METER
+                    df['profondeur'] = df['profondeur'].clip(lower=0)
+
+                has_depth = 'profondeur' in df.columns
+                has_temp  = 'température' in df.columns
+                if not (has_depth and has_temp):
+                    errors.append(f"{os.path.basename(csv_path)}: données T° ou profondeur manquantes")
+                    continue
+
+                stem = os.path.splitext(os.path.basename(csv_path))[0]
+                import numpy as np
+                t_arr = df['température'].values.astype(float)
+                d_arr = df['profondeur'].values.astype(float)
+                mask  = ~(np.isnan(t_arr) | np.isnan(d_arr))
+                t_arr, d_arr = t_arr[mask], d_arr[mask]
+
+                fig, ax = plt.subplots(figsize=(6, 8))
+                fig.patch.set_facecolor('white')
+                ax.set_facecolor('white')
+                ax.plot(t_arr, d_arr, color='black', linewidth=1.5)
+                ax.invert_yaxis()
+                ax.set_xlabel('Température (°C)', fontsize=12)
+                ax.set_ylabel('Profondeur (m)', fontsize=12)
+                ax.set_title(f"Profil T°/Profondeur — {stem}", fontsize=13, fontweight='bold')
+                ax.grid(True, linestyle='--', linewidth=0.5, color='#cccccc')
+                ax.tick_params(labelsize=10)
+                for sp in ax.spines.values(): sp.set_edgecolor('#999999')
+
+                plt.tight_layout(pad=1.5)
+                dest = os.path.join(os.path.dirname(os.path.normpath(csv_path)),
+                                    f"{stem}_profil_temperature.png")
+                fig.savefig(dest, dpi=150, bbox_inches='tight', facecolor='white')
+                plt.close(fig)
+                done += 1
+            except Exception as exc:
+                errors.append(f"{os.path.basename(csv_path)}: {exc}")
+                plt.close('all')
+
+        progress.setValue(len(all_paths))
+        progress.close()
+
+        msg = self.translate(
+            f"{done} profil(s) TP généré(s)."
+            + (f"\n{skipped} vidéo(s) sans CSV télémétrie." if skipped else ""),
+            f"{done} TP profile(s) generated."
+            + (f"\n{skipped} video(s) without telemetry CSV." if skipped else ""))
+        if errors:
+            msg += "\n\n" + self.translate("Erreurs :", "Errors:") + "\n" + "\n".join(errors)
+        QtWidgets.QMessageBox.information(
+            self.window, self.translate("Profils TP", "TP profiles"), msg)
 
     def _show_load_history_context_menu(self, pos):
         """Clic droit sur 'Données historiques' → actions de suppression."""

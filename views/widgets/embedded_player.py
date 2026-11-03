@@ -243,8 +243,9 @@ class _VideoLabel(QtWidgets.QWidget):
 class EmbeddedVideoPlayer(QtWidgets.QWidget):
     """Lecteur vidéo embarqué avec timeline, corrections image et support stéréo."""
 
-    playback_state_changed = QtCore.pyqtSignal(bool)
-    corrections_changed    = QtCore.pyqtSignal()
+    playback_state_changed       = QtCore.pyqtSignal(bool)
+    corrections_changed          = QtCore.pyqtSignal()
+    batch_tp_profiles_requested  = QtCore.pyqtSignal()
 
     def sizeHint(self) -> QtCore.QSize:
         # Taille préférée fixe : empêche les layouts parents (splitter de page, etc.)
@@ -1451,9 +1452,12 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self._current_csv_path is not None
             and hasattr(self.telemetry_dialog, '_profile_curve')
         )
+        act_batch = menu.addAction("Exporter tous les profils TP")
         chosen = menu.exec(self.btn_telemetry.mapToGlobal(pos))
         if chosen is act:
             self._export_profile_image()
+        elif chosen is act_batch:
+            self.batch_tp_profiles_requested.emit()
 
     def _export_profile_image(self):
         if not self._current_csv_path:
