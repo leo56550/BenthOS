@@ -117,6 +117,7 @@ class _StatsWorker(QtCore.QThread):
     def run(self):
         total = len(self._paths)
         ardoise = 0
+        codestations_filled = 0
         derushees = 0
         annotations = 0
         essential_filled = 0
@@ -179,6 +180,8 @@ class _StatsWorker(QtCore.QThread):
             )
             if point_name_val and expl_val and expl_val != "?":
                 ardoise += 1
+            if point_name_val:
+                codestations_filled += 1
 
             if expl_val:
                 key = expl_val.lower()
@@ -206,10 +209,11 @@ class _StatsWorker(QtCore.QThread):
         )
 
         self.stats_ready.emit({
-            "total":             total,
-            "trashed":           self._trash_count,
-            "ardoise":           ardoise,
-            "expl_breakdown":    expl_breakdown,
+            "total":               total,
+            "trashed":             self._trash_count,
+            "ardoise":             ardoise,
+            "codestations_filled": codestations_filled,
+            "expl_breakdown":      expl_breakdown,
             "derushees":         derushees,
             "annotations":       annotations,
             "essential_filled":  essential_filled,
@@ -1505,13 +1509,6 @@ class _MiniRingExpl(QtWidgets.QWidget):
         p.setBrush(_bg)
         p.drawEllipse(_hr)
 
-        # % qualifiées dans le trou
-        qualified = sum(self._breakdown.values())
-        pct = int(qualified / self._total * 100)
-        p.setFont(QtGui.QFont("Segoe UI", 6, QtGui.QFont.Weight.Bold))
-        p.setPen(QtGui.QColor("#c8e0f0"))
-        p.drawText(QtCore.QRectF(cx - _MINI_D / 2, top, _MINI_D, _MINI_D),
-                   QtCore.Qt.AlignmentFlag.AlignCenter, f"{pct}%")
         p.end()
 
 
@@ -1533,13 +1530,43 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
         self._r_meta    = _MiniRingDual("Métadonnées")
         self._r_derush  = _MiniRing("#a78bfa", "Évènements")
 
-        _pairs = [
-            ("Qualification", "#34d399", self._r_kept),
-            ("Validation",    "#fbbf24", self._r_ardoise),
-            ("Métadonnées",   "#5DBB63", self._r_meta),
-            ("Évènements",    "#a78bfa", self._r_derush),
-        ]
-        for title, color, ring in _pairs:
+        # Qualification
+        _lbl_qualif = QtWidgets.QLabel("Qualification")
+        _lbl_qualif.setStyleSheet(
+            "color: #34d399; font-size: 9px; font-weight: bold;"
+            " background: transparent; border: none;")
+        _lbl_qualif.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight |
+                                 QtCore.Qt.AlignmentFlag.AlignVCenter)
+        lay.addWidget(_lbl_qualif)
+        lay.addWidget(self._r_kept)
+
+        # Validation : label "Validation" + pct% en dessous, dans un widget vertical
+        _lbl_valid = QtWidgets.QLabel("Validation")
+        _lbl_valid.setStyleSheet(
+            "color: #fbbf24; font-size: 9px; font-weight: bold;"
+            " background: transparent; border: none;")
+        _lbl_valid.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight |
+                                QtCore.Qt.AlignmentFlag.AlignVCenter)
+        self._lbl_ardoise_pct = QtWidgets.QLabel("–")
+        self._lbl_ardoise_pct.setStyleSheet(
+            "color: #c8e0f0; font-size: 9px; font-weight: bold;"
+            " background: transparent; border: none;")
+        self._lbl_ardoise_pct.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight |
+                                           QtCore.Qt.AlignmentFlag.AlignVCenter)
+        _valid_lbl_w = QtWidgets.QWidget()
+        _valid_lbl_w.setStyleSheet("background: transparent; border: none;")
+        _valid_lay = QtWidgets.QVBoxLayout(_valid_lbl_w)
+        _valid_lay.setContentsMargins(0, 0, 0, 0)
+        _valid_lay.setSpacing(0)
+        _valid_lay.addWidget(_lbl_valid)
+        _valid_lay.addWidget(self._lbl_ardoise_pct)
+        lay.addWidget(_valid_lbl_w)
+        lay.addWidget(self._r_ardoise)
+
+        for title, color, ring in [
+            ("Métadonnées", "#5DBB63", self._r_meta),
+            ("Évènements",  "#a78bfa", self._r_derush),
+        ]:
             lbl = QtWidgets.QLabel(title)
             lbl.setStyleSheet(
                 f"color: {color}; font-size: 9px; font-weight: bold;"
@@ -1584,6 +1611,9 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
 
         if t is None or t == 'ardoise':
             self._r_ardoise.set_data(self._expl_breakdown, total, delay_ms=100)
+            codestas = stats.get("codestations_filled", 0)
+            pct = int(codestas / (total or 1) * 100)
+            self._lbl_ardoise_pct.setText(f"{pct}%")
 
         if t is None or t == 'meta':
             self._r_meta.set_data(int(ess_f / ess_t * 100), int(opt_f / opt_t * 100), delay_ms=200)
