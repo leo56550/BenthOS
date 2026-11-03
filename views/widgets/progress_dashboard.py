@@ -1268,10 +1268,6 @@ class _MiniRingDual(QtWidgets.QWidget):
                                 QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.RoundCap))
             p.drawArc(rect_in, int(90 * 16), int(-a_opt * 16))
 
-        # Pourcentage essentiel au centre
-        p.setFont(QtGui.QFont("Segoe UI", 7, QtGui.QFont.Weight.Bold))
-        p.setPen(self._C_ESS)
-        p.drawText(rect_in, QtCore.Qt.AlignmentFlag.AlignCenter, f"{self._pct_ess}%")
         p.end()
 
 
@@ -1547,7 +1543,7 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
             " background: transparent; border: none;")
         _lbl_valid.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight |
                                 QtCore.Qt.AlignmentFlag.AlignVCenter)
-        self._lbl_ardoise_pct = QtWidgets.QLabel("–")
+        self._lbl_ardoise_pct = QtWidgets.QLabel("Codestation –")
         self._lbl_ardoise_pct.setStyleSheet(
             "color: #c8e0f0; font-size: 9px; font-weight: bold;"
             " background: transparent; border: none;")
@@ -1563,18 +1559,45 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
         lay.addWidget(_valid_lbl_w)
         lay.addWidget(self._r_ardoise)
 
-        for title, color, ring in [
-            ("Métadonnées", "#5DBB63", self._r_meta),
-            ("Évènements",  "#a78bfa", self._r_derush),
-        ]:
-            lbl = QtWidgets.QLabel(title)
-            lbl.setStyleSheet(
-                f"color: {color}; font-size: 9px; font-weight: bold;"
-                " background: transparent; border: none;")
-            lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight |
+        # Métadonnées : label + essentiel% + optionnel% en dessous
+        _lbl_meta = QtWidgets.QLabel("Métadonnées")
+        _lbl_meta.setStyleSheet(
+            "color: #5DBB63; font-size: 9px; font-weight: bold;"
+            " background: transparent; border: none;")
+        _lbl_meta.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight |
+                               QtCore.Qt.AlignmentFlag.AlignVCenter)
+        self._lbl_meta_ess_pct = QtWidgets.QLabel("Essentiel –")
+        self._lbl_meta_ess_pct.setStyleSheet(
+            "color: #5DBB63; font-size: 9px; font-weight: bold;"
+            " background: transparent; border: none;")
+        self._lbl_meta_ess_pct.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight |
+                                            QtCore.Qt.AlignmentFlag.AlignVCenter)
+        self._lbl_meta_opt_pct = QtWidgets.QLabel("Optionnel –")
+        self._lbl_meta_opt_pct.setStyleSheet(
+            "color: #60a5fa; font-size: 9px; font-weight: bold;"
+            " background: transparent; border: none;")
+        self._lbl_meta_opt_pct.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight |
+                                            QtCore.Qt.AlignmentFlag.AlignVCenter)
+        _meta_lbl_w = QtWidgets.QWidget()
+        _meta_lbl_w.setStyleSheet("background: transparent; border: none;")
+        _meta_lay = QtWidgets.QVBoxLayout(_meta_lbl_w)
+        _meta_lay.setContentsMargins(0, 0, 0, 0)
+        _meta_lay.setSpacing(0)
+        _meta_lay.addWidget(_lbl_meta)
+        _meta_lay.addWidget(self._lbl_meta_ess_pct)
+        _meta_lay.addWidget(self._lbl_meta_opt_pct)
+        lay.addWidget(_meta_lbl_w)
+        lay.addWidget(self._r_meta)
+
+        # Évènements
+        _lbl_ev = QtWidgets.QLabel("Évènements")
+        _lbl_ev.setStyleSheet(
+            "color: #a78bfa; font-size: 9px; font-weight: bold;"
+            " background: transparent; border: none;")
+        _lbl_ev.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight |
                              QtCore.Qt.AlignmentFlag.AlignVCenter)
-            lay.addWidget(lbl)
-            lay.addWidget(ring)
+        lay.addWidget(_lbl_ev)
+        lay.addWidget(self._r_derush)
 
         self.setFixedHeight(_MINI_H + 6)
 
@@ -1613,10 +1636,12 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
             self._r_ardoise.set_data(self._expl_breakdown, total, delay_ms=100)
             codestas = stats.get("codestations_filled", 0)
             pct = int(codestas / (total or 1) * 100)
-            self._lbl_ardoise_pct.setText(f"{pct}%")
+            self._lbl_ardoise_pct.setText(f"Codestation {pct}%")
 
         if t is None or t == 'meta':
             self._r_meta.set_data(int(ess_f / ess_t * 100), int(opt_f / opt_t * 100), delay_ms=200)
+            self._lbl_meta_ess_pct.setText(f"Essentiel {int(ess_f / ess_t * 100)}%")
+            self._lbl_meta_opt_pct.setText(f"Optionnel {int(opt_f / opt_t * 100)}%")
             self._r_meta.setToolTip(
                 f"Métadonnées\n● Essentielles : {ess_f} / {ess_t} ({int(ess_f/ess_t*100)}%)\n"
                 f"● Optionnelles : {opt_f} / {opt_t} ({int(opt_f/opt_t*100)}%)")
