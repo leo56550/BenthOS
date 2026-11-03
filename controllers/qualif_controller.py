@@ -1831,11 +1831,6 @@ class QualifController:
         # GPS est maintenant disponible alors que la carte précédente a été construite sans
         # aucun marqueur → forcer la reconstruction pour retirer l'overlay "pas de GPS".
         _force_rebuild = bool(valid_coords) and not getattr(self, '_map_has_gps', False)
-        print(f"[MAP] update_minimap: map_initialized={getattr(self,'map_initialized',False)}, "
-              f"_force_rebuild={_force_rebuild}, _map_has_gps={getattr(self,'_map_has_gps',False)}, "
-              f"valid_coords={len(valid_coords)}, extra_points={len(extra_points or {})}, "
-              f"show_dialog={show_dialog}, dialog_visible={self.map_dialog.isVisible()}, "
-              f"_map_shown_once={getattr(self,'_map_shown_once',False)}")
         if not getattr(self, 'map_initialized', False) or _force_rebuild:
             m = folium.Map(location=center, zoom_start=17, tiles=None)
             folium.TileLayer(tiles="openstreetmap", name="OpenStreetMap", max_zoom=19).add_to(m)
@@ -2174,15 +2169,13 @@ class QualifController:
             if show_dialog and not self.map_dialog.isVisible():
                 self.map_dialog.show()
                 _html = self._map_html_cache
-                print(f"[MAP] show() → load via timer 50ms, html len={len(_html)}")
                 QtCore.QTimer.singleShot(
                     50, lambda h=_html: self._load_map_html(h, "après show")
                 )
             elif self.map_dialog.isVisible():
-                print(f"[MAP] dialog déjà visible, load direct")
                 self._load_map_html(self._map_html_cache, "dialog visible")
             else:
-                print(f"[MAP] build sans show, html mis en cache len={len(self._map_html_cache)}")
+                pass  # html mis en cache, chargé au premier show
             if selected_name and selected_name in valid_coords:
                 QtCore.QTimer.singleShot(600, lambda: self.apply_red_marker_js(selected_name))
         else:
@@ -2221,7 +2214,6 @@ class QualifController:
         self._map_shown_once = True
         if getattr(self, '_map_html_cache', None):
             _html = self._map_html_cache
-            print(f"[MAP] _refresh_map_on_first_show: premier show, load via timer len={len(_html)}")
             QtCore.QTimer.singleShot(
                 50, lambda h=_html: self._load_map_html(h, "_refresh_first_show")
             )
@@ -2242,9 +2234,7 @@ class QualifController:
         tmp.flush()
         tmp.close()
         _path = tmp.name
-        print(f"[MAP] _load_map_html ({label}): temp={_path}, len={len(html)}")
         def _on_load_finished(ok):
-            print(f"[MAP] loadFinished ok={ok}")
             try:
                 self.map_dialog.map_view.loadFinished.disconnect(_on_load_finished)
             except Exception:
@@ -2520,14 +2510,10 @@ class QualifController:
                 for evt in rotation_events:
                     angle = evt["angle"]
                     mid_ts = evt["mid_ts"]
-                    is_360 = (angle == 360)
-                    fw, fh = (248, 188) if is_360 else (240, 180)
-                    border = "3px solid #ff3333" if is_360 else "1px solid #555555"
-
                     w_photo = QtWidgets.QFrame()
-                    w_photo.setFixedSize(fw, fh)
+                    w_photo.setFixedSize(240, 180)
                     w_photo.setStyleSheet(
-                        f"background-color: #111a24; border-radius: 6px; border: {border};"
+                        "background-color: #111a24; border-radius: 6px; border: 1px solid #555555;"
                     )
 
                     ph_layout = QtWidgets.QVBoxLayout(w_photo)
@@ -2612,21 +2598,10 @@ class QualifController:
         ))
         new_layout.addWidget(lbl)
 
-        # Overlay angle
         minutes = int(ts // 60)
         seconds_i = int(ts % 60)
-        ms = int((ts - int(ts)) * 1000)
 
-        angle_lbl = QtWidgets.QLabel(f" {angle}° ", lbl)
-        angle_lbl.setStyleSheet(
-            "background-color: rgba(0,0,0,160); color: #55ff55;"
-            " font-weight: bold; border-radius: 3px; font-size: 10px;"
-        )
-        angle_lbl.adjustSize()
-        angle_lbl.move(5, 5)
-        angle_lbl.show()
-
-        time_lbl = QtWidgets.QLabel(f" {minutes:02d}:{seconds_i:02d}.{ms:03d} ", lbl)
+        time_lbl = QtWidgets.QLabel(f" {minutes:02d}:{seconds_i:02d} ", lbl)
         time_lbl.setStyleSheet(
             "background-color: rgba(0,0,0,160); color: #ffffff;"
             " font-weight: bold; border-radius: 3px; font-size: 10px;"

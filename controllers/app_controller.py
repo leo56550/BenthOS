@@ -1760,9 +1760,6 @@ class AppController(QtCore.QObject):
         if self.qualif_ctrl.video_model.rowCount() == 0:
             wd = self.working_dir or getattr(self.metadonnees_ctrl, '_csv_folder', '') or ''
             extra_points = self.metadonnees_ctrl.collect_ft_table_coords(wd)
-        print(f"[MAP] _open_map_from_metadonnees: video_model.rowCount={self.qualif_ctrl.video_model.rowCount()}, "
-              f"extra_points={len(extra_points)}, working_dir={self.working_dir!r}, "
-              f"csv_folder={getattr(self.metadonnees_ctrl,'_csv_folder','')!r}")
         self.qualif_ctrl.update_minimap(video_name, show_dialog=True, extra_points=extra_points)
 
     def _refresh_dashboard(self, *_, target: str | None = None):

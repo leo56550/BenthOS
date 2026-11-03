@@ -3497,16 +3497,10 @@ class EvenementsController:
                     ts, angle, evt_type = evt["timestamp"], evt["angle"], evt["type"]
                     # Image à rotation_début + 3 secondes
                     mid_ts = ts + 3.0
-                    print(f"[SECTOR]   rotation {g_idx+1}-{idx+1} angle={angle}° "
-                          f"evt_ts={ts:.2f}s mid_ts={mid_ts:.2f}s")
-                    is_360 = (angle == 360)
-                    fw, fh = (248, 188) if is_360 else (240, 180)
-                    border = "3px solid #ff3333" if is_360 else "1px solid #555555"
-
                     w_photo = QtWidgets.QFrame()
-                    w_photo.setFixedSize(fw, fh)
+                    w_photo.setFixedSize(240, 180)
                     w_photo.setStyleSheet(
-                        f"background-color: #111a24; border-radius: 6px; border: {border};")
+                        "background-color: #111a24; border-radius: 6px; border: 1px solid #555555;")
                     ph_layout = QtWidgets.QVBoxLayout(w_photo)
                     ph_layout.setContentsMargins(0, 0, 0, 0)
                     ph_lbl = QtWidgets.QLabel("⏳")
@@ -3617,20 +3611,9 @@ class EvenementsController:
 
         minutes  = int(ts // 60)
         seconds_i = int(ts % 60)
-        ms_val   = int((ts - int(ts)) * 1000)
-        fw, fh   = w_photo.width(), w_photo.height()
+        fh   = w_photo.height()
 
-        # Labels parentés sur w_photo (taille fixe) pour éviter la superposition
-        angle_lbl = QtWidgets.QLabel(f" {angle}° ", w_photo)
-        angle_lbl.setStyleSheet(
-            "background-color: rgba(0,0,0,160); color: #55ff55;"
-            " font-weight: bold; border-radius: 3px; font-size: 10px;")
-        angle_lbl.adjustSize()
-        angle_lbl.move(5, 5)
-        angle_lbl.raise_()
-        angle_lbl.show()
-
-        time_lbl = QtWidgets.QLabel(f" {minutes:02d}:{seconds_i:02d}.{ms_val:03d} ", w_photo)
+        time_lbl = QtWidgets.QLabel(f" {minutes:02d}:{seconds_i:02d} ", w_photo)
         time_lbl.setStyleSheet(
             "background-color: rgba(0,0,0,160); color: #aaddff;"
             " border-radius: 3px; font-size: 9px;")

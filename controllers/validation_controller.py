@@ -973,14 +973,10 @@ class ValidationController:
                         mid_ts = (ts + rotation_events[idx + 1]["timestamp"]) / 2.0
                     else:
                         mid_ts = ts + _avg_interval / 2.0
-                    is_360 = (angle == 360)
-                    fw, fh = (248, 188) if is_360 else (240, 180)
-                    border = "3px solid #ff3333" if is_360 else "1px solid #555555"
-
                     w_photo = QtWidgets.QFrame()
-                    w_photo.setFixedSize(fw, fh)
+                    w_photo.setFixedSize(240, 180)
                     w_photo.setStyleSheet(
-                        f"background-color: #111a24; border-radius: 6px; border: {border};"
+                        "background-color: #111a24; border-radius: 6px; border: 1px solid #555555;"
                     )
                     ph_layout = QtWidgets.QVBoxLayout(w_photo)
                     ph_layout.setContentsMargins(0, 0, 0, 0)
@@ -1043,18 +1039,8 @@ class ValidationController:
 
         minutes = int(ts // 60)
         seconds_i = int(ts % 60)
-        ms = int((ts - int(ts)) * 1000)
 
-        angle_lbl = QtWidgets.QLabel(f" {angle}° ", lbl)
-        angle_lbl.setStyleSheet(
-            "background-color: rgba(0,0,0,160); color: #55ff55;"
-            " font-weight: bold; border-radius: 3px; font-size: 10px;"
-        )
-        angle_lbl.adjustSize()
-        angle_lbl.move(5, 5)
-        angle_lbl.show()
-
-        time_lbl = QtWidgets.QLabel(f" {minutes:02d}:{seconds_i:02d}.{ms:03d} ", lbl)
+        time_lbl = QtWidgets.QLabel(f" {minutes:02d}:{seconds_i:02d} ", lbl)
         time_lbl.setStyleSheet(
             "background-color: rgba(0,0,0,160); color: #ffffff;"
             " font-weight: bold; border-radius: 3px; font-size: 10px;"
