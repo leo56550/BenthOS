@@ -638,6 +638,7 @@ class _CollapsibleSection(QtWidgets.QWidget):
 
 # ── Canvas image zoomable/panable ────────────────────────────────────────────
 
+
 class _TimelineSlider(QtWidgets.QWidget):
     """Slider horizontal avec timecode flottant au-dessus du curseur."""
 
@@ -655,6 +656,7 @@ class _TimelineSlider(QtWidgets.QWidget):
         self._lbl.hide()
 
         self._slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal, self)
+        self._slider.setPageStep(1)
         self._slider.setRange(0, 1000)
         self._slider.sliderPressed.connect(self.sliderPressed)
         self._slider.sliderReleased.connect(self.sliderReleased)
@@ -1091,6 +1093,11 @@ class _SectorViewerWidget(QtWidgets.QWidget):
             self._raw_frame = frame
             self._pos_ms = seek_ms
             self._show_corrected()
+        # Clic sur la groove (pas un drag) : sliderPressed n'est pas émis, le timer
+        # continue à lire depuis l'ancienne position de _cap → saut en arrière.
+        # On repositionne _cap ici pour que le timer reprenne depuis la bonne position.
+        if not self._timeline_dragging and self._cap is not None and self._cap.isOpened():
+            self._cap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
 
     def _advance_frame(self):
         if self._cap is None or not self._cap.isOpened():
@@ -1099,6 +1106,10 @@ class _SectorViewerWidget(QtWidgets.QWidget):
         ret, frame = self._cap.read()
         if not ret:
             self._stop_playback()
+            return
+        # Événement timer déjà posté avant que l'utilisateur clique :
+        # on lit la frame (inévitable) mais on ne l'affiche pas pour éviter le saut visuel.
+        if self._timeline_dragging:
             return
         ms = int(self._cap.get(cv2.CAP_PROP_POS_MSEC))
         if ms > self._clip_end_ms:

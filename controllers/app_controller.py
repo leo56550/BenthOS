@@ -953,14 +953,129 @@ class AppController(QtCore.QObject):
                 tl.set_selected_event(None)
                 tl.update()
 
+    def _delete_habitat_jsons(self):
+        """Supprime tous les *_habitat.json d'un dossier choisi après confirmation."""
+        import glob as _glob
+        start_dir = getattr(self.qualif_ctrl, 'current_campaign_folder', '') or self.working_dir or ""
+        folder = QtWidgets.QFileDialog.getExistingDirectory(
+            self.window,
+            self.translate("Choisir le dossier", "Choose folder"),
+            start_dir,
+        )
+        if not folder or not os.path.isdir(folder):
+            return
+        files = _glob.glob(os.path.join(folder, "**", "*_habitat.json"), recursive=True)
+        if not files:
+            QtWidgets.QMessageBox.information(
+                self.window,
+                self.translate("Aucun fichier", "No files"),
+                self.translate("Aucun *_habitat.json trouvé dans ce dossier.",
+                               "No *_habitat.json found in this folder.")
+            )
+            return
+        reply = QtWidgets.QMessageBox.question(
+            self.window,
+            self.translate("Confirmer la suppression", "Confirm deletion"),
+            self.translate(
+                f"⚠️ Attention : vous allez perdre toutes les analyses habitat !\n\n"
+                f"{len(files)} fichier(s) *_habitat.json vont être supprimés.\n"
+                f"Cette action est irréversible.\n\nContinuer ?",
+                f"⚠️ Warning: you will lose all habitat analysis data!\n\n"
+                f"{len(files)} *_habitat.json file(s) will be deleted.\n"
+                f"This action cannot be undone.\n\nContinue?"
+            ),
+            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+            QtWidgets.QMessageBox.StandardButton.No,
+        )
+        if reply != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+        errors = []
+        for f in files:
+            try:
+                os.remove(f)
+            except Exception as e:
+                errors.append(f"{os.path.basename(f)}: {e}")
+        if errors:
+            QtWidgets.QMessageBox.warning(self.window, self.translate("Erreurs", "Errors"),
+                                          "\n".join(errors))
+        else:
+            QtWidgets.QMessageBox.information(
+                self.window,
+                self.translate("Suppression terminée", "Deletion complete"),
+                self.translate(f"{len(files)} *_habitat.json supprimé(s).",
+                               f"{len(files)} *_habitat.json deleted.")
+            )
+
+    def _delete_masques_saisies(self):
+        """Supprime tous les *_masque_saisie.xlsx d'un dossier choisi après confirmation."""
+        import glob as _glob
+        start_dir = getattr(self.qualif_ctrl, 'current_campaign_folder', '') or self.working_dir or ""
+        folder = QtWidgets.QFileDialog.getExistingDirectory(
+            self.window,
+            self.translate("Choisir le dossier", "Choose folder"),
+            start_dir,
+        )
+        if not folder or not os.path.isdir(folder):
+            return
+        files = _glob.glob(os.path.join(folder, "**", "*_masque_saisie.xlsx"), recursive=True)
+        if not files:
+            QtWidgets.QMessageBox.information(
+                self.window,
+                self.translate("Aucun fichier", "No files"),
+                self.translate("Aucun *_masque_saisie.xlsx trouvé dans ce dossier.",
+                               "No *_masque_saisie.xlsx found in this folder.")
+            )
+            return
+        reply = QtWidgets.QMessageBox.question(
+            self.window,
+            self.translate("Confirmer la suppression", "Confirm deletion"),
+            self.translate(
+                f"⚠️ Attention : vous allez supprimer tous les masques de saisies !\n\n"
+                f"{len(files)} fichier(s) *_masque_saisie.xlsx vont être supprimés.\n"
+                f"Cette action est irréversible.\n\nContinuer ?",
+                f"⚠️ Warning: you will delete all entry template files!\n\n"
+                f"{len(files)} *_masque_saisie.xlsx file(s) will be deleted.\n"
+                f"This action cannot be undone.\n\nContinue?"
+            ),
+            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+            QtWidgets.QMessageBox.StandardButton.No,
+        )
+        if reply != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+        errors = []
+        for f in files:
+            try:
+                os.remove(f)
+            except Exception as e:
+                errors.append(f"{os.path.basename(f)}: {e}")
+        if errors:
+            QtWidgets.QMessageBox.warning(self.window, self.translate("Erreurs", "Errors"),
+                                          "\n".join(errors))
+        else:
+            QtWidgets.QMessageBox.information(
+                self.window,
+                self.translate("Suppression terminée", "Deletion complete"),
+                self.translate(f"{len(files)} *_masque_saisie.xlsx supprimé(s).",
+                               f"{len(files)} *_masque_saisie.xlsx deleted.")
+            )
+
     def _show_load_history_context_menu(self, pos):
-        """Clic droit sur 'Données historiques' → supprimer les temp.json."""
+        """Clic droit sur 'Données historiques' → actions de suppression."""
         btn = self.window.btn_load_history
         menu = QtWidgets.QMenu(btn)
-        action_del = menu.addAction(
+        action_del_temp = menu.addAction(
             self.translate("Supprimer les temp.json", "Delete temp.json files"))
-        if menu.exec(btn.mapToGlobal(pos)) == action_del:
+        action_del_habitat = menu.addAction(
+            self.translate("Supprimer les habitats.json", "Delete habitat.json files"))
+        action_del_masques = menu.addAction(
+            self.translate("Supprimer les masques de saisies", "Delete entry template files"))
+        chosen = menu.exec(btn.mapToGlobal(pos))
+        if chosen == action_del_temp:
             self._delete_temp_jsons()
+        elif chosen == action_del_habitat:
+            self._delete_habitat_jsons()
+        elif chosen == action_del_masques:
+            self._delete_masques_saisies()
 
     def _load_historical_data(self):
         """Ouvre un CSV/XLSX infostation, demande le dossier vidéo, génère les temp.json."""
