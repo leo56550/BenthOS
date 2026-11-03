@@ -1566,13 +1566,13 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
             " background: transparent; border: none;")
         _lbl_meta.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight |
                                QtCore.Qt.AlignmentFlag.AlignVCenter)
-        self._lbl_meta_ess_pct = QtWidgets.QLabel("Essentiel –")
+        self._lbl_meta_ess_pct = QtWidgets.QLabel("Essentielles –")
         self._lbl_meta_ess_pct.setStyleSheet(
             "color: #5DBB63; font-size: 9px; font-weight: bold;"
             " background: transparent; border: none;")
         self._lbl_meta_ess_pct.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight |
                                             QtCore.Qt.AlignmentFlag.AlignVCenter)
-        self._lbl_meta_opt_pct = QtWidgets.QLabel("Optionnel –")
+        self._lbl_meta_opt_pct = QtWidgets.QLabel("Optionnelles –")
         self._lbl_meta_opt_pct.setStyleSheet(
             "color: #60a5fa; font-size: 9px; font-weight: bold;"
             " background: transparent; border: none;")
@@ -1640,8 +1640,8 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
 
         if t is None or t == 'meta':
             self._r_meta.set_data(int(ess_f / ess_t * 100), int(opt_f / opt_t * 100), delay_ms=200)
-            self._lbl_meta_ess_pct.setText(f"Essentiel {int(ess_f / ess_t * 100)}%")
-            self._lbl_meta_opt_pct.setText(f"Optionnel {int(opt_f / opt_t * 100)}%")
+            self._lbl_meta_ess_pct.setText(f"Essentielles {int(ess_f / ess_t * 100)}%")
+            self._lbl_meta_opt_pct.setText(f"Optionnelles {int(opt_f / opt_t * 100)}%")
             self._r_meta.setToolTip(
                 f"Métadonnées\n● Essentielles : {ess_f} / {ess_t} ({int(ess_f/ess_t*100)}%)\n"
                 f"● Optionnelles : {opt_f} / {opt_t} ({int(opt_f/opt_t*100)}%)")

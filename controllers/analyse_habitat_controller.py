@@ -640,7 +640,11 @@ class _CollapsibleSection(QtWidgets.QWidget):
 
 
 class _TimelineSlider(QtWidgets.QWidget):
-    """Slider horizontal avec timecode flottant au-dessus du curseur."""
+    """Slider horizontal avec timecode flottant.
+
+    Gestion souris entièrement manuelle : le QSlider interne est transparent
+    aux événements souris pour éviter tout page step ou comportement Qt parasite.
+    """
 
     sliderPressed  = QtCore.pyqtSignal()
     sliderReleased = QtCore.pyqtSignal()
@@ -654,13 +658,12 @@ class _TimelineSlider(QtWidgets.QWidget):
             " font-size: 8pt; padding: 1px 5px; border-radius: 3px;"
         )
         self._lbl.hide()
+        self._pressed = False
 
         self._slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal, self)
-        self._slider.setPageStep(1)
         self._slider.setRange(0, 1000)
-        self._slider.sliderPressed.connect(self.sliderPressed)
-        self._slider.sliderReleased.connect(self.sliderReleased)
-        self._slider.sliderMoved.connect(self.sliderMoved)
+        # Intercepter tous les événements souris du slider pour un contrôle total
+        self._slider.installEventFilter(self)
 
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -697,6 +700,52 @@ class _TimelineSlider(QtWidgets.QWidget):
         lw = self._lbl.width()
         x = max(0, min(cx - lw // 2, self.width() - lw))
         self._lbl.move(x, 0)
+
+    # ── Gestion souris via eventFilter (contrôle total, pas de page step) ────
+
+    def _val_from_slider_x(self, sx: int) -> int:
+        """Convertit une position X en coords slider en valeur [min, max]."""
+        opt = QtWidgets.QStyleOptionSlider()
+        self._slider.initStyleOption(opt)
+        gr = self._slider.style().subControlRect(
+            QtWidgets.QStyle.ComplexControl.CC_Slider, opt,
+            QtWidgets.QStyle.SubControl.SC_SliderGroove, self._slider)
+        sx = max(gr.left(), min(sx, gr.right()))
+        ratio = (sx - gr.left()) / max(1, gr.width() - 1)
+        lo, hi = self._slider.minimum(), self._slider.maximum()
+        return round(lo + ratio * (hi - lo))
+
+    def eventFilter(self, watched, event):
+        if watched is not self._slider:
+            return super().eventFilter(watched, event)
+        t = event.type()
+        if t == QtCore.QEvent.Type.MouseButtonPress:
+            if event.button() == QtCore.Qt.MouseButton.LeftButton:
+                self._pressed = True
+                val = self._val_from_slider_x(event.pos().x())
+                print(f"[TIMELINE] Press → val={val}")
+                self._slider.blockSignals(True)
+                self._slider.setSliderPosition(val)
+                self._slider.blockSignals(False)
+                self._move_label()
+                self.sliderPressed.emit()
+                self.sliderMoved.emit(val)
+            return True  # bloquer l'event natif du slider
+        if t == QtCore.QEvent.Type.MouseMove:
+            if self._pressed:
+                val = self._val_from_slider_x(event.pos().x())
+                self._slider.blockSignals(True)
+                self._slider.setSliderPosition(val)
+                self._slider.blockSignals(False)
+                self._move_label()
+                self.sliderMoved.emit(val)
+            return True
+        if t == QtCore.QEvent.Type.MouseButtonRelease:
+            if event.button() == QtCore.Qt.MouseButton.LeftButton and self._pressed:
+                self._pressed = False
+                self.sliderReleased.emit()
+            return True
+        return False
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -1056,16 +1105,19 @@ class _SectorViewerWidget(QtWidgets.QWidget):
         if not self._timeline_dragging:
             dur = max(1, self._clip_end_ms - self._clip_start_ms)
             pos = max(0, min(1000, int((self._pos_ms - self._clip_start_ms) * 1000 / dur)))
+            print(f"[CTRL] _show_corrected → setValue({pos}), pos_ms={self._pos_ms}")
             self._timeline.blockSignals(True)
             self._timeline.setValue(pos)
             self._timeline.blockSignals(False)
 
     def _on_timeline_pressed(self):
+        print(f"[CTRL] _on_timeline_pressed → dragging=True, timer_active={self._play_timer.isActive()}")
         self._timeline_dragging = True
         if self._play_timer.isActive():
             self._play_timer.stop()
 
     def _on_timeline_released(self):
+        print(f"[CTRL] _on_timeline_released → value={self._timeline.value()}")
         self._timeline_dragging = False
         dur = max(1, self._clip_end_ms - self._clip_start_ms)
         self._pos_ms = self._clip_start_ms + int(self._timeline.value() * dur / 1000)
@@ -1080,6 +1132,7 @@ class _SectorViewerWidget(QtWidgets.QWidget):
             self._play_timer.start(max(16, int(1000.0 / self._fps)))
 
     def _on_timeline_moved(self, value: int):
+        print(f"[CTRL] _on_timeline_moved → value={value}, dragging={self._timeline_dragging}")
         if not self._video_path:
             return
         dur = max(1, self._clip_end_ms - self._clip_start_ms)

@@ -285,6 +285,9 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         # Interpolation entre les mises à jour Qt de position (~50 ms) pour un curseur fluide
         self._interp_pos_ms:   int = 0
         self._interp_time_ms:  int = 0
+        # Filtre anti-seek-périmé : positionChanged(old_pos) arrive après is_dragging=False
+        self._seek_target_ms:  int = -1   # cible du seek en cours (-1 = inactif)
+        self._seek_source_ms:  int = -1   # position avant le seek
 
         # Image corrections (active only when paused)
         self._last_raw_frame: np.ndarray | None = None
@@ -1012,17 +1015,26 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.player_R.setPosition(0)
         self.center_scroll_on_cursor()
 
+    def _start_seek(self, target_ms: int):
+        """Prépare le filtre anti-positionChanged-périmé et cale l'interpolation sur la cible."""
+        self._seek_source_ms = self.timeline.current_pos
+        self._seek_target_ms = target_ms
+        self._interp_pos_ms  = target_ms
+        self._interp_time_ms = int(time.monotonic() * 1000)
+
     def on_timeline_pressed(self, target_ms: int):
         """Met le lecteur en pause au début du drag timeline et se positionne sur target_ms."""
         if self.timeline.is_dragging and not self.slider_was_playing:
             if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
                 self.slider_was_playing = True
                 self.player.pause()
+        self._start_seek(target_ms)
         self.player.setPosition(target_ms)
-        self.center_scroll_on_cursor()
+        self.center_scroll_on_cursor(target_ms)
 
     def on_timeline_released(self, target_ms: int):
         """Reprend la lecture si elle était active avant le drag timeline."""
+        self._start_seek(target_ms)
         self.player.setPosition(target_ms)
         if self.slider_was_playing:
             self.player.play()
@@ -1030,12 +1042,24 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         elif self.left_display.currentIndex() == 1:
             # Seek manuel avec corrections actives : désactiver HE/Dehaze et afficher la frame brute
             self._reset_corrections()
-        self.center_scroll_on_cursor()
+        self.center_scroll_on_cursor(target_ms)
 
     def on_player_position_changed(self, position_ms: int):
         """Synchronise le flux R et la timeline quand le lecteur est en pause ou en scrub."""
         if self.is_stereo and abs(self.player_R.position() - position_ms) > 50:
             self.player_R.setPosition(position_ms)
+
+        # Filtre les positionChanged périmés (émis par player.pause() juste avant le seek)
+        if self._seek_target_ms >= 0:
+            target = self._seek_target_ms
+            source = self._seek_source_ms
+            if source > target:  # seek en arrière : ignorer pos > target + marge
+                if position_ms > target + 500:
+                    return
+            elif source < target:  # seek en avant : ignorer pos < target - marge
+                if position_ms < target - 500:
+                    return
+            self._seek_target_ms = -1  # seek terminé, désactiver le filtre
 
         # Pendant la lecture, le smooth_timer gère les mises à jour UI ;
         # on mémorise la position réelle pour l'interpolation.
