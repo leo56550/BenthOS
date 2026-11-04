@@ -712,6 +712,7 @@ class _DonutMetaSplit(_DonutBase):
     def __init__(self, title: str, compact: bool = False, parent=None):
         super().__init__(compact=compact, parent=parent)
         self._title      = title
+        self._language   = 'fr'
         self._ess_filled = 0
         self._ess_total  = 1
         self._opt_filled = 0
@@ -720,6 +721,10 @@ class _DonutMetaSplit(_DonutBase):
         # diamètre intérieur proportionnel au mode
         self._ds_in = 40 if compact else 74
         self._rw_in = 3 if compact else 6
+
+    def set_language(self, lang: str):
+        self._language = lang
+        self.update()
 
     def set_data(self, ess_filled: int, ess_total: int,
                  opt_filled: int, opt_total: int, delay_ms: int = 0):
@@ -798,12 +803,14 @@ class _DonutMetaSplit(_DonutBase):
         p.setPen(self._C_ESSENTIAL)
         p.drawText(QtCore.QRectF(0, y_leg, w, 12),
                    QtCore.Qt.AlignmentFlag.AlignCenter,
-                   f"● {pct_ess}%" if self._compact else f"● Essentielles  {pct_ess}%")
+                   f"● {pct_ess}%" if self._compact else
+                   f"● {'Essential' if self._language == 'en' else 'Essentielles'}  {pct_ess}%")
 
         p.setPen(self._C_OPTIONAL)
         p.drawText(QtCore.QRectF(0, y_leg + 12, w, 12),
                    QtCore.Qt.AlignmentFlag.AlignCenter,
-                   f"● {pct_opt}%" if self._compact else f"● Optionnelles  {pct_opt}%")
+                   f"● {pct_opt}%" if self._compact else
+                   f"● {'Optional' if self._language == 'en' else 'Optionnelles'}  {pct_opt}%")
 
         self._paint_title(p, self._title, w, y_leg + (26 if self._compact else 30))
         p.end()
@@ -1069,6 +1076,7 @@ class ProgressDashboardWidget(QtWidgets.QWidget):
                 "Double-cliquer pour voir la répartition par statut d'exploitabilité")
             self._card_meta._title    = "Métadonnées"
             self._card_derush._title  = "Évènements"
+        self._card_meta.set_language(lang)
         for card in (self._card_kept, self._card_ardoise,
                      self._card_meta, self._card_derush):
             card.update()
@@ -1525,6 +1533,7 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
         self._r_ardoise = _MiniRingExpl()
         self._r_meta    = _MiniRingDual("Métadonnées")
         self._r_derush  = _MiniRing("#a78bfa", "Évènements")
+        self._language  = 'fr'
 
         # Qualification
         _lbl_qualif = QtWidgets.QLabel("Qualification")
@@ -1560,7 +1569,8 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
         lay.addWidget(self._r_ardoise)
 
         # Métadonnées : label + essentiel% + optionnel% en dessous
-        _lbl_meta = QtWidgets.QLabel("Métadonnées")
+        self._lbl_meta = QtWidgets.QLabel("Métadonnées")
+        _lbl_meta = self._lbl_meta
         _lbl_meta.setStyleSheet(
             "color: #5DBB63; font-size: 9px; font-weight: bold;"
             " background: transparent; border: none;")
@@ -1590,7 +1600,8 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
         lay.addWidget(self._r_meta)
 
         # Évènements
-        _lbl_ev = QtWidgets.QLabel("Évènements")
+        self._lbl_ev = QtWidgets.QLabel("Évènements")
+        _lbl_ev = self._lbl_ev
         _lbl_ev.setStyleSheet(
             "color: #a78bfa; font-size: 9px; font-weight: bold;"
             " background: transparent; border: none;")
@@ -1639,32 +1650,34 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
             self._lbl_ardoise_pct.setText(f"Codestation {pct}%")
 
         if t is None or t == 'meta':
+            en = (self._language == 'en')
             self._r_meta.set_data(int(ess_f / ess_t * 100), int(opt_f / opt_t * 100), delay_ms=200)
-            self._lbl_meta_ess_pct.setText(f"Essentielles {int(ess_f / ess_t * 100)}%")
-            self._lbl_meta_opt_pct.setText(f"Optionnelles {int(opt_f / opt_t * 100)}%")
+            self._lbl_meta_ess_pct.setText(
+                f"{'Essential' if en else 'Essentielles'} {int(ess_f / ess_t * 100)}%")
+            self._lbl_meta_opt_pct.setText(
+                f"{'Optional' if en else 'Optionnelles'} {int(opt_f / opt_t * 100)}%")
             self._r_meta.setToolTip(
-                f"Métadonnées\n● Essentielles : {ess_f} / {ess_t} ({int(ess_f/ess_t*100)}%)\n"
-                f"● Optionnelles : {opt_f} / {opt_t} ({int(opt_f/opt_t*100)}%)")
+                f"{'Metadata' if en else 'Métadonnées'}\n"
+                f"● {'Essential' if en else 'Essentielles'} : {ess_f} / {ess_t} ({int(ess_f/ess_t*100)}%)\n"
+                f"● {'Optional' if en else 'Optionnelles'} : {opt_f} / {opt_t} ({int(opt_f/opt_t*100)}%)")
 
         if t is None or t == 'events':
+            en = (self._language == 'en')
             self._r_derush.set_pct(int(land / total * 100), delay_ms=300)
             self._r_derush.setToolTip(
-                f"Évènements\nAtt./Déc. : {land} / {total} ({int(land/total*100)}%)\n"
-                f"Début/Fin ann. : {anno} / {total} ({int(anno/total*100)}%)")
+                f"{'Events' if en else 'Évènements'}\n"
+                f"{'Land./Takeoff' if en else 'Att./Déc.'} : {land} / {total} ({int(land/total*100)}%)\n"
+                f"{'Start/End ann.' if en else 'Début/Fin ann.'} : {anno} / {total} ({int(anno/total*100)}%)")
 
     def _show_expl_popup(self):
         self._expl_popup = _ExploitabilityPopup(self._expl_breakdown, None)
         self._expl_popup.show()
 
     def set_language(self, lang: str):
-        if lang == 'en':
-            self._r_kept.setToolTip("Qualification")
-            self._r_ardoise.setToolTip("Validation")
-            self._r_meta.setToolTip("Metadata")
-            self._r_derush.setToolTip("Events (landing/takeoff + annotations)")
-        else:
-            self._r_kept.setToolTip("Qualification")
-            self._r_ardoise.setToolTip("Validation")
-            self._r_meta.setToolTip("Métadonnées")
-            self._r_derush.setToolTip("Évènements (att./déc. + annotations)")
-        # Après chargement, les tooltips seront regénérés par _on_stats_ready
+        self._language = lang
+        en = (lang == 'en')
+        self._lbl_meta.setText("Metadata"   if en else "Métadonnées")
+        self._lbl_ev.setText(  "Events"     if en else "Évènements")
+        self._lbl_meta_ess_pct.setText("Essential –" if en else "Essentielles –")
+        self._lbl_meta_opt_pct.setText("Optional –"  if en else "Optionnelles –")
+        # Les tooltips seront regénérés par _on_stats_ready au prochain refresh

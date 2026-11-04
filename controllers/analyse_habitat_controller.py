@@ -689,6 +689,122 @@ _EN: dict[str, str] = {
     "Etat de santé herbier/algues": "Seagrass/algae health status",
     "Engins de pêche":              "Fishing gear",
     "Macrodéchets":                 "Macrodetritus",
+    # Panneau configuration
+    "À CONFIGURER AVANT LA SAISIE":  "SET UP BEFORE DATA ENTRY",
+    "① ZONE / MASQUE DE SAISIE":     "① SURVEY ZONE / ENTRY MASK",
+    "② ANALYSEUR HABITAT":           "② HABITAT ANALYST",
+    "TYPE DE MASQUE : ":             "ENTRY MASK: ",
+    "Changer de masque de saisie":   "Change entry mask",
+    "Des champs ont déjà été remplis pour cette vidéo.\n\nChanger de masque effacera toutes les données saisies.\nVoulez-vous continuer ?":
+        "Fields have already been filled for this video.\n\nChanging the mask will erase all entered data.\nDo you want to continue?",
+    "Atlantique (ATL)":              "Atlantic (ATL)",
+    "Méditerranée (MED)":            "Mediterranean (MED)",
+    "Nouvelle-Calédonie (NC)":       "New Caledonia (NC)",
+    # ATL — labels manquants
+    "Sable":                         "Sand",
+    "Vase":                          "Mud",
+    "Dalle":                         "Slab",
+    "Bioconstruit":                  "Bioconstruct",
+    "Épibiontes herbier":            "Seagrass epibionts",
+    "Épibiontes algues":             "Algae epibionts",
+    "Algues brunes non ID":          "Brown algae unidentified",
+    "Total du recouvrement":         "Total coverage",
+    "Algues sur substrat non-visible":    "Algae on non-visible substrate",
+    "Herbier sur substrat non-visible":   "Seagrass on non-visible substrate",
+    "Herbier dense (sable non visible)":  "Dense seagrass (sand not visible)",
+    "Topographie (1-5)":             "Topography (1-5)",
+    "Complexité (1-5)":              "Complexity (1-5)",
+    "Captures écran":                "Screenshots",
+    "Recouvrement par épibiontes":   "Epibiont coverage",
+    "Total algues":                  "Total algae",
+    # MED — sections
+    "Recouvrement Substrat":                    "Substrate coverage",
+    "Recouvrement herbier par épibiontes":      "Seagrass epibiont coverage",
+    "Recouv. herbier par épibiontes ou sédiment": "Seagrass epibiont / sediment coverage",
+    "Espèces remarquables":                     "Notable species",
+    # MED — notes
+    "% — somme à 100% par secteur":  "% — sum to 100% per sector",
+    # MED — champs
+    "Épiphytes":                     "Epiphytes",
+    "Sédiment":                      "Sediment",
+    "Cigale de mer":                 "Slipper lobster",
+    "Grande nacre":                  "Fan mussel",
+    "Jambonneau de mer":             "Noble pen shell",
+    "Datte de mer":                  "Date mussel",
+    "Acétabulaire":                  "Acetabularia",
+    "Corail mou":                    "Soft coral",
+    "Algues brunes – Cystoseires":   "Brown algae – Cystoseira",
+    "Algues brunes – Padina":        "Brown algae – Padina",
+    "Algues brunes – Dictyota":      "Brown algae – Dictyota",
+    "Algues brunes – Cladostephus":  "Brown algae – Cladostephus",
+    "Algues vertes – Caulerpa taxifolia": "Green algae – Caulerpa taxifolia",
+    "Algues vertes – Caulerpa racemosa":  "Green algae – Caulerpa racemosa",
+    "Algues vertes – Codium":        "Green algae – Codium",
+    "Algues vertes – Halimeda":      "Green algae – Halimeda",
+    "Algues vertes – Udotea":        "Green algae – Udotea",
+    "Algues vertes – Ulva":          "Green algae – Ulva",
+    "Algues vertes – Valonia":       "Green algae – Valonia",
+    "Algues rouges – Asparagopsis":  "Red algae – Asparagopsis",
+    "Algues rouges – Sphaerococcus": "Red algae – Sphaerococcus",
+    "Algues rouges – Gracilaria":    "Red algae – Gracilaria",
+    "Algues rouges – Jania (coralline)": "Red algae – Jania (coralline)",
+    "Algues rouges – Corallina":     "Red algae – Corallina",
+    "Algues rouges – Mesophyllum":   "Red algae – Mesophyllum",
+    "Algues rouges – Pseudolithophyllum": "Red algae – Pseudolithophyllum",
+    "Algues rouges – Peyssonelia":   "Red algae – Peyssonelia",
+    "Algues rouges – Tricleocarpa":  "Red algae – Tricleocarpa",
+    # MED/NC — XLSX labels
+    "Algues brunes - Cystoseires":   "Brown algae - Cystoseira",
+    "Algues brunes - Padina":        "Brown algae - Padina",
+    "Algues brunes - Dictyota":      "Brown algae - Dictyota",
+    "Algues brunes - Cladostephus":  "Brown algae - Cladostephus",
+    "Algues vertes - Caulerpa taxifolia": "Green algae - Caulerpa taxifolia",
+    "Algues vertes - Caulerpa racemosa":  "Green algae - Caulerpa racemosa",
+    "Algues vertes - Codium":        "Green algae - Codium",
+    "Algues vertes - Halimeda":      "Green algae - Halimeda",
+    "Algues vertes - Udotea":        "Green algae - Udotea",
+    "Algues vertes - Ulva":          "Green algae - Ulva",
+    "Algues vertes - Valonia":       "Green algae - Valonia",
+    "Algues rouges - Asparagopsis":  "Red algae - Asparagopsis",
+    "Algues rouges - Sphaerococcus": "Red algae - Sphaerococcus",
+    "Algues rouges - Gracilaria":    "Red algae - Gracilaria",
+    "Algues rouges - Jania (coralline)": "Red algae - Jania (coralline)",
+    "Algues rouges - Corallina":     "Red algae - Corallina",
+    "Algues rouges - Mesophyllum":   "Red algae - Mesophyllum",
+    "Algues rouges - Pseudolithophyllum": "Red algae - Pseudolithophyllum",
+    "Algues rouges - Peyssonelia":   "Red algae - Peyssonelia",
+    "Algues rouges - Tricleocarpa":  "Red algae - Tricleocarpa",
+    # NC — sections
+    "Substrat abiotique":            "Abiotic substrate",
+    "Statut corail dur":             "Hard coral status",
+    "Sédiment sur corail":           "Sediment on coral",
+    "Forme du corail dur vivant":    "Living hard coral form",
+    # NC — notes
+    "% de la surface de corail dur":    "% of hard coral surface",
+    "% de la surface de corail vivant": "% of living coral surface",
+    "% par secteur":                 "% per sector",
+    # NC — champs
+    "Sable, vase":                           "Sand, mud",
+    "Corail dur (mort ou vivant)":           "Hard coral (dead or alive)",
+    "Vivant":                                "Alive",
+    "Blanchi":                               "Bleached",
+    "Mort et recouvert d'algues":            "Dead and algae-covered",
+    "Corail couvert de sédiment":            "Coral covered with sediment",
+    "Massif, submassif, encroûtant":         "Massive, sub-massive, encrusting",
+    "Digité":                                "Digitate",
+    "Branchu":                               "Branching",
+    "Foliaire":                              "Foliose",
+    "Tabulaire":                             "Tabular",
+    "Forme non identifiée":                  "Unidentified form",
+    "Algues hautes (>10cm)":                 "Tall algae (>10cm)",
+    "Algues rases (turf)":                   "Algae turf",
+    "Autres algues":                         "Other algae",
+    "Autres densités":                       "Other densities",
+    "Oursin diadème":                        "Diadem urchin",
+    "Oursin-crayon":                         "Pencil urchin",
+    "Crinoïde":                              "Crinoid",
+    "Corail solitaire":                      "Solitary coral",
+    "Bénitier":                              "Giant clam",
     # Panneau analyse vidéo
     "Analyseur poisson":            "Fish annotator",
     "Analyseur habitat":            "Habitat annotator",
@@ -946,6 +1062,12 @@ class _CollapsibleSection(QtWidgets.QWidget):
     def __init__(self, title: str, note: str = "", parent=None):
         super().__init__(parent)
         self._collapsed = False
+        # Couleurs mémorisées pour set_locked / set_accent
+        self._t_accent     = "#7ec8e3"
+        self._t_bg         = "#1a3a54"
+        self._t_hover      = "#20415d"
+        self._t_content_bg = "#0b1825"
+
         outer = QtWidgets.QVBoxLayout(self)
         outer.setContentsMargins(0, 4, 0, 0)
         outer.setSpacing(0)
@@ -959,22 +1081,24 @@ class _CollapsibleSection(QtWidgets.QWidget):
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Fixed,
         )
-        self._btn.setStyleSheet(
-            "QToolButton { background:#1a3a54; color:#7ec8e3;"
-            " font-weight:bold; font-size:11px; font-family:'Segoe UI',sans-serif;"
-            " border:none; border-radius:4px; padding:5px 8px;"
-            " text-align:left; }"
-            "QToolButton:hover { background:#20415d; }"
-        )
+        self._apply_btn_style()
         if note:
             self._btn.setToolTip(note)
         outer.addWidget(self._btn)
 
         self._content = QtWidgets.QWidget()
-        self._content.setStyleSheet("background:#0b1825;")
+        self._content.setStyleSheet(f"background:{self._t_content_bg};")
         outer.addWidget(self._content)
 
         self._btn.clicked.connect(lambda _: self._toggle())
+
+    def _apply_btn_style(self):
+        self._btn.setStyleSheet(
+            f"QToolButton {{ background:{self._t_bg}; color:{self._t_accent};"
+            " font-weight:bold; font-size:11px; font-family:'Segoe UI',sans-serif;"
+            " border:none; border-radius:4px; padding:5px 8px; text-align:left; }"
+            f"QToolButton:hover {{ background:{self._t_hover}; }}"
+        )
 
     def _toggle(self):
         self._collapsed = not self._collapsed
@@ -998,23 +1122,17 @@ class _CollapsibleSection(QtWidgets.QWidget):
             )
             self._collapsed = True
         else:
-            self._btn.setStyleSheet(
-                "QToolButton { background:#1a3a54; color:#7ec8e3;"
-                " font-weight:bold; font-size:11px; font-family:'Segoe UI',sans-serif;"
-                " border:none; border-radius:4px; padding:5px 8px; text-align:left; }"
-                "QToolButton:hover { background:#20415d; }"
-            )
+            self._apply_btn_style()   # restaure les couleurs du thème actif
             self._collapsed = False
             self._content.setVisible(True)
 
     def set_accent(self, accent: str, bg: str, hover: str, content_bg: str):
         """Applique un thème couleur à l'en-tête et au contenu de la section."""
-        self._btn.setStyleSheet(
-            f"QToolButton {{ background:{bg}; color:{accent};"
-            " font-weight:bold; font-size:11px; font-family:'Segoe UI',sans-serif;"
-            " border:none; border-radius:4px; padding:5px 8px; text-align:left; }"
-            f"QToolButton:hover {{ background:{hover}; }}"
-        )
+        self._t_accent     = accent
+        self._t_bg         = bg
+        self._t_hover      = hover
+        self._t_content_bg = content_bg
+        self._apply_btn_style()
         self._content.setStyleSheet(f"background:{content_bg};")
 
     def retranslate(self, title: str, note: str = ""):
@@ -2001,7 +2119,10 @@ class AnalyseHabitatController(QtCore.QObject):
         self._sector_worker: _FrameWorker | None = None
 
         # Translation refs
-        self._tr_label_refs: list[tuple[QtWidgets.QLabel, str]] = []
+        # _tr_static_refs : labels hors formulaire (panneau config, etc.) — survivent aux rebuilds
+        # _tr_label_refs  : labels du formulaire — effacés à chaque rebuild
+        self._tr_static_refs: list[tuple[QtWidgets.QLabel, str]] = []
+        self._tr_label_refs:  list[tuple[QtWidgets.QLabel, str]] = []
         self._section_widgets: list[tuple[_CollapsibleSection, str, str]] = []
 
         # Masque actif (ATL | MED | NC)
@@ -2113,6 +2234,7 @@ class AnalyseHabitatController(QtCore.QObject):
             " font-family:'Segoe UI',sans-serif;"
             " border-bottom:1px solid #1a3a54; }"
         )
+        self._tr_static_refs.append((header, "À CONFIGURER AVANT LA SAISIE"))
         outer_lay.addWidget(header)
 
         body = QtWidgets.QWidget()
@@ -2134,7 +2256,7 @@ class AnalyseHabitatController(QtCore.QObject):
                 " font-family:'Segoe UI',sans-serif; background:transparent;"
                 " letter-spacing:0.5px;"
             )
-            self._tr_label_refs.append((w, text))
+            self._tr_static_refs.append((w, text))
             return w
 
         def _inp(key, placeholder=""):
@@ -2254,7 +2376,7 @@ class AnalyseHabitatController(QtCore.QObject):
         )
         self._mask_type_label.setFixedHeight(20)
         self._mask_type_label.setText(
-            f"TYPE DE MASQUE : {_MASK_CONFIGS['ATL']['label']}"
+            f"{self._tr('TYPE DE MASQUE : ')}{_MASK_CONFIGS['ATL']['label']}"
         )
         right_vlay.addWidget(self._mask_type_label)
 
@@ -2394,10 +2516,10 @@ class AnalyseHabitatController(QtCore.QObject):
             prev_mask = self._active_mask
             reply = QtWidgets.QMessageBox.warning(
                 None,
-                "Changer de masque de saisie",
-                "Des champs ont déjà été remplis pour cette vidéo.\n\n"
-                "Changer de masque effacera toutes les données saisies.\n"
-                "Voulez-vous continuer ?",
+                self._tr("Changer de masque de saisie"),
+                self._tr("Des champs ont déjà été remplis pour cette vidéo.\n\n"
+                         "Changer de masque effacera toutes les données saisies.\n"
+                         "Voulez-vous continuer ?"),
                 QtWidgets.QMessageBox.StandardButton.Yes |
                 QtWidgets.QMessageBox.StandardButton.Cancel,
                 QtWidgets.QMessageBox.StandardButton.Cancel,
@@ -2448,7 +2570,9 @@ class AnalyseHabitatController(QtCore.QObject):
         self._active_invert_section    = cfg["invert_section"]
         self._active_presence_section  = cfg["presence_section"]
         if hasattr(self, '_mask_type_label'):
-            self._mask_type_label.setText(f"TYPE DE MASQUE : {cfg['label']}")
+            self._mask_type_label.setText(
+                f"{self._tr('TYPE DE MASQUE : ')}{self._tr(cfg['label'])}"
+            )
         if rebuild_form:
             self._rebuild_habitat_form()
         self._apply_mask_theme()
@@ -3376,7 +3500,7 @@ class AnalyseHabitatController(QtCore.QObject):
         code = _get_codestation(vpath) or os.path.splitext(os.path.basename(vpath))[0]
         safe = "".join(c for c in code if c.isalnum() or c in "-_")
         folder = os.path.dirname(os.path.normpath(vpath))
-        return os.path.isfile(os.path.join(folder, f"{safe}_masque_saisie.xlsx"))
+        return os.path.isfile(os.path.join(folder, f"{safe}_habitat.xlsx"))
 
     def _refresh_mask_indicators(self):
         """Met à jour le ✓ sur les items de la liste sans reconstruire toute la liste."""
@@ -3513,12 +3637,27 @@ class AnalyseHabitatController(QtCore.QObject):
                 "⚠  Atterrissage + Décollage\nou\nDébut + Fin annotation\n\n"
                 "requis dans la page Évènements\navant de saisir l'analyse habitat."
             )
-        # Labels génériques (champs formulaire + panneau analyse vidéo)
+        # Labels statiques (panneau config — survivent aux rebuilds)
+        for lbl, fr_text in self._tr_static_refs:
+            lbl.setText(tr(fr_text))
+        # Labels formulaire
         for lbl, fr_text in self._tr_label_refs:
             lbl.setText(tr(fr_text))
         # Titres de sections du formulaire
         for section, fr_title, fr_note in self._section_widgets:
             section.retranslate(tr(fr_title), tr(fr_note) if fr_note else "")
+        # Combo masque de saisie
+        if hasattr(self, '_mask_combo'):
+            self._mask_combo.blockSignals(True)
+            for i, cfg in enumerate(_MASK_CONFIGS.values()):
+                self._mask_combo.setItemText(i, tr(cfg["label"]))
+            self._mask_combo.blockSignals(False)
+        # Bandeau TYPE DE MASQUE
+        if hasattr(self, '_mask_type_label') and hasattr(self, '_active_mask'):
+            cfg = _MASK_CONFIGS[self._active_mask]
+            self._mask_type_label.setText(
+                f"{tr('TYPE DE MASQUE : ')}{tr(cfg['label'])}"
+            )
         # Widget cascade recouvrement
         if self._sv_recouvrement is not None:
             self._sv_recouvrement.set_language(self._language)
@@ -3625,7 +3764,7 @@ class AnalyseHabitatController(QtCore.QObject):
         code = _get_codestation(vpath) or os.path.splitext(os.path.basename(vpath))[0]
         folder = os.path.dirname(os.path.normpath(vpath))
         safe_code = "".join(c for c in code if c.isalnum() or c in "-_")
-        out_path = os.path.join(folder, f"{safe_code}_masque_saisie.xlsx")
+        out_path = os.path.join(folder, f"{safe_code}_habitat.xlsx")
 
         if os.path.isfile(out_path):
             reply = QtWidgets.QMessageBox.question(
@@ -3877,7 +4016,7 @@ class AnalyseHabitatController(QtCore.QObject):
         for code, vpath in entries:
             safe_code = "".join(c for c in code if c.isalnum() or c in "-_")
             p = os.path.join(os.path.dirname(os.path.normpath(vpath)),
-                             f"{safe_code}_masque_saisie.xlsx")
+                             f"{safe_code}_habitat.xlsx")
             if os.path.isfile(p):
                 existing.append(code)
         if existing:
@@ -3945,7 +4084,7 @@ class AnalyseHabitatController(QtCore.QObject):
 
             folder = os.path.dirname(os.path.normpath(vpath))
             safe_code = "".join(c for c in code if c.isalnum() or c in "-_")
-            out_path = os.path.join(folder, f"{safe_code}_masque_saisie.xlsx")
+            out_path = os.path.join(folder, f"{safe_code}_habitat.xlsx")
             try:
                 wb = openpyxl.Workbook()
                 ws = wb.active
