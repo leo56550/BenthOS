@@ -574,6 +574,14 @@ _MASK_CONFIGS: dict[str, dict] = {
         "recouvrement_section": "Recouvrement visible",
         "invert_section": "Invertébrés remarquables",
         "presence_section": "Présence Algues",
+        "theme": {
+            "accent":       "#7ec8e3",
+            "section_bg":   "#1a3a54",
+            "section_hover":"#20415d",
+            "content_bg":   "#0b1825",
+            "banner_bg":    "#0d1825",
+            "banner_border":"#1e3a52",
+        },
     },
     "MED": {
         "label": "Méditerranée (MED)",
@@ -585,6 +593,14 @@ _MASK_CONFIGS: dict[str, dict] = {
         "recouvrement_section": "Recouvrement Substrat",
         "invert_section": "Espèces remarquables",
         "presence_section": None,
+        "theme": {
+            "accent":       "#e3c47e",
+            "section_bg":   "#3a2e14",
+            "section_hover":"#473618",
+            "content_bg":   "#1e1808",
+            "banner_bg":    "#1a1206",
+            "banner_border":"#3a2914",
+        },
     },
     "NC": {
         "label": "Nouvelle-Calédonie (NC)",
@@ -596,6 +612,14 @@ _MASK_CONFIGS: dict[str, dict] = {
         "recouvrement_section": "Substrat abiotique",
         "invert_section": "Espèces remarquables",
         "presence_section": None,
+        "theme": {
+            "accent":       "#7ee3b0",
+            "section_bg":   "#1a3d2c",
+            "section_hover":"#1f4834",
+            "content_bg":   "#0b1e14",
+            "banner_bg":    "#0d1e14",
+            "banner_border":"#1e3a2c",
+        },
     },
 }
 
@@ -982,6 +1006,16 @@ class _CollapsibleSection(QtWidgets.QWidget):
             )
             self._collapsed = False
             self._content.setVisible(True)
+
+    def set_accent(self, accent: str, bg: str, hover: str, content_bg: str):
+        """Applique un thème couleur à l'en-tête et au contenu de la section."""
+        self._btn.setStyleSheet(
+            f"QToolButton {{ background:{bg}; color:{accent};"
+            " font-weight:bold; font-size:11px; font-family:'Segoe UI',sans-serif;"
+            " border:none; border-radius:4px; padding:5px 8px; text-align:left; }"
+            f"QToolButton:hover {{ background:{hover}; }}"
+        )
+        self._content.setStyleSheet(f"background:{content_bg};")
 
     def retranslate(self, title: str, note: str = ""):
         arrow = "▶" if self._collapsed else "▼"
@@ -2373,6 +2407,23 @@ class AnalyseHabitatController(QtCore.QObject):
             self._mask_type_label.setText(f"TYPE DE MASQUE : {cfg['label']}")
         if rebuild_form:
             self._rebuild_habitat_form()
+        self._apply_mask_theme()
+
+    def _apply_mask_theme(self):
+        """Applique les couleurs du masque actif au bandeau et aux sections du formulaire."""
+        if self._active_mask not in _MASK_CONFIGS:
+            return
+        t = _MASK_CONFIGS[self._active_mask]["theme"]
+        if hasattr(self, '_mask_type_label'):
+            self._mask_type_label.setStyleSheet(
+                f"QLabel {{ background:{t['banner_bg']}; color:{t['accent']};"
+                " font-size:11px; font-weight:bold; letter-spacing:1px;"
+                f" padding:2px 8px; border-bottom:1px solid {t['banner_border']}; }}"
+            )
+        for section, _, _ in self._section_widgets:
+            section.set_accent(
+                t["accent"], t["section_bg"], t["section_hover"], t["content_bg"]
+            )
 
     def _rebuild_habitat_form(self):
         """Vide et reconstruit le formulaire mono-secteur selon le masque actif."""
