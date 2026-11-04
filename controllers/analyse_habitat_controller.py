@@ -227,8 +227,8 @@ _XLSX_LAYOUT: list[tuple[str, list]] = [
 
 _COL_W   = 80   # largeur d'un secteur
 _LABEL_W = 240  # largeur de la colonne label
-_THUMB_H = 90   # hauteur des thumbnails dans la barre d'en-tête
-_HEADER_H = _THUMB_H + 28  # hauteur totale de la barre d'en-tête
+_THUMB_H = 0    # thumbnails supprimés
+_HEADER_H = 36  # hauteur totale de la barre d'en-tête (labels S1..S6 uniquement)
 
 # Types de recouvrement visible (même ordre que dans _SCHEMA)
 _RECOUVREMENT_TYPES: list[tuple[str, str]] = [
@@ -1901,14 +1901,7 @@ class AnalyseHabitatController(QtCore.QObject):
             cell_lay.setContentsMargins(2, 2, 2, 2)
             cell_lay.setSpacing(2)
 
-            thumb = QtWidgets.QLabel("⏳")
-            thumb.setFixedSize(_COL_W - 4, _THUMB_H - 4)
-            thumb.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-            thumb.setStyleSheet(
-                "color:#405060; font-size:16px; background:#0b1520;"
-                " border-radius:3px; border:none;")
-            cell_lay.addWidget(thumb)
-            self._sector_photo_labels.append(thumb)
+            self._sector_photo_labels.append(None)
 
             lbl = QtWidgets.QLabel(f"S{i + 1}")
             lbl.setFixedHeight(14)
@@ -2576,13 +2569,7 @@ class AnalyseHabitatController(QtCore.QObject):
         self._sector_pixmaps = [None] * 6
         self._landing_ms: int | None = None  # timecode atterrissage pour cadrage initial
 
-        # Réinitialise les thumbnails
-        for lbl in self._sector_photo_labels:
-            lbl.setText("⏳")
-            lbl.setPixmap(QtGui.QPixmap())
-            lbl.setStyleSheet(
-                "color:#405060; font-size:16px; background:#0b1520;"
-                " border-radius:3px; border:none;")
+        # thumbnails supprimés — rien à réinitialiser
 
         try:
             json_path = _find_json(video_path)
@@ -2670,8 +2657,8 @@ class AnalyseHabitatController(QtCore.QObject):
         self._sector_worker.start()
 
     def _on_frame_ready(self, sector_idx: int, frame_data):
-        """Appelé quand une frame est extraite — met à jour le thumbnail et le viewer."""
-        if frame_data is None or sector_idx >= len(self._sector_photo_labels):
+        """Appelé quand une frame est extraite — met à jour le viewer."""
+        if frame_data is None or sector_idx >= len(self._sector_pixmaps):
             return
         h_f, w_f, ch = frame_data.shape
         q_img = QtGui.QImage(
@@ -2679,18 +2666,6 @@ class AnalyseHabitatController(QtCore.QObject):
             QtGui.QImage.Format.Format_RGB888)
         pixmap = QtGui.QPixmap.fromImage(q_img)
         self._sector_pixmaps[sector_idx] = pixmap
-
-        lbl = self._sector_photo_labels[sector_idx]
-        thumb_w = lbl.width() or (_COL_W - 4)
-        thumb_h = lbl.height() or (_THUMB_H - 4)
-        scaled = pixmap.scaled(
-            thumb_w, thumb_h,
-            QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-            QtCore.Qt.TransformationMode.SmoothTransformation,
-        )
-        lbl.setText("")
-        lbl.setPixmap(scaled)
-        lbl.setStyleSheet("background:#0b1520; border-radius:3px; border:none;")
 
         # Si c'est le secteur courant et pas encore chargé via cv2, afficher la frame
         if (sector_idx == self._current_sector_idx
