@@ -2234,25 +2234,10 @@ class AnalyseHabitatController(QtCore.QObject):
         )
         right_vlay.addWidget(self._mask_type_label)
 
-        # Sélecteur de secteur (S1..S6 avec thumbnails) — scrollable horizontalement
+        # Sélecteur de secteur (S1..S6) — toujours entièrement visible
         self._sector_selector = self._build_sector_selector()
-        _sel_scroll = QtWidgets.QScrollArea()
-        _sel_scroll.setWidget(self._sector_selector)
-        _sel_scroll.setWidgetResizable(False)
-        _sel_scroll.setFixedHeight(_HEADER_H + 2)
-        _sel_scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
-        _sel_scroll.setHorizontalScrollBarPolicy(
-            QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        _sel_scroll.setVerticalScrollBarPolicy(
-            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        _sel_scroll.setStyleSheet(
-            "QScrollArea { background:#0d1825; border:none; }"
-            "QScrollBar:horizontal { background:#0d1e2e; height:6px; border-radius:3px; }"
-            "QScrollBar::handle:horizontal { background:#2778a2; border-radius:3px; }"
-            "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width:0; }")
-        _sel_scroll.setViewportMargins(4, 0, 4, 0)
-        self._sector_selector_scroll = _sel_scroll
-        right_vlay.addWidget(_sel_scroll)
+        self._sector_selector_scroll = self._sector_selector  # alias pour la visibilité
+        right_vlay.addWidget(self._sector_selector)
 
         # Avertissement atterrissage manquant
         self._no_landing_label = QtWidgets.QLabel(
@@ -2301,38 +2286,37 @@ class AnalyseHabitatController(QtCore.QObject):
         return panel
 
     def _build_sector_selector(self) -> QtWidgets.QWidget:
-        """Barre de sélection de secteur (S1..S6 avec thumbnails)."""
+        """Barre de sélection de secteur (S1..S6) — toujours entièrement visible."""
         bar = QtWidgets.QWidget()
         bar.setFixedHeight(_HEADER_H)
         bar.setStyleSheet("background:#0d1825; border-bottom:2px solid #1a3a54;")
+        bar.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
         hlay = QtWidgets.QHBoxLayout(bar)
-        hlay.setContentsMargins(8, 6, 8, 6)
-        hlay.setSpacing(8)
+        hlay.setContentsMargins(8, 4, 8, 4)
+        hlay.setSpacing(6)
 
         self._sector_btn_list = []
         self._sector_photo_labels = []
         self._sector_num_labels: list[QtWidgets.QLabel] = []
 
-        _cell_h = _HEADER_H - 12
+        _cell_h = _HEADER_H - 8
         for i in range(6):
             cell = QtWidgets.QFrame()
             cell.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
-            cell.setFixedSize(_COL_W, _cell_h)
+            cell.setFixedHeight(_cell_h)
+            cell.setMinimumWidth(36)
+            cell.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Expanding,
+                QtWidgets.QSizePolicy.Policy.Fixed,
+            )
             cell.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
-            # Clipper les enfants aux coins arrondis (border-radius ne clippe pas les enfants en Qt)
-            _bmp = QtGui.QBitmap(_COL_W, _cell_h)
-            _bmp.fill(QtCore.Qt.GlobalColor.color0)
-            _bp = QtGui.QPainter(_bmp)
-            _bp.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-            _bp.setBrush(QtCore.Qt.GlobalColor.color1)
-            _bp.setPen(QtCore.Qt.PenStyle.NoPen)
-            _bp.drawRoundedRect(0, 0, _COL_W, _cell_h, 4, 4)
-            _bp.end()
-            cell.setMask(_bmp)
 
             cell_lay = QtWidgets.QVBoxLayout(cell)
             cell_lay.setContentsMargins(2, 2, 2, 2)
-            cell_lay.setSpacing(2)
+            cell_lay.setSpacing(0)
 
             self._sector_photo_labels.append(None)
 
@@ -2347,11 +2331,7 @@ class AnalyseHabitatController(QtCore.QObject):
 
             cell.mousePressEvent = lambda e, idx=i: self._on_sector_clicked(idx)
             self._sector_btn_list.append(cell)
-            hlay.addWidget(cell)
-
-        # Largeur fixe calculée : 6 cellules + 5 espaces + marges gauche/droite
-        bar_w = 6 * _COL_W + 5 * 8 + 8 + 8  # 6*72 + 40 + 16 = 488
-        bar.setFixedWidth(bar_w)
+            hlay.addWidget(cell, 1)
 
         self._highlight_sector(0)
         return bar
