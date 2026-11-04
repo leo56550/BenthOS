@@ -225,7 +225,7 @@ _XLSX_LAYOUT: list[tuple[str, list]] = [
     ("Captures écran", []),
 ]
 
-_COL_W   = 80   # largeur d'un secteur
+_COL_W   = 52   # largeur d'un secteur
 _LABEL_W = 240  # largeur de la colonne label
 _THUMB_H = 0    # thumbnails supprimés
 _HEADER_H = 36  # hauteur totale de la barre d'en-tête (labels S1..S6 uniquement)
@@ -1857,7 +1857,7 @@ class AnalyseHabitatController(QtCore.QObject):
         right_vlay.addWidget(scroll, 1)
 
         inner_splitter.addWidget(right_col)
-        inner_splitter.setSizes([560, 420])
+        inner_splitter.setSizes([660, 320])
         inner_splitter.setCollapsible(0, False)
         inner_splitter.setCollapsible(1, False)
 
