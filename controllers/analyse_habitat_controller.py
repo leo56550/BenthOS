@@ -244,6 +244,360 @@ _RECOUVREMENT_TYPES: list[tuple[str, str]] = [
     ("algues_snv",    "Algues / substrat non-visible"),
     ("herbier_snv",   "Herbier / substrat non-visible"),
 ]
+_RECOUVREMENT_TYPES_ATL = _RECOUVREMENT_TYPES  # alias ATL
+
+_RECOUVREMENT_TYPES_MED: list[tuple[str, str]] = [
+    ("sable",         "Sable"),
+    ("vase",          "Vase"),
+    ("debris_petits", "Débris, petits blocs (<30cm)"),
+    ("moyens_blocs",  "Moyens blocs (30cm–1m)"),
+    ("gros_blocs",    "Gros blocs et roche (>1m)"),
+    ("dalle",         "Dalle"),
+]
+
+_RECOUVREMENT_TYPES_NC: list[tuple[str, str]] = [
+    ("sable_vase",    "Sable, vase"),
+    ("debris_petits", "Débris, petits blocs (<30cm)"),
+    ("moyens_blocs",  "Moyens blocs (30cm–1m)"),
+    ("gros_blocs",    "Gros blocs et roche (>1m)"),
+    ("corail_dur",    "Corail dur (mort ou vivant)"),
+    ("dalle",         "Dalle"),
+]
+
+# ── Schémas MED ───────────────────────────────────────────────────────────────
+_SCHEMA_ATL = _SCHEMA  # alias ATL
+
+_SCHEMA_MED: list[tuple[str, str, list]] = [
+    ("Topo et complexité", "codage 1–5, obligatoire", [
+        ("topographie", "Topographie", "score15"),
+        ("complexite",  "Complexité",  "score15"),
+    ]),
+    ("Recouvrement Substrat", "% — somme à 100% par secteur", [
+        ("sable",         "Sable",                        "percent"),
+        ("vase",          "Vase",                         "percent"),
+        ("debris_petits", "Débris, petits blocs (<30cm)", "percent"),
+        ("moyens_blocs",  "Moyens blocs (30cm–1m)",       "percent"),
+        ("gros_blocs",    "Gros blocs et roche (>1m)",    "percent"),
+        ("dalle",         "Dalle",                        "percent"),
+        ("total_substrat","TOTAL",                        "total"),
+    ]),
+    ("Recouvrement Herbier", "somme à 100 % par secteur", [
+        ("total_herbier",      "Total herbier",            "percent"),
+        ("herbier_posidonia",  "Posidonia",                "percent"),
+        ("herbier_cymodocea",  "Cymodocea",                "percent"),
+        ("herbier_zostera",    "Zostera",                  "percent"),
+        ("herbier_court",      "Herbier court (<20cm)",    "percent"),
+        ("herbier_haut",       "Herbier haut (>20cm)",     "percent"),
+        ("herbier_dense",      "Herbier dense",            "percent"),
+        ("herbier_semi_dense", "Herbier semi-dense",       "percent"),
+        ("herbier_clairseme",  "Herbier clairsemé (<25%)", "percent"),
+        ("matte_morte",        "Matte morte",              "percent"),
+    ]),
+    ("Recouvrement herbier par épibiontes", "", [
+        ("epib_epiphytes", "Épiphytes", "percent"),
+        ("epib_sediment",  "Sédiment",  "percent"),
+    ]),
+    ("Recouvrement Algues", "somme à 100 % par secteur", [
+        ("total_algues",           "Total algues",                        "percent"),
+        ("alg_cystoseires",        "Algues brunes – Cystoseires",         "percent"),
+        ("alg_padina",             "Algues brunes – Padina",              "percent"),
+        ("alg_dictyota",           "Algues brunes – Dictyota",            "percent"),
+        ("alg_cladostephus",       "Algues brunes – Cladostephus",        "percent"),
+        ("alg_caulerpa_tax",       "Algues vertes – Caulerpa taxifolia",  "percent"),
+        ("alg_caulerpa_rac",       "Algues vertes – Caulerpa racemosa",   "percent"),
+        ("alg_codium",             "Algues vertes – Codium",              "percent"),
+        ("alg_halimeda",           "Algues vertes – Halimeda",            "percent"),
+        ("alg_udotea",             "Algues vertes – Udotea",              "percent"),
+        ("alg_ulva",               "Algues vertes – Ulva",                "percent"),
+        ("alg_valonia",            "Algues vertes – Valonia",             "percent"),
+        ("alg_asparagopsis",       "Algues rouges – Asparagopsis",        "percent"),
+        ("alg_sphaerococcus",      "Algues rouges – Sphaerococcus",       "percent"),
+        ("alg_gracilaria",         "Algues rouges – Gracilaria",          "percent"),
+        ("alg_jania",              "Algues rouges – Jania (coralline)",   "percent"),
+        ("alg_corallina",          "Algues rouges – Corallina",           "percent"),
+        ("alg_mesophyllum",        "Algues rouges – Mesophyllum",         "percent"),
+        ("alg_pseudolithophyllum", "Algues rouges – Pseudolithophyllum",  "percent"),
+        ("alg_peyssonelia",        "Algues rouges – Peyssonelia",         "percent"),
+        ("alg_tricleocarpa",       "Algues rouges – Tricleocarpa",        "percent"),
+    ]),
+    ("Espèces remarquables", "nombre d'individus par secteur", [
+        ("eponge",       "Éponge",           "count"),
+        ("cigale_mer",   "Cigale de mer",    "count"),
+        ("grande_nacre", "Grande nacre",     "count"),
+        ("jambonneau",   "Jambonneau de mer","count"),
+        ("datte_mer",    "Datte de mer",     "count"),
+        ("oursin",       "Oursin",           "count"),
+        ("holothurie",   "Holothurie",       "count"),
+        ("crabe",        "Crabe",            "count"),
+        ("acetabulaire", "Acétabulaire",     "count"),
+        ("gorgone",      "Gorgone",          "count"),
+        ("etoile_mer",   "Étoile de mer",    "count"),
+        ("anemone",      "Anémone",          "count"),
+        ("ascidie",      "Ascidie",          "count"),
+        ("corail_mou",   "Corail mou",       "count"),
+    ]),
+]
+
+_TOTAL_SOURCES_MED: dict[str, list[str]] = {
+    "total_substrat": ["sable","vase","debris_petits","moyens_blocs","gros_blocs","dalle"],
+}
+
+_JSON_SECTION_MED: dict[str, tuple[str, str | None]] = {
+    "Topo et complexité":              ("flat",        None),
+    "Recouvrement Substrat":           ("dict",        "recouvrement_substrat"),
+    "Recouvrement Herbier":            ("dict",        "recouvrement_herbier"),
+    "Recouvrement herbier par épibiontes": ("flat",   None),
+    "Recouvrement Algues":             ("dict",        "recouvrement_algues"),
+    "Espèces remarquables":            ("dict_count",  "invertebres"),
+}
+
+_XLSX_LAYOUT_MED: list[tuple[str, list]] = [
+    ("Topo et complexité", [
+        ("topographie", "Topographie (1-5)"),
+        ("complexite",  "Complexité (1-5)"),
+    ]),
+    ("Recouvrement Substrat", [
+        ("sable",         "Sable"),
+        ("vase",          "Vase"),
+        ("debris_petits", "Débris, petits blocs (<30cm)"),
+        ("moyens_blocs",  "Moyens blocs (30cm<l<1m)"),
+        ("gros_blocs",    "Gros blocs et roche (>1m)"),
+        ("dalle",         "Dalle"),
+    ]),
+    ("Recouvrement Herbier", [
+        ("total_herbier",      "Total herbier"),
+        ("herbier_posidonia",  "Posidonia"),
+        ("herbier_cymodocea",  "Cymodocea"),
+        ("herbier_zostera",    "Zostera"),
+        ("herbier_court",      "Herbier court (<20cm)"),
+        ("herbier_haut",       "Herbier haut (>20cm)"),
+        ("herbier_dense",      "Herbier dense (sable non visible)"),
+        ("herbier_semi_dense", "Herbier semi-dense"),
+        ("herbier_clairseme",  "Herbier clairsemé (<25%)"),
+        ("matte_morte",        "Matte morte"),
+    ]),
+    ("Recouv. herbier par épibiontes ou sédiment", [
+        ("epib_epiphytes", "Épiphytes"),
+        ("epib_sediment",  "Sédiment"),
+    ]),
+    ("Recouvrement Algues", [
+        ("total_algues",           "Total algues"),
+        ("alg_cystoseires",        "Algues brunes - Cystoseires"),
+        ("alg_padina",             "Algues brunes - Padina"),
+        ("alg_dictyota",           "Algues brunes - Dictyota"),
+        ("alg_cladostephus",       "Algues brunes - Cladostephus"),
+        ("alg_caulerpa_tax",       "Algues vertes - Caulerpa taxifolia"),
+        ("alg_caulerpa_rac",       "Algues vertes - Caulerpa racemosa"),
+        ("alg_codium",             "Algues vertes - Codium"),
+        ("alg_halimeda",           "Algues vertes - Halimeda"),
+        ("alg_udotea",             "Algues vertes - Udotea"),
+        ("alg_ulva",               "Algues vertes - Ulva"),
+        ("alg_valonia",            "Algues vertes - Valonia"),
+        ("alg_asparagopsis",       "Algues rouges - Asparagopsis"),
+        ("alg_sphaerococcus",      "Algues rouges - Sphaerococcus"),
+        ("alg_gracilaria",         "Algues rouges - Gracilaria"),
+        ("alg_jania",              "Algues rouges - Jania (coralline)"),
+        ("alg_corallina",          "Algues rouges - Corallina"),
+        ("alg_mesophyllum",        "Algues rouges - Mesophyllum"),
+        ("alg_pseudolithophyllum", "Algues rouges - Pseudolithophyllum"),
+        ("alg_peyssonelia",        "Algues rouges - Peyssonelia"),
+        ("alg_tricleocarpa",       "Algues rouges - Tricleocarpa"),
+    ]),
+    ("Espèces remarquables", [
+        ("eponge",       "Éponge"),
+        ("cigale_mer",   "Cigale de mer"),
+        ("grande_nacre", "Grande nacre"),
+        ("jambonneau",   "Jambonneau de mer"),
+        ("datte_mer",    "Datte de mer"),
+        ("oursin",       "Oursin"),
+        ("holothurie",   "Holothurie"),
+        ("crabe",        "Crabe"),
+        ("acetabulaire", "Acétabulaire"),
+        ("gorgone",      "Gorgone"),
+        ("etoile_mer",   "Étoile de mer"),
+        ("anemone",      "Anémone"),
+        ("ascidie",      "Ascidie"),
+        ("corail_mou",   "Corail mou"),
+    ]),
+]
+
+# ── Schémas NC ───────────────────────────────────────────────────────────────
+_SCHEMA_NC: list[tuple[str, str, list]] = [
+    ("Topo et complexité", "codage 1–5, obligatoire", [
+        ("topographie", "Topographie", "score15"),
+        ("complexite",  "Complexité",  "score15"),
+    ]),
+    ("Substrat abiotique", "% — somme à 100% par secteur", [
+        ("sable_vase",    "Sable, vase",               "percent"),
+        ("debris_petits", "Débris, petits blocs (<30cm)","percent"),
+        ("moyens_blocs",  "Moyens blocs (30cm–1m)",    "percent"),
+        ("gros_blocs",    "Gros blocs et roche (>1m)", "percent"),
+        ("corail_dur",    "Corail dur (mort ou vivant)","percent"),
+        ("dalle",         "Dalle",                     "percent"),
+        ("total_substrat","TOTAL",                     "total"),
+    ]),
+    ("Statut corail dur", "% de la surface de corail dur", [
+        ("corail_vivant",   "Vivant",                    "percent"),
+        ("corail_blanchi",  "Blanchi",                   "percent"),
+        ("corail_mort_alg", "Mort et recouvert d'algues","percent"),
+    ]),
+    ("Sédiment sur corail", "", [
+        ("corail_sediment", "Corail couvert de sédiment", "percent"),
+    ]),
+    ("Forme du corail dur vivant", "% de la surface de corail vivant", [
+        ("corail_massif",    "Massif, submassif, encroûtant", "percent"),
+        ("corail_digite",    "Digité",                        "percent"),
+        ("corail_branchu",   "Branchu",                       "percent"),
+        ("corail_foliaire",  "Foliaire",                      "percent"),
+        ("corail_tabulaire", "Tabulaire",                     "percent"),
+        ("corail_non_id",    "Forme non identifiée",          "percent"),
+    ]),
+    ("Recouvrement Herbier", "somme à 100 % par secteur", [
+        ("total_herbier",    "Total herbier",             "percent"),
+        ("herbier_court",    "Herbier court (<20cm)",     "percent"),
+        ("herbier_haut",     "Herbier haut (>20cm)",      "percent"),
+        ("herbier_dense",    "Herbier dense",             "percent"),
+        ("herbier_clairseme","Herbier clairsemé (<25%)",  "percent"),
+        ("herbier_autres",   "Autres densités",           "percent"),
+    ]),
+    ("Recouvrement herbier par épibiontes", "", [
+        ("epib_epiphytes", "Épiphytes", "percent"),
+        ("epib_sediment",  "Sédiment",  "percent"),
+    ]),
+    ("Recouvrement Algues", "% par secteur", [
+        ("total_algues", "Total algues",          "percent"),
+        ("alg_hautes",   "Algues hautes (>10cm)", "percent"),
+        ("alg_rases",    "Algues rases (turf)",   "percent"),
+        ("alg_autres",   "Autres algues",         "percent"),
+    ]),
+    ("Espèces remarquables", "nombre d'individus par secteur", [
+        ("eponge",           "Éponge",             "count"),
+        ("corail_mou",       "Corail mou",         "count"),
+        ("oursin_diademe",   "Oursin diadème",     "count"),
+        ("oursin_crayon",    "Oursin-crayon",      "count"),
+        ("holothurie",       "Holothurie",         "count"),
+        ("crinoide",         "Crinoïde",           "count"),
+        ("gorgone",          "Gorgone",            "count"),
+        ("acanthaster",      "Acanthaster sp.",    "count"),
+        ("corail_solitaire", "Corail solitaire",   "count"),
+        ("benitier",         "Bénitier",           "count"),
+        ("etoile_mer",       "Étoile de mer",      "count"),
+    ]),
+]
+
+_TOTAL_SOURCES_NC: dict[str, list[str]] = {
+    "total_substrat": ["sable_vase","debris_petits","moyens_blocs","gros_blocs","corail_dur","dalle"],
+}
+
+_JSON_SECTION_NC: dict[str, tuple[str, str | None]] = {
+    "Topo et complexité":              ("flat",       None),
+    "Substrat abiotique":              ("dict",       "recouvrement_substrat"),
+    "Statut corail dur":               ("dict",       "statut_corail"),
+    "Sédiment sur corail":             ("flat",       None),
+    "Forme du corail dur vivant":      ("dict",       "forme_corail"),
+    "Recouvrement Herbier":            ("dict",       "recouvrement_herbier"),
+    "Recouvrement herbier par épibiontes": ("flat",  None),
+    "Recouvrement Algues":             ("dict",       "recouvrement_algues"),
+    "Espèces remarquables":            ("dict_count", "invertebres"),
+}
+
+_XLSX_LAYOUT_NC: list[tuple[str, list]] = [
+    ("Topo et complexité", [
+        ("topographie", "Topographie (1-5)"),
+        ("complexite",  "Complexité (1-5)"),
+    ]),
+    ("Substrat abiotique", [
+        ("sable_vase",    "Sable, vase"),
+        ("debris_petits", "Débris, petits blocs (<30cm)"),
+        ("moyens_blocs",  "Moyens blocs (30cm<l<1m)"),
+        ("gros_blocs",    "Gros blocs et roche (>1m)"),
+        ("corail_dur",    "Corail dur (mort ou vivant)"),
+        ("dalle",         "Dalle"),
+    ]),
+    ("Statut corail dur", [
+        ("corail_vivant",   "Vivant"),
+        ("corail_blanchi",  "Blanchi"),
+        ("corail_mort_alg", "Mort et recouvert d'algues"),
+    ]),
+    ("Sédiment sur corail", [
+        ("corail_sediment", "Corail couvert de sédiment"),
+    ]),
+    ("Forme du corail dur vivant", [
+        ("corail_massif",    "Massif, submassif, encroûtant"),
+        ("corail_digite",    "Digité"),
+        ("corail_branchu",   "Branchu"),
+        ("corail_foliaire",  "Foliaire"),
+        ("corail_tabulaire", "Tabulaire"),
+        ("corail_non_id",    "Forme non identifiée"),
+    ]),
+    ("Recouvrement Herbier", [
+        ("total_herbier",    "Total herbier"),
+        ("herbier_court",    "Herbier court (<20cm)"),
+        ("herbier_haut",     "Herbier haut (>20cm)"),
+        ("herbier_dense",    "Herbier dense"),
+        ("herbier_clairseme","Herbier clairsemé (<25%)"),
+        ("herbier_autres",   "Autres densités"),
+    ]),
+    ("Recouv. herbier par épibiontes ou sédiment", [
+        ("epib_epiphytes", "Épiphytes"),
+        ("epib_sediment",  "Sédiment"),
+    ]),
+    ("Recouvrement Algues", [
+        ("total_algues", "Total algues"),
+        ("alg_hautes",   "Algues hautes (>10cm)"),
+        ("alg_rases",    "Algues rases (turf)"),
+        ("alg_autres",   "Autres algues"),
+    ]),
+    ("Espèces remarquables", [
+        ("eponge",           "Éponge"),
+        ("corail_mou",       "Corail mou"),
+        ("oursin_diademe",   "Oursin diadème"),
+        ("oursin_crayon",    "Oursin-crayon"),
+        ("holothurie",       "Holothurie"),
+        ("crinoide",         "Crinoïde"),
+        ("gorgone",          "Gorgone"),
+        ("acanthaster",      "Acanthaster sp."),
+        ("corail_solitaire", "Corail solitaire"),
+        ("benitier",         "Bénitier"),
+        ("etoile_mer",       "Étoile de mer"),
+    ]),
+]
+
+_MASK_CONFIGS: dict[str, dict] = {
+    "ATL": {
+        "label": "Atlantique (ATL)",
+        "schema": _SCHEMA_ATL,
+        "total_sources": _TOTAL_SOURCES,
+        "json_section": _JSON_SECTION,
+        "xlsx_layout": _XLSX_LAYOUT,
+        "recouvrement_types": _RECOUVREMENT_TYPES_ATL,
+        "recouvrement_section": "Recouvrement visible",
+        "invert_section": "Invertébrés remarquables",
+        "presence_section": "Présence Algues",
+    },
+    "MED": {
+        "label": "Méditerranée (MED)",
+        "schema": _SCHEMA_MED,
+        "total_sources": _TOTAL_SOURCES_MED,
+        "json_section": _JSON_SECTION_MED,
+        "xlsx_layout": _XLSX_LAYOUT_MED,
+        "recouvrement_types": _RECOUVREMENT_TYPES_MED,
+        "recouvrement_section": "Recouvrement Substrat",
+        "invert_section": "Espèces remarquables",
+        "presence_section": None,
+    },
+    "NC": {
+        "label": "Nouvelle-Calédonie (NC)",
+        "schema": _SCHEMA_NC,
+        "total_sources": _TOTAL_SOURCES_NC,
+        "json_section": _JSON_SECTION_NC,
+        "xlsx_layout": _XLSX_LAYOUT_NC,
+        "recouvrement_types": _RECOUVREMENT_TYPES_NC,
+        "recouvrement_section": "Substrat abiotique",
+        "invert_section": "Espèces remarquables",
+        "presence_section": None,
+    },
+}
 
 # Mots-clés non-rotation à exclure des events_motor
 _NON_ROTATION = {"atterrissage", "atterissage", "décollage", "decollage",
@@ -1271,8 +1625,9 @@ class _RecouvrementCascade(QtWidgets.QWidget):
 
     data_changed = QtCore.pyqtSignal()
 
-    def __init__(self, parent=None):
+    def __init__(self, types: list[tuple[str, str]] | None = None, parent=None):
         super().__init__(parent)
+        self._types = types if types is not None else _RECOUVREMENT_TYPES
         self._rows: list[dict] = []
         self._loading = False
         self._language = 'fr'
@@ -1325,10 +1680,10 @@ class _RecouvrementCascade(QtWidgets.QWidget):
 
         key_cb = QtWidgets.QComboBox()
         key_cb.setStyleSheet(_css)
-        for k, label in _RECOUVREMENT_TYPES:
+        for k, label in self._types:
             key_cb.addItem(label, k)
         if key:
-            idx = next((i for i, (k, _) in enumerate(_RECOUVREMENT_TYPES) if k == key), 0)
+            idx = next((i for i, (k, _) in enumerate(self._types) if k == key), 0)
             key_cb.setCurrentIndex(idx)
         key_cb.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Expanding,
@@ -1615,6 +1970,17 @@ class AnalyseHabitatController(QtCore.QObject):
         self._tr_label_refs: list[tuple[QtWidgets.QLabel, str]] = []
         self._section_widgets: list[tuple[_CollapsibleSection, str, str]] = []
 
+        # Masque actif (ATL | MED | NC)
+        self._active_mask: str = "ATL"
+        self._active_schema = _MASK_CONFIGS["ATL"]["schema"]
+        self._active_total_sources = _MASK_CONFIGS["ATL"]["total_sources"]
+        self._active_json_section = _MASK_CONFIGS["ATL"]["json_section"]
+        self._active_xlsx_layout = _MASK_CONFIGS["ATL"]["xlsx_layout"]
+        self._active_recouvrement_types = _MASK_CONFIGS["ATL"]["recouvrement_types"]
+        self._active_recouvrement_section = _MASK_CONFIGS["ATL"]["recouvrement_section"]
+        self._active_invert_section = _MASK_CONFIGS["ATL"]["invert_section"]
+        self._active_presence_section = _MASK_CONFIGS["ATL"]["presence_section"]
+
         self._build_ui()
 
     # ── Construction UI ───────────────────────────────────────────────────────
@@ -1686,7 +2052,7 @@ class AnalyseHabitatController(QtCore.QObject):
         """Panneau compact placé en bas du panneau gauche (analyseur habitat + masque saisie)."""
         outer = QtWidgets.QWidget()
         outer.setStyleSheet("background:#0d1825; border-top:1px solid #1e3448;")
-        outer.setMaximumHeight(110)
+        outer.setMaximumHeight(145)
         outer.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,
                             QtWidgets.QSizePolicy.Policy.Maximum)
         outer_lay = QtWidgets.QVBoxLayout(outer)
@@ -1721,7 +2087,26 @@ class AnalyseHabitatController(QtCore.QObject):
             self._av_widgets[key] = w
             return w
 
-        # Seul champ conservé : analyseur habitat
+        # ── Sélecteur de masque ───────────────────────────────────────────
+        mask_row = QtWidgets.QHBoxLayout()
+        mask_row.setSpacing(6)
+        mask_row.addWidget(_lbl("Masque saisie"))
+        self._mask_combo = QtWidgets.QComboBox()
+        for key, cfg in _MASK_CONFIGS.items():
+            self._mask_combo.addItem(cfg["label"], key)
+        self._mask_combo.setStyleSheet(
+            "QComboBox { background:#162433; color:#7ec8e3;"
+            " border:1px solid #2a4057; border-radius:4px;"
+            " padding:2px 6px; font-size:11px; }"
+            "QComboBox::drop-down { border:none; }"
+            "QComboBox QAbstractItemView { background:#0d1825; color:#cce8f0;"
+            " selection-background-color:#1a3a52; }"
+        )
+        self._mask_combo.currentIndexChanged.connect(self._on_mask_combo_changed)
+        mask_row.addWidget(self._mask_combo)
+        outer_lay.addLayout(mask_row)
+
+        # Analyseur habitat
         outer_lay.addWidget(_lbl("Analyseur habitat"))
         outer_lay.addWidget(_inp("habitat_annotator", "ex : Marie Martin"))
 
@@ -1801,6 +2186,20 @@ class AnalyseHabitatController(QtCore.QObject):
         right_vlay.setContentsMargins(0, 0, 0, 0)
         right_vlay.setSpacing(0)
 
+        # Bandeau masque actif
+        self._mask_type_label = QtWidgets.QLabel()
+        self._mask_type_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self._mask_type_label.setStyleSheet(
+            "QLabel { background:#0d1825; color:#7ec8e3;"
+            " font-size:11px; font-weight:bold; letter-spacing:1px;"
+            " padding:2px 8px; border-bottom:1px solid #1e3a52; }"
+        )
+        self._mask_type_label.setFixedHeight(20)
+        self._mask_type_label.setText(
+            f"TYPE DE MASQUE : {_MASK_CONFIGS['ATL']['label']}"
+        )
+        right_vlay.addWidget(self._mask_type_label)
+
         # Sélecteur de secteur (S1..S6 avec thumbnails) — scrollable horizontalement
         self._sector_selector = self._build_sector_selector()
         _sel_scroll = QtWidgets.QScrollArea()
@@ -1845,13 +2244,13 @@ class AnalyseHabitatController(QtCore.QObject):
         )
         self._form_container = QtWidgets.QWidget()
         self._form_container.setStyleSheet("background:#0d1825;")
-        form_lay = QtWidgets.QVBoxLayout(self._form_container)
-        form_lay.setContentsMargins(8, 4, 8, 16)
-        form_lay.setSpacing(0)
+        self._form_lay = QtWidgets.QVBoxLayout(self._form_container)
+        self._form_lay.setContentsMargins(8, 4, 8, 16)
+        self._form_lay.setSpacing(0)
 
         self._sv_widgets.clear()
-        self._build_single_sector_form(form_lay)
-        form_lay.addStretch()
+        self._build_single_sector_form(self._form_lay)
+        self._form_lay.addStretch()
 
         scroll.setWidget(self._form_container)
         right_vlay.addWidget(scroll, 1)
@@ -1946,38 +2345,99 @@ class AnalyseHabitatController(QtCore.QObject):
             else:
                 cell.setStyleSheet(_unsel)
 
+    def _on_mask_combo_changed(self, _index: int):
+        """Appelé quand l'utilisateur change le masque dans la combobox."""
+        new_mask = self._mask_combo.currentData()
+        if new_mask == self._active_mask:
+            return
+        self._set_active_mask(new_mask, rebuild_form=True)
+        # Persiste le nouveau masque si une vidéo est chargée
+        if self._current_video:
+            self._persist_habitat(self._current_video)
+
+    def _set_active_mask(self, mask: str, rebuild_form: bool = True):
+        """Change le masque actif et met à jour tous les pointeurs de schéma."""
+        if mask not in _MASK_CONFIGS:
+            return
+        cfg = _MASK_CONFIGS[mask]
+        self._active_mask              = mask
+        self._active_schema            = cfg["schema"]
+        self._active_total_sources     = cfg["total_sources"]
+        self._active_json_section      = cfg["json_section"]
+        self._active_xlsx_layout       = cfg["xlsx_layout"]
+        self._active_recouvrement_types = cfg["recouvrement_types"]
+        self._active_recouvrement_section = cfg["recouvrement_section"]
+        self._active_invert_section    = cfg["invert_section"]
+        self._active_presence_section  = cfg["presence_section"]
+        if hasattr(self, '_mask_type_label'):
+            self._mask_type_label.setText(f"TYPE DE MASQUE : {cfg['label']}")
+        if rebuild_form:
+            self._rebuild_habitat_form()
+
+    def _rebuild_habitat_form(self):
+        """Vide et reconstruit le formulaire mono-secteur selon le masque actif."""
+        # Réinitialise les références de section
+        self._section_rec_herbier    = None
+        self._section_rec_algues     = None
+        self._section_presence_algues = None
+        self._sv_recouvrement        = None
+        self._sv_presence_algues     = None
+        self._sv_inverts             = None
+        self._sv_widgets.clear()
+        self._section_widgets.clear()
+        self._tr_label_refs.clear()
+
+        # Vide le layout existant
+        lay = self._form_lay
+        while lay.count():
+            item = lay.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        # Reconstruit
+        self._build_single_sector_form(lay)
+        lay.addStretch()
+
+        # Recharge les données du secteur courant si une vidéo est sélectionnée
+        if self._current_video:
+            self._sv_reload_form()
+
     def _build_single_sector_form(self, parent_lay: QtWidgets.QVBoxLayout):
         """Construit le formulaire de saisie pour un secteur à la fois."""
         row_bg_even = "#0d1825"
         row_bg_odd  = "#0b1421"
 
-        for section_name, note, fields in _SCHEMA:
+        rec_section  = self._active_recouvrement_section
+        inv_section  = self._active_invert_section
+        pres_section = self._active_presence_section
+
+        for section_name, note, fields in self._active_schema:
             section = _CollapsibleSection(section_name, note)
             self._section_widgets.append((section, section_name, note))
             if section_name == "Recouvrement Herbier":
                 self._section_rec_herbier = section
             elif section_name == "Recouvrement Algues":
                 self._section_rec_algues = section
-            elif section_name == "Présence Algues":
+            elif pres_section and section_name == pres_section:
                 self._section_presence_algues = section
 
-            if section_name == "Recouvrement visible":
+            if section_name == rec_section:
                 inner = QtWidgets.QVBoxLayout()
                 inner.setContentsMargins(4, 4, 4, 4)
                 inner.setSpacing(4)
-                self._sv_recouvrement = _RecouvrementCascade()
+                self._sv_recouvrement = _RecouvrementCascade(
+                    types=self._active_recouvrement_types)
                 self._sv_recouvrement.data_changed.connect(
                     self._sv_on_recouvrement_changed)
                 inner.addWidget(self._sv_recouvrement)
                 section.set_layout(inner)
 
-            elif section_name == "Présence Algues":
+            elif pres_section and section_name == pres_section:
                 inner = QtWidgets.QVBoxLayout()
                 inner.setContentsMargins(4, 4, 4, 4)
                 inner.setSpacing(4)
                 items = [(fkey, flabel) for fkey, flabel, _ in fields]
-                add_lbl = _EN.get("+ Ajouter une algue", "+ Ajouter une algue") \
-                    if self._language == 'en' else "+ Ajouter une algue"
                 self._sv_presence_algues = _PresenceCascade(
                     items, add_label="+ Ajouter une algue", show_count=False)
                 self._sv_presence_algues.data_changed.connect(
@@ -1985,13 +2445,14 @@ class AnalyseHabitatController(QtCore.QObject):
                 inner.addWidget(self._sv_presence_algues)
                 section.set_layout(inner)
 
-            elif section_name == "Invertébrés remarquables":
+            elif section_name == inv_section:
                 inner = QtWidgets.QVBoxLayout()
                 inner.setContentsMargins(4, 4, 4, 4)
                 inner.setSpacing(4)
                 items = [(fkey, flabel) for fkey, flabel, _ in fields]
+                add_lbl = "Ajouter un invertébré" if self._active_mask == "ATL" else "Ajouter une espèce"
                 self._sv_inverts = _PresenceCascade(
-                    items, add_label="+ Ajouter un invertébré", show_count=True)
+                    items, add_label=f"+ {add_lbl}", show_count=True)
                 self._sv_inverts.data_changed.connect(
                     self._sv_on_inverts_changed)
                 inner.addWidget(self._sv_inverts)
@@ -2087,7 +2548,7 @@ class AnalyseHabitatController(QtCore.QObject):
 
             if self._sv_recouvrement is not None:
                 rec_data: dict[str, int] = {}
-                for k, _ in _RECOUVREMENT_TYPES:
+                for k, _ in self._active_recouvrement_types:
                     vals = d.get(k, [0] * 6)
                     v = vals[s] if s < len(vals) else 0
                     if v:
@@ -2096,8 +2557,8 @@ class AnalyseHabitatController(QtCore.QObject):
 
             if self._sv_presence_algues is not None:
                 algues_data: dict[str, int] = {}
-                for sname, _, fields in _SCHEMA:
-                    if sname != "Présence Algues":
+                for sname, _, fields in self._active_schema:
+                    if sname != self._active_presence_section:
                         continue
                     for fkey, _, _ in fields:
                         v = (d.get(fkey, [0] * 6))[s] if s < len(d.get(fkey, [0] * 6)) else 0
@@ -2107,8 +2568,8 @@ class AnalyseHabitatController(QtCore.QObject):
 
             if self._sv_inverts is not None:
                 inverts_data: dict[str, int] = {}
-                for sname, _, fields in _SCHEMA:
-                    if sname != "Invertébrés remarquables":
+                for sname, _, fields in self._active_schema:
+                    if sname != self._active_invert_section:
                         continue
                     for fkey, _, _ in fields:
                         vals = d.get(fkey, [0] * 6)
@@ -2138,7 +2599,7 @@ class AnalyseHabitatController(QtCore.QObject):
             return
         cascade_data = self._sv_recouvrement.get_data()
         d = self._data.setdefault(self._current_video, {})
-        for k, _ in _RECOUVREMENT_TYPES:
+        for k, _ in self._active_recouvrement_types:
             row = d.setdefault(k, [0] * 6)
             row[self._current_sector_idx] = cascade_data.get(k, 0)
         self._sv_refresh_totals()
@@ -2152,8 +2613,8 @@ class AnalyseHabitatController(QtCore.QObject):
         cascade_data = self._sv_presence_algues.get_data()
         d = self._data.setdefault(self._current_video, {})
         s = self._current_sector_idx
-        for section_name, _, fields in _SCHEMA:
-            if section_name != "Présence Algues":
+        for section_name, _, fields in self._active_schema:
+            if section_name != self._active_presence_section:
                 continue
             for fkey, _, _ in fields:
                 row = d.setdefault(fkey, [0] * 6)
@@ -2167,8 +2628,8 @@ class AnalyseHabitatController(QtCore.QObject):
         cascade_data = self._sv_inverts.get_data()
         d = self._data.setdefault(self._current_video, {})
         s = self._current_sector_idx
-        for section_name, _, fields in _SCHEMA:
-            if section_name != "Invertébrés remarquables":
+        for section_name, _, fields in self._active_schema:
+            if section_name != self._active_invert_section:
                 continue
             for fkey, _, _ in fields:
                 row = d.setdefault(fkey, [0] * 6)
@@ -2203,8 +2664,19 @@ class AnalyseHabitatController(QtCore.QObject):
             print(f"[HABITAT] Chargé (ancien format, {len(doc)} clés) ← {path}")
             return
 
+        # Restaure le masque persisté
+        mask_type = doc.get("meta", {}).get("mask_type", "ATL")
+        if mask_type in _MASK_CONFIGS and mask_type != self._active_mask:
+            self._set_active_mask(mask_type, rebuild_form=True)
+        # Synchronise la combobox sans déclencher le signal
+        combo_idx = next((i for i in range(self._mask_combo.count())
+                          if self._mask_combo.itemData(i) == self._active_mask), 0)
+        self._mask_combo.blockSignals(True)
+        self._mask_combo.setCurrentIndex(combo_idx)
+        self._mask_combo.blockSignals(False)
+
         flat: dict[str, list] = {}
-        _AUTO = set(_TOTAL_SOURCES.keys())
+        _AUTO = set(self._active_total_sources.keys())
 
         for sector_obj in doc.get("sectors", []):
             s = sector_obj.get("index", 1) - 1  # 0-based
@@ -2212,11 +2684,11 @@ class AnalyseHabitatController(QtCore.QObject):
                 continue
 
             for sec_name, enc_type, json_key in (
-                (n, t, k) for n, (t, k) in _JSON_SECTION.items()
+                (n, t, k) for n, (t, k) in self._active_json_section.items()
             ):
-                # Récupère les clés de champs pour cette section depuis _SCHEMA
+                # Récupère les clés de champs pour cette section depuis le schéma actif
                 fields_for_sec = next(
-                    (flds for sn, _, flds in _SCHEMA if sn == sec_name), []
+                    (flds for sn, _, flds in self._active_schema if sn == sec_name), []
                 )
 
                 if enc_type == "flat":
@@ -2258,10 +2730,13 @@ class AnalyseHabitatController(QtCore.QObject):
         path = self._habitat_json_path(video_path)
         is_new = not os.path.isfile(path)
         d = self._data.get(video_path, {})
-        _AUTO = set(_TOTAL_SOURCES.keys())
+        _AUTO = set(self._active_total_sources.keys())
 
         # ── meta : codestation + champs Analyse vidéo depuis _temp.json ──────
-        meta: dict = {"codestation": _get_codestation(video_path) or ""}
+        meta: dict = {
+            "codestation": _get_codestation(video_path) or "",
+            "mask_type": self._active_mask,
+        }
         try:
             stem   = os.path.splitext(os.path.basename(video_path))[0]
             folder = os.path.dirname(os.path.normpath(video_path))
@@ -2283,9 +2758,9 @@ class AnalyseHabitatController(QtCore.QObject):
         for s in range(6):
             sec: dict = {"index": s + 1}
 
-            for sec_name, (enc_type, json_key) in _JSON_SECTION.items():
+            for sec_name, (enc_type, json_key) in self._active_json_section.items():
                 fields_for_sec = next(
-                    (flds for sn, _, flds in _SCHEMA if sn == sec_name), []
+                    (flds for sn, _, flds in self._active_schema if sn == sec_name), []
                 )
 
                 if enc_type == "flat":
@@ -2361,8 +2836,9 @@ class AnalyseHabitatController(QtCore.QObject):
             v = d.get(key, [0] * 6)
             return v[s] if s < len(v) else 0
 
-        has_herbier = bool(_val("herbier_snv") or _val("herbier_sv"))
-        has_algues  = bool(_val("algues_snv")  or _val("algues_sv"))
+        # Locking conditionnel herbier/algues (ATL uniquement)
+        has_herbier = bool(_val("herbier_snv") or _val("herbier_sv")) if self._active_mask == "ATL" else True
+        has_algues  = bool(_val("algues_snv")  or _val("algues_sv"))  if self._active_mask == "ATL" else True
 
         if self._section_rec_herbier is not None:
             self._section_rec_herbier.set_locked(not has_herbier)
@@ -2383,7 +2859,7 @@ class AnalyseHabitatController(QtCore.QObject):
             return False
         total_rec = sum(
             (d.get(k) or [0] * 6)[s]
-            for k, _ in _RECOUVREMENT_TYPES
+            for k, _ in self._active_recouvrement_types
         )
         return total_rec == 100
 
@@ -2404,7 +2880,7 @@ class AnalyseHabitatController(QtCore.QObject):
             return
         d = self._data.get(self._current_video, {})
         s = self._current_sector_idx
-        for total_key, sources in _TOTAL_SOURCES.items():
+        for total_key, sources in self._active_total_sources.items():
             w = self._sv_widgets.get(total_key)
             if not isinstance(w, _TotalLabel):
                 continue
@@ -2839,8 +3315,7 @@ class AnalyseHabitatController(QtCore.QObject):
         suffix = f"  {dots}  {n_done}/6" + ("  ✓" if has_mask else "")
         item.setText(f"{code}{suffix}")
 
-    @staticmethod
-    def _sectors_status(vpath: str) -> list[bool]:
+    def _sectors_status(self, vpath: str) -> list[bool]:
         """Retourne une liste de 6 booléens : True si le secteur est complet."""
         hab_path = AnalyseHabitatController._habitat_json_path(vpath)
         status = [False] * 6
@@ -2849,7 +3324,7 @@ class AnalyseHabitatController(QtCore.QObject):
                 hab = json.load(f)
         except Exception:
             return status
-        _rec_keys = {k for k, _ in _RECOUVREMENT_TYPES}
+        _rec_keys = {k for k, _ in self._active_recouvrement_types}
         for s in hab.get("sectors", []):
             idx = s.get("index", 0) - 1
             if not (0 <= idx < 6):
@@ -2861,9 +3336,8 @@ class AnalyseHabitatController(QtCore.QObject):
                 status[idx] = True
         return status
 
-    @staticmethod
-    def _count_complete_sectors(vpath: str) -> int:
-        return sum(AnalyseHabitatController._sectors_status(vpath))
+    def _count_complete_sectors(self, vpath: str) -> int:
+        return sum(self._sectors_status(vpath))
 
     def _rebuild_list(self, *_):
         self._list.blockSignals(True)
@@ -2991,7 +3465,7 @@ class AnalyseHabitatController(QtCore.QObject):
         data_start = row
         steps = 0
 
-        for section_name, fields in _XLSX_LAYOUT:
+        for section_name, fields in self._active_xlsx_layout:
             if not fields:
                 cell_b = ws.cell(row=row, column=2, value=section_name)
                 cell_b.fill = FILL_SEC
@@ -3107,7 +3581,7 @@ class AnalyseHabitatController(QtCore.QObject):
             if _reply2 != QtWidgets.QMessageBox.StandardButton.Yes:
                 return
 
-        total_steps = sum(max(len(fields), 1) for _, fields in _XLSX_LAYOUT)
+        total_steps = sum(max(len(fields), 1) for _, fields in self._active_xlsx_layout)
 
         progress = QtWidgets.QProgressDialog(
             f"Génération : {code}" if self._language == 'fr' else f"Generating: {code}",
@@ -3301,7 +3775,7 @@ class AnalyseHabitatController(QtCore.QObject):
             )
             return
 
-        total_steps = sum(max(len(fields), 1) for _, fields in _XLSX_LAYOUT)
+        total_steps = sum(max(len(fields), 1) for _, fields in self._active_xlsx_layout)
 
         # Confirmation si des fichiers existent déjà
         existing = []
