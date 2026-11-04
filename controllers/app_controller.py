@@ -1433,6 +1433,7 @@ class AppController(QtCore.QObject):
                 ctrl.set_language(language)
         if hasattr(self.window, 'inline_donuts'):
             self.window.inline_donuts.set_language(language)
+        self._detect_campaign_mode()
         self.refresh_status_bar()
 
     def _update_info_labels(self, trans: dict):
@@ -1862,7 +1863,9 @@ class AppController(QtCore.QObject):
             w._systems_action.setVisible(False)
             return
         n = len(systems)
-        label = f"{n} système{'s' if n > 1 else ''} : {' · '.join(systems)}"
+        lang = getattr(self.window, 'current_language', 'fr')
+        word = ("system" if n <= 1 else "systems") if lang == 'en' else ("système" if n <= 1 else "systèmes")
+        label = f"{n} {word} : {' · '.join(systems)}"
         w.systems_label.setText(label)
         w.systems_label.setStyleSheet(
             "color: #a0c8e0; font-family: 'Segoe UI', sans-serif;"

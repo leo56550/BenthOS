@@ -2409,6 +2409,8 @@ class EvenementsController:
 
     def _on_event_btn_clicked(self, type_label: str, value: str, btn: QtWidgets.QPushButton):
         """Gère le clic sur un bouton d'événement : capture immédiate ou armer une durée."""
+        if not self.current_video_path or not self.current_json_path:
+            return
         self._selected_type = type_label
         self._selected_value = value
 
@@ -2755,6 +2757,8 @@ class EvenementsController:
 
     def on_capturer_clicked(self):
         """Enregistre un événement ponctuel ou démarre la capture d'un événement avec durée."""
+        if not self.current_video_path or not self.current_json_path:
+            return
         if not hasattr(self, 'event_player') or self.event_player is None:
             return
         current_type = getattr(self, '_selected_type', '') or self.combo_type_event.currentText()
@@ -2808,6 +2812,8 @@ class EvenementsController:
 
     def on_finir_clicked(self):
         """Clôture la capture en cours et enregistre l'événement avec sa durée start→end."""
+        if not self.current_video_path or not self.current_json_path:
+            return
         if not hasattr(self, 'event_player') or self.capture_start_time is None:
             return
         current_type = getattr(self, '_selected_type', '') or self.combo_type_event.currentText()
@@ -2859,6 +2865,8 @@ class EvenementsController:
 
     def _saisir_ardoise(self):
         """Capture un événement ardoise ponctuel à la position courante du lecteur."""
+        if not self.current_video_path or not self.current_json_path:
+            return
         if not hasattr(self, 'event_player') or self.event_player is None:
             return
         value = "ardoise" if self.current_language == 'fr' else "slate"
