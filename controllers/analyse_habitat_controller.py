@@ -2083,32 +2083,57 @@ class AnalyseHabitatController(QtCore.QObject):
         return panel
 
     def _build_analysis_panel_compact(self) -> QtWidgets.QWidget:
-        """Panneau compact placé en bas du panneau gauche (analyseur habitat + masque saisie)."""
+        """Panneau de configuration placé en bas du panneau gauche."""
         outer = QtWidgets.QWidget()
-        outer.setStyleSheet("background:#0d1825; border-top:1px solid #1e3448;")
-        outer.setMaximumHeight(145)
+        outer.setStyleSheet(
+            "QWidget#configPanel {"
+            " background:#0a1520;"
+            " border-top:2px solid #2778a2; }"
+        )
+        outer.setObjectName("configPanel")
+        outer.setMaximumHeight(185)
         outer.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,
                             QtWidgets.QSizePolicy.Policy.Maximum)
         outer_lay = QtWidgets.QVBoxLayout(outer)
-        outer_lay.setContentsMargins(10, 8, 10, 8)
-        outer_lay.setSpacing(4)
+        outer_lay.setContentsMargins(0, 0, 0, 0)
+        outer_lay.setSpacing(0)
 
-        # Stub pour compatibilité _retranslate_ui (pas de toggle réel)
+        # Stub pour compatibilité _retranslate_ui
         self._av_toggle_btn = QtWidgets.QToolButton()
         self._av_toggle_btn.setVisible(False)
         self._av_toggle_btn.setCheckable(True)
         self._av_toggle_btn.setChecked(True)
 
-        _lbl_s = ("color:#7ec8e3; font-size:11px;"
-                  " font-family:'Segoe UI',sans-serif; background:transparent;")
-        _inp_s = ("QLineEdit { background:#162433; color:#F2BFB4;"
-                  " border:1px solid #2a4057; border-radius:4px;"
-                  " padding:3px 6px; font-size:11px; }"
-                  "QLineEdit:focus { border-color:#2778a2; }")
+        # ── En-tête "À CONFIGURER" ────────────────────────────────────────
+        header = QtWidgets.QLabel("  ⚙  À CONFIGURER AVANT LA SAISIE")
+        header.setFixedHeight(26)
+        header.setStyleSheet(
+            "QLabel { background:#0d2440; color:#4a9fc0;"
+            " font-size:10px; font-weight:bold; letter-spacing:1px;"
+            " font-family:'Segoe UI',sans-serif;"
+            " border-bottom:1px solid #1a3a54; }"
+        )
+        outer_lay.addWidget(header)
 
-        def _lbl(text):
+        body = QtWidgets.QWidget()
+        body.setStyleSheet("background:transparent;")
+        body_lay = QtWidgets.QVBoxLayout(body)
+        body_lay.setContentsMargins(12, 8, 12, 8)
+        body_lay.setSpacing(6)
+        outer_lay.addWidget(body)
+
+        _inp_s = ("QLineEdit { background:#0d1e30; color:#F2BFB4;"
+                  " border:1px solid #2a4a60; border-radius:5px;"
+                  " padding:4px 8px; font-size:12px; }"
+                  "QLineEdit:focus { border-color:#2778a2; border-width:2px; }")
+
+        def _field_lbl(text):
             w = QtWidgets.QLabel(text)
-            w.setStyleSheet(_lbl_s)
+            w.setStyleSheet(
+                "color:#a0d4e8; font-size:10px; font-weight:bold;"
+                " font-family:'Segoe UI',sans-serif; background:transparent;"
+                " letter-spacing:0.5px;"
+            )
             self._tr_label_refs.append((w, text))
             return w
 
@@ -2116,35 +2141,34 @@ class AnalyseHabitatController(QtCore.QObject):
             w = QtWidgets.QLineEdit()
             w.setPlaceholderText(placeholder)
             w.setStyleSheet(_inp_s)
-            w.setMinimumHeight(24)
+            w.setMinimumHeight(28)
             w.editingFinished.connect(lambda k=key, wi=w: self._save_av_field(k, wi.text()))
             self._av_widgets[key] = w
             return w
 
-        # ── Sélecteur de masque ───────────────────────────────────────────
-        mask_row = QtWidgets.QHBoxLayout()
-        mask_row.setSpacing(6)
-        mask_row.addWidget(_lbl("Masque saisie"))
+        # ── 1. Masque de saisie (priorité visuelle maximale) ─────────────
+        body_lay.addWidget(_field_lbl("① ZONE / MASQUE DE SAISIE"))
         self._mask_combo = QtWidgets.QComboBox()
         for key, cfg in _MASK_CONFIGS.items():
             self._mask_combo.addItem(cfg["label"], key)
+        self._mask_combo.setMinimumHeight(30)
         self._mask_combo.setStyleSheet(
-            "QComboBox { background:#162433; color:#7ec8e3;"
-            " border:1px solid #2a4057; border-radius:4px;"
-            " padding:2px 6px; font-size:11px; }"
-            "QComboBox::drop-down { border:none; }"
+            "QComboBox { background:#0d2440; color:#7ec8e3;"
+            " border:2px solid #2778a2; border-radius:5px;"
+            " padding:3px 8px; font-size:12px; font-weight:bold; }"
+            "QComboBox::drop-down { border:none; width:20px; }"
+            "QComboBox::down-arrow { width:10px; }"
             "QComboBox QAbstractItemView { background:#0d1825; color:#cce8f0;"
-            " selection-background-color:#1a3a52; }"
+            " selection-background-color:#1a3a52; font-size:12px; }"
         )
         self._mask_combo.currentIndexChanged.connect(self._on_mask_combo_changed)
-        mask_row.addWidget(self._mask_combo)
-        outer_lay.addLayout(mask_row)
+        body_lay.addWidget(self._mask_combo)
 
-        # Analyseur habitat
-        outer_lay.addWidget(_lbl("Analyseur habitat"))
-        outer_lay.addWidget(_inp("habitat_annotator", "ex : Marie Martin"))
+        # ── 2. Analyseur habitat ──────────────────────────────────────────
+        body_lay.addWidget(_field_lbl("② ANALYSEUR HABITAT"))
+        body_lay.addWidget(_inp("habitat_annotator", "ex : Marie Martin"))
 
-        # ── Bouton export masque saisie ───────────────────────────────────
+        # ── Bouton export ─────────────────────────────────────────────────
         self._btn_export_csv = QtWidgets.QPushButton()
         self._btn_export_csv.setText(
             "Générer masque saisie (XLSX)" if self._language == 'fr' else "Generate entry template (XLSX)"
@@ -2152,7 +2176,7 @@ class AnalyseHabitatController(QtCore.QObject):
         self._btn_export_csv.setStyleSheet(
             "QPushButton { background:#0d2a3e; color:#7ec8e3; border:1px solid #2778a2;"
             " border-radius:4px; font-size:10px; font-family:'Segoe UI',sans-serif;"
-            " padding:5px 10px; margin:4px 0px; }"
+            " padding:4px 10px; }"
             "QPushButton:hover { background:#1a3a52; }"
             "QPushButton:pressed { background:#0a1e2d; }"
         )
@@ -2161,7 +2185,7 @@ class AnalyseHabitatController(QtCore.QObject):
             QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self._btn_export_csv.customContextMenuRequested.connect(
             self._on_export_csv_context_menu)
-        outer_lay.addWidget(self._btn_export_csv)
+        body_lay.addWidget(self._btn_export_csv)
 
         return outer
 
@@ -2364,10 +2388,50 @@ class AnalyseHabitatController(QtCore.QObject):
         new_mask = self._mask_combo.currentData()
         if new_mask == self._active_mask:
             return
+
+        # Si une vidéo est chargée et des champs sont remplis → confirmation
+        if self._current_video and self._habitat_has_data(self._current_video):
+            prev_mask = self._active_mask
+            reply = QtWidgets.QMessageBox.warning(
+                None,
+                "Changer de masque de saisie",
+                "Des champs ont déjà été remplis pour cette vidéo.\n\n"
+                "Changer de masque effacera toutes les données saisies.\n"
+                "Voulez-vous continuer ?",
+                QtWidgets.QMessageBox.StandardButton.Yes |
+                QtWidgets.QMessageBox.StandardButton.Cancel,
+                QtWidgets.QMessageBox.StandardButton.Cancel,
+            )
+            if reply != QtWidgets.QMessageBox.StandardButton.Yes:
+                # Annulé : remettre la combo sur l'ancien masque
+                self._mask_combo.blockSignals(True)
+                old_idx = next(
+                    (i for i in range(self._mask_combo.count())
+                     if self._mask_combo.itemData(i) == prev_mask), 0)
+                self._mask_combo.setCurrentIndex(old_idx)
+                self._mask_combo.blockSignals(False)
+                return
+            # Confirmé : effacer toutes les données de saisie
+            self._clear_habitat_data(self._current_video)
+
         self._set_active_mask(new_mask, rebuild_form=True)
-        # Persiste le nouveau masque si une vidéo est chargée
         if self._current_video:
             self._persist_habitat(self._current_video)
+
+    def _habitat_has_data(self, video_path: str) -> bool:
+        """Retourne True si au moins un champ de saisie est rempli pour cette vidéo."""
+        d = self._data.get(video_path, {})
+        for vals in d.values():
+            if isinstance(vals, list) and any(v not in (0, None, "", []) for v in vals):
+                return True
+            elif vals not in (0, None, "", []):
+                return True
+        return False
+
+    def _clear_habitat_data(self, video_path: str):
+        """Efface toutes les données de saisie pour cette vidéo (garde les meta)."""
+        self._data[video_path] = {}
+        self._sv_widgets.clear()
 
     def _set_active_mask(self, mask: str, rebuild_form: bool = True):
         """Change le masque actif et met à jour tous les pointeurs de schéma."""
