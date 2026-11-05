@@ -206,8 +206,23 @@ A full sector-by-sector biological coding workflow is now available as a dedicat
 - **Cascade selectors** — algae presence (16 species) and notable invertebrates (14 taxa + count) use a compact add/remove cascade widget instead of a flat grid.
 - **Vertical splitter** — the station list and the "Analyse vidéo" annotation panel are stacked in a `QSplitter`, letting the operator resize each area freely.
 - **habitat.json** — all coding data is persisted as a structured JSON sidecar alongside the raw video. The format includes a `meta` block (annotators, date, software) and a `sectors` array (one entry per sector, with typed sub-dicts for recouvrement, presence lists, invert counts, etc.). The file is created automatically when exploitability is set on the Validation page.
-- **XLSX masque saisie** — the export button generates a colour-coded Excel file (`.xlsx`) matching the *Masque saisie CC 2022* reference layout: one row per field (not per sector), header in blue-grey `#93CDDD`, section rows in light blue `#DEE6EF`, station code merged across its rows. Right-click → *Générer tous les masques de saisie* exports one file per station with a two-bar progress dialog. Overwrite confirmation shown when files already exist.
+- **XLSX entry template** — the export button generates a colour-coded Excel file named `{codestation}_habitat.xlsx` directly into the station's raw footage folder. Layout matches the *Masque saisie CC 2022* reference: one row per field (not per sector), header in blue-grey `#93CDDD`, section rows in light blue `#DEE6EF`, station code merged across its rows. Right-click → *Générer tous les masques de saisie* exports one file per station with a two-bar progress dialog. Overwrite confirmation shown when files already exist.
 - **✓ indicator** — after a masque is generated the station's entry in the list shows *✓ Masque généré* in italic and a tooltip.
+
+### Multi-mask support (ATL / MED / NC)
+The Analyse Habitat page now supports three distinct entry masks, one per survey zone:
+
+- **Atlantic (ATL)** — standard Atlantic benthos form (blue theme).
+- **Mediterranean (MED)** — Mediterranean-specific field set (golden/amber theme).
+- **New Caledonia (NC)** — tropical Indo-Pacific field set (tropical-green theme).
+
+A prominent **"SET UP BEFORE DATA ENTRY"** configuration panel at the top of the form lists two mandatory steps: ① selecting the survey zone / entry mask, ② selecting the habitat analyst. The active mask is shown in a banner above the sector selector bar (e.g. *ENTRY MASK: Atlantic (ATL)*). Each mask applies a distinct colour theme to section headers and the form background. Switching masks while fields are filled triggers a confirmation dialog; confirming clears all current data.
+
+### Sector buttons always visible
+The six sector selector buttons are now always visible across the full width of the panel. The previous `QScrollArea` wrapper has been removed; each button stretches equally, so no sector is ever hidden regardless of the panel width.
+
+### Event annotation — safety guard
+Adding events on the annotation page without a video selected is now blocked. All capture methods (`on_capturer_clicked`, `on_finir_clicked`, `_on_event_btn_clicked`, `_saisir_ardoise`) return immediately if no video or JSON sidecar is loaded.
 
 ### Motor rotation auto-detection
 The "Rotation moteur" button in the event annotation page now exposes a right-click context menu. The **Détecter automatiquement** action runs an OpenCV phase-correlation analysis between the Landing and Takeoff timestamps to locate horizontal camera panning without manual review. The analysis runs in a `QThread` with a progress dialog that fills progressively throughout the process. Detected rotations are merged into the existing `events_motor` pool alongside manually placed ones.
@@ -218,6 +233,12 @@ A second action, **Détecter toutes les vidéos**, runs the same detection acros
 Motor rotation markers are drawn inside the Deployment zone and can only be interacted with (click, Ctrl+drag, tooltip) when the cursor is within that zone. Hovering over the Fauna or Interesting Images zones at the same horizontal position no longer triggers the motor event tooltip or drag cursor.
 
 When a Landing/Takeoff marker and a motor rotation share the same horizontal position, `Ctrl+click` always resolves to the Landing/Takeoff marker.
+
+### Progress dashboard — bilingual labels
+The mini donut strip embedded in the toolbar and the full-size progress dashboard now respond correctly to the FR ↔ EN language toggle. Labels update immediately without requiring a restart: "Métadonnées" → "Metadata", "Essentielles" → "Essential", "Optionnelles" → "Optional", "Évènements" → "Events". Tooltip texts and dynamic percentage labels (e.g. *Essential 72%*) also switch language.
+
+### Toolbar systems label — bilingual
+The systems count label in the toolbar (e.g. *2 systems : K52 · K54*) now translates correctly to French (*2 systèmes : …*) or English (*2 systems : …*) when the language is switched at runtime.
 
 ### Slate detection via SAISIR ARDOISE
 On the Validation page, right-clicking the **SAISIR ARDOISE** button now exposes three ArUco-based slate detection shortcuts. The right-click menu was removed from the video list to consolidate the entry point on the action button.

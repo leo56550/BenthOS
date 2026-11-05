@@ -188,11 +188,36 @@ Le tableau de bord de progression offre une vue d'ensemble en temps réel de l'�
 | **Validation** | Seconde passe de revue. Basculer l'exploitabilité et la configuration stéréo/mono par vidéo. Clic droit sur « SAISIR ARDOISE » pour lancer la détection ArUco sur la vidéo courante, toutes les vidéos, ou uniquement celles sans codestation. |
 | **Annotation d'événements** | Marquer des événements horodatés sur la timeline vidéo : poissons, oiseaux, tortues, événements moteur — avec signaux sonores. Interaction par zones et détection automatique des rotations moteur (vidéo unique ou lot complet). |
 | **Édition des métadonnées** | Éditer des champs structurés pilotés par un schéma `template.json` configurable. Inclut la récupération météo et une vue carte GPS. |
-| **Analyse Habitat** | Formulaire de codage biologique secteur par secteur pour les stations exploitables. Sections dépliables, visionneuse de secteurs zoomable, sélecteurs en cascade pour les algues et invertébrés. Exporte un masque de saisie XLSX coloré au format *Masque saisie CC 2022*. Données persistées en `habitat.json`. |
+| **Analyse Habitat** | Formulaire de codage biologique secteur par secteur pour les stations exploitables. Trois masques de saisie (ATL / MED / NC) avec thème couleur distinct. Sections dépliables, visionneuse de secteurs zoomable, sélecteurs en cascade pour les algues et invertébrés. Exporte un masque de saisie XLSX coloré (`{codestation}_habitat.xlsx`). Données persistées en `habitat.json`. |
 | **Extraction** | Découper des segments vidéo et capturer des images fixes avec déflou CLAHE, égalisation d'histogramme et rectification stéréo. |
 | **Rapport PDF** | Générer un rapport de campagne avec statistiques, nuage de points GPS et fiches par vidéo. |
 | **Transfert SFTP** | Rapatrier les fichiers depuis la carte SD du KOSMOS directement via SSH/SFTP sans monter le lecteur. |
-| **Interface bilingue** | Basculement français / anglais à l'exécution. |
+| **Interface bilingue** | Basculement français / anglais à l'exécution — tous les champs de formulaire, étiquettes de masque et tableaux de bord traduits. |
+
+---
+
+## Ajouts récents
+
+### Masques de saisie multi-zones (ATL / MED / NC)
+La page Analyse Habitat prend désormais en charge trois masques de saisie distincts, un par zone géographique :
+
+- **Atlantique (ATL)** — formulaire benthos Atlantique standard (thème bleu).
+- **Méditerranée (MED)** — jeu de champs spécifique à la Méditerranée (thème doré/ambre).
+- **Nouvelle-Calédonie (NC)** — jeu de champs Indo-Pacifique tropical (thème vert tropical).
+
+Un panneau de configuration bien visible **« À CONFIGURER AVANT LA SAISIE »** en haut du formulaire liste deux étapes obligatoires : ① choix de la zone / du masque de saisie, ② choix de l'analyseur habitat. Le masque actif s'affiche dans une bannière au-dessus de la barre de sélection des secteurs (ex. *TYPE DE MASQUE : Atlantique (ATL)*). Chaque masque applique un thème couleur distinct aux en-têtes de section et au fond du formulaire. Changer de masque lorsque des champs sont remplis déclenche une boîte de confirmation ; valider efface toutes les données en cours.
+
+### Boutons de secteurs toujours visibles
+Les six boutons de sélection de secteurs sont désormais toujours visibles sur toute la largeur du panneau. La `QScrollArea` précédente a été supprimée ; chaque bouton s'étire de manière égale, aucun secteur n'est jamais masqué quelle que soit la largeur du panneau.
+
+### Nom du fichier XLSX
+Le fichier Excel exporté est maintenant nommé `{codestation}_habitat.xlsx` (au lieu de `{codestation}_masque_saisie.xlsx`).
+
+### Interface bilingue — Analyse Habitat et tableau de bord
+Tous les champs de formulaire des trois masques (ATL, MED, NC), les étiquettes du panneau de configuration, les types de masques et les libellés du tableau de bord de progression (Métadonnées, Essentielles, Optionnelles, Évènements, et leurs info-bulles) sont maintenant traduits et se mettent à jour immédiatement lors du basculement FR ↔ EN. Le libellé du nombre de systèmes dans la barre d'outils (*2 systèmes / 2 systems*) est également bilingue.
+
+### Page Événements — garde de sécurité
+La saisie d'événements sans vidéo sélectionnée est désormais bloquée. Toutes les méthodes de capture retournent immédiatement si aucune vidéo ni fichier JSON associé n'est chargé.
 
 ---
 
