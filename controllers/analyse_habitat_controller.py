@@ -565,7 +565,7 @@ _XLSX_LAYOUT_NC: list[tuple[str, list]] = [
 
 _MASK_CONFIGS: dict[str, dict] = {
     "ATL": {
-        "label": "Atlantique (ATL)",
+        "label": "Atlantique",
         "schema": _SCHEMA_ATL,
         "total_sources": _TOTAL_SOURCES,
         "json_section": _JSON_SECTION,
@@ -584,7 +584,7 @@ _MASK_CONFIGS: dict[str, dict] = {
         },
     },
     "MED": {
-        "label": "Méditerranée (MED)",
+        "label": "Méditerranée",
         "schema": _SCHEMA_MED,
         "total_sources": _TOTAL_SOURCES_MED,
         "json_section": _JSON_SECTION_MED,
@@ -603,7 +603,7 @@ _MASK_CONFIGS: dict[str, dict] = {
         },
     },
     "NC": {
-        "label": "Nouvelle-Calédonie (NC)",
+        "label": "Écosystèmes coralliens",
         "schema": _SCHEMA_NC,
         "total_sources": _TOTAL_SOURCES_NC,
         "json_section": _JSON_SECTION_NC,

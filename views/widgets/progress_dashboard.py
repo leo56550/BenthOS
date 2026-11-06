@@ -1616,9 +1616,14 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
         """Relance le calcul complet. `target` restreint la mise à jour visuelle :
         None=tout, 'meta'=anneau Métadonnées, 'events'=anneau Évènements,
         'ardoise'=anneau Validation, 'kept'=anneau Qualification."""
-        if self._worker and self._worker.isRunning():
-            self._worker.terminate()
-            self._worker.wait(200)
+        if self._worker:
+            try:
+                self._worker.stats_ready.disconnect(self._on_stats_ready)
+            except RuntimeError:
+                pass
+            if self._worker.isRunning():
+                self._worker.terminate()
+                self._worker.wait(200)
         self._refresh_target = target
         self._worker = _StatsWorker(video_paths, trash_count, self)
         self._worker.stats_ready.connect(self._on_stats_ready)
