@@ -697,9 +697,9 @@ _EN: dict[str, str] = {
     "Changer de masque de saisie":   "Change entry mask",
     "Des champs ont déjà été remplis pour cette vidéo.\n\nChanger de masque effacera toutes les données saisies.\nVoulez-vous continuer ?":
         "Fields have already been filled for this video.\n\nChanging the mask will erase all entered data.\nDo you want to continue?",
-    "Atlantique (ATL)":              "Atlantic (ATL)",
-    "Méditerranée (MED)":            "Mediterranean (MED)",
-    "Nouvelle-Calédonie (NC)":       "New Caledonia (NC)",
+    "Atlantique":                    "Atlantic",
+    "Méditerranée":                  "Mediterranean",
+    "Écosystèmes coralliens":        "Coral ecosystems",
     # ATL — labels manquants
     "Sable":                         "Sand",
     "Vase":                          "Mud",
