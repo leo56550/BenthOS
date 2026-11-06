@@ -1617,6 +1617,11 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
         None=tout, 'meta'=anneau Métadonnées, 'events'=anneau Évènements,
         'ardoise'=anneau Validation, 'kept'=anneau Qualification."""
         if self._worker:
+            prev = getattr(self, '_refresh_target', None)
+            # Deux cibles différentes arrivent en rafale (ex. JETER → kept puis ardoise) :
+            # fusionner en target=None pour tout mettre à jour en un seul passage.
+            if prev is not None and target is not None and prev != target:
+                target = None
             try:
                 self._worker.stats_ready.disconnect(self._on_stats_ready)
             except RuntimeError:
