@@ -565,7 +565,7 @@ _XLSX_LAYOUT_NC: list[tuple[str, list]] = [
 
 _MASK_CONFIGS: dict[str, dict] = {
     "ATL": {
-        "label": "Atlantique",
+        "label": "Tempéré Atlantique",
         "schema": _SCHEMA_ATL,
         "total_sources": _TOTAL_SOURCES,
         "json_section": _JSON_SECTION,
@@ -584,7 +584,7 @@ _MASK_CONFIGS: dict[str, dict] = {
         },
     },
     "MED": {
-        "label": "Méditerranée",
+        "label": "Méditerranéen",
         "schema": _SCHEMA_MED,
         "total_sources": _TOTAL_SOURCES_MED,
         "json_section": _JSON_SECTION_MED,
@@ -603,7 +603,7 @@ _MASK_CONFIGS: dict[str, dict] = {
         },
     },
     "NC": {
-        "label": "Écosystèmes coralliens",
+        "label": "Tropical Coralien",
         "schema": _SCHEMA_NC,
         "total_sources": _TOTAL_SOURCES_NC,
         "json_section": _JSON_SECTION_NC,
@@ -697,9 +697,9 @@ _EN: dict[str, str] = {
     "Changer de masque de saisie":   "Change entry mask",
     "Des champs ont déjà été remplis pour cette vidéo.\n\nChanger de masque effacera toutes les données saisies.\nVoulez-vous continuer ?":
         "Fields have already been filled for this video.\n\nChanging the mask will erase all entered data.\nDo you want to continue?",
-    "Atlantique":                    "Atlantic",
-    "Méditerranée":                  "Mediterranean",
-    "Écosystèmes coralliens":        "Coral ecosystems",
+    "Tempéré Atlantique":            "Temperate Atlantic",
+    "Méditerranéen":                 "Mediterranean",
+    "Tropical Coralien":             "Tropical Coral",
     # ATL — labels manquants
     "Sable":                         "Sand",
     "Vase":                          "Mud",
