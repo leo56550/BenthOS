@@ -282,7 +282,7 @@ class SftpDialog(QtWidgets.QDialog):
         return grp
 
     def _build_download_group(self) -> QtWidgets.QGroupBox:
-        grp = QtWidgets.QGroupBox(self.translate("Téléversement vers l'ordinateur", "Download to computer"))
+        grp = QtWidgets.QGroupBox(self.translate("Téléchargement vers l'ordinateur", "Download to computer"))
         lay = QtWidgets.QVBoxLayout(grp)
         lay.setSpacing(6)
 
@@ -300,7 +300,7 @@ class SftpDialog(QtWidgets.QDialog):
         lay.addLayout(row1)
 
         row2 = QtWidgets.QHBoxLayout()
-        self.btn_download = QtWidgets.QPushButton(self.translate("  Téléverser la sélection", "  Download selection"))
+        self.btn_download = QtWidgets.QPushButton(self.translate("  Télécharger la sélection", "  Download selection"))
         self.btn_download.setIcon(
             self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_ArrowDown))
         self.btn_download.setMinimumWidth(200)

@@ -84,7 +84,7 @@ class KosmosConnexionDialog(QtWidgets.QDialog):
         cards.setSpacing(16)
 
         self.btn_sftp = self._card(
-            self.translate("📡  Téléverser des vidéos", "📡  Upload videos"),
+            self.translate("📡  Télécharger des vidéos", "📡  Download videos"),
             self.translate(
                 "Connexion SFTP à la Raspberry\net transfert de la carte SD",
                 "SFTP connection to the Raspberry\nand SD card transfer"
