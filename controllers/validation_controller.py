@@ -65,12 +65,12 @@ class _ToggleFrame(QtWidgets.QFrame):
 
         self.setStyleSheet(
             f"QFrame {{ background-color: {bg_color}; border: {border_w} solid {border_color};"
-            " border-radius: 5px; }}"
+            " border-radius: 5px; }"
         )
         # Sélecteur QLabel {{ }} plus spécifique que les cascades du parent
         self._lbl.setStyleSheet(
             f"QLabel {{ color: {text_color}; font-size: 13px; font-weight: bold;"
-            " font-family: 'Segoe UI', sans-serif; background: transparent; border: none; }}"
+            " font-family: 'Segoe UI', sans-serif; background: transparent; border: none; }"
         )
 
 
@@ -810,7 +810,7 @@ class ValidationController:
             )
             self._aruco_badge.setStyleSheet(
                 f"QLabel {{ color: {_fg}; background: {_bg}; border: 1px solid {_bd};"
-                " border-radius: 4px; font-size: 11px; }}"
+                " border-radius: 4px; font-size: 11px; }"
             )
         else:
             self._aruco_badge.setText("✗ QRcode non détecté")
