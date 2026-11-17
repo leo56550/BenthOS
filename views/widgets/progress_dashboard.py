@@ -1617,21 +1617,18 @@ class ProgressToolbarStrip(QtWidgets.QWidget):
         None=tout, 'meta'=anneau Métadonnées, 'events'=anneau Évènements,
         'ardoise'=anneau Validation, 'kept'=anneau Qualification."""
         if self._worker:
-            # Toujours déconnecter l'ancien worker pour éviter les signaux périmés.
+            # Déconnecter l'ancien worker : son résultat sera ignoré.
             try:
                 self._worker.stats_ready.disconnect(self._on_stats_ready)
             except RuntimeError:
                 pass
             if self._worker.isRunning():
-                # Un calcul est en cours : fusionner les cibles pour ne pas perdre
-                # de mise à jour. Règles :
-                #   • prev=None (full update en cours) → garder None quoi qu'il arrive
-                #   • deux cibles différentes → fusionner en None
+                # Fusionner les cibles si un calcul est déjà en cours.
                 prev = getattr(self, '_refresh_target', None)
                 if prev is None or (target is not None and prev != target):
                     target = None
-                self._worker.terminate()
-                self._worker.wait(200)
+                # Pas de terminate() ni wait() : bloquer le thread principal est
+                # catastrophique quand rowsInserted/rowsRemoved se déclenchent en rafale.
         self._refresh_target = target
         self._worker = _StatsWorker(video_paths, trash_count, self)
         self._worker.stats_ready.connect(self._on_stats_ready)
