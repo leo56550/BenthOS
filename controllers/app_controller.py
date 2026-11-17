@@ -225,10 +225,13 @@ class AppController(QtCore.QObject):
 
         self.qualif_ctrl.video_model.rowsInserted.connect(self.refresh_status_bar)
         self.qualif_ctrl.video_model.rowsRemoved.connect(self.refresh_status_bar)
+        # Différer d'un tick pour lire video_model ET trash_model dans leur état final
+        # (restore_video_by_index fait appendRow puis removeRow : sans délai, le refresh
+        # lirait le trash_count avant la suppression de la corbeille → anneau rouge figé).
         self.qualif_ctrl.video_model.rowsInserted.connect(
-            lambda *_: self._refresh_dashboard(target="kept"))
+            lambda *_: QtCore.QTimer.singleShot(0, self._refresh_dashboard))
         self.qualif_ctrl.video_model.rowsRemoved.connect(
-            lambda *_: self._refresh_dashboard(target="kept"))
+            lambda *_: QtCore.QTimer.singleShot(0, self._refresh_dashboard))
 
         # Carte : propager les clics sur les marqueurs vers tous les controllers
         bridge = self.qualif_ctrl.bridge

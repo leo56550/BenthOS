@@ -528,9 +528,13 @@ class SftpDialog(QtWidgets.QDialog):
     def _on_item_changed(self, item: QtWidgets.QTreeWidgetItem, column: int):
         if column != 0:
             return
-        # Cascade vers les enfants
+        state = item.checkState(0)
+        # PartiallyChecked = mise à jour automatique par ItemIsAutoTristate sur le parent;
+        # ne pas propager vers les enfants, sinon tous les frères/sœurs passent en partial.
+        if state == QtCore.Qt.CheckState.PartiallyChecked:
+            return
         self.file_tree.blockSignals(True)
-        self._propagate_check(item, item.checkState(0))
+        self._propagate_check(item, state)
         self.file_tree.blockSignals(False)
 
     def _propagate_check(self, item: QtWidgets.QTreeWidgetItem,

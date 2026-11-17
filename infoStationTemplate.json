@@ -423,13 +423,13 @@
     "boatgps_waypoint": {
       "name": "Boat GPS Waypoint",
       "name_fr": "Numéro du point (GPS bateau)",
-      "type": "int",
-      "format": "Alphanumérique 3digits",
+      "type": "str",
+      "format": "Alphanumérique libre (ex: 404, Kosmos1)",
       "value": null,
       "description": "Identification name of the observation in the boat GPS",
       "description_fr": "Nom d'identification de l'observation sur le GPS bateau",
       "acquisition_mode": "IHM métadonnées (field sheet)",
-      "example": 404,
+      "example": "Kosmos1",
       "ifdo_id": null,
       "infoStation_visibility": "oui",
       "infoStation_equivalent": "Pt gps bateau"

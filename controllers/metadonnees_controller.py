@@ -1,4 +1,4 @@
-import csv
+﻿import csv
 import os
 import json
 import re
@@ -1469,21 +1469,28 @@ class MetadonneesController:
         anchor_row = min(idx.row() for idx in sel)
         anchor_item = self._ft_table.item(anchor_row, col)
         base_text = anchor_item.text().strip() if anchor_item else ""
-        try:
-            base_int = int(base_text)
-        except ValueError:
+
+        # Accepte un entier pur ("180") ou un préfixe+entier ("Kosmos1", "K042")
+        import re as _re
+        m = _re.fullmatch(r'(.*?)(\d+)', base_text)
+        if not m:
             QtWidgets.QMessageBox.warning(
                 self.widget,
                 self.translate("Incrémenter", "Increment"),
                 self.translate(
-                    f"La première cellule de la sélection (ligne du haut) doit contenir "
-                    f"un nombre entier de départ (valeur actuelle : « {base_text} »).",
-                    f"The first (topmost) selected cell must contain a starting integer "
-                    f"(current value: “{base_text}”)."))
+                    f"La première cellule de la sélection (ligne du haut) doit se terminer "
+                    f"par un entier (ex : 180, Kosmos1). Valeur actuelle : « {base_text} ».",
+                    f"The first (topmost) selected cell must end with an integer "
+                    f'(e.g. 180, Kosmos1). Current value: "{base_text}".'))
             return
 
+        prefix, num_str = m.group(1), m.group(2)
+        base_int = int(num_str)
+        width = len(num_str)  # préserve le zéro-padding éventuel ("042" → "043")
+
         for idx in sel:
-            fill_value = str(base_int + (idx.row() - anchor_row))
+            n = base_int + (idx.row() - anchor_row)
+            fill_value = prefix + str(n).zfill(width) if prefix else str(n)
             self._ft_table.model().setData(idx, fill_value, QtCore.Qt.ItemDataRole.EditRole)
 
     def _copy_fill_selection(self):
