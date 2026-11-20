@@ -267,6 +267,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.is_stereo = False
         self.slider_was_playing = False
         self.current_video_path = None
+        self.current_video_path_R = None
         self.video_fps = 0.0
         self.current_language = 'fr'
 
@@ -778,14 +779,17 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         CAP_PROP_POS_MSEC : ce dernier seek au keyframe le plus proche, ce qui
         peut renvoyer une frame différente de celle affichée par le lecteur Qt
         et provoquer un saut visuel au moment de l'activation HE/DH.
+        En mode stéréo cam D, on lit depuis le fichier et la position du player_R.
         """
-        if not self.current_video_path or not os.path.exists(self.current_video_path):
+        cam_R = self.is_stereo and self.btn_cam_R.isChecked()
+        video_path = self.current_video_path_R if cam_R else self.current_video_path
+        pos_ms = self.player_R.position() if cam_R else self.player.position()
+        if not video_path or not os.path.exists(video_path):
             return None
-        cap = cv2.VideoCapture(self.current_video_path)
+        cap = cv2.VideoCapture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
         if fps <= 0:
             fps = 25.0
-        pos_ms = self.player.position()
         frame_number = round(pos_ms * fps / 1000.0)
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
         ret, frame = cap.read()
@@ -793,11 +797,21 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         return frame if ret else None
 
     def _refresh_corrections(self):
-        """Applique les corrections à la frame courante (pause uniquement) via OpenCV."""
+        """Applique les corrections à la frame courante (pause uniquement) via OpenCV.
+
+        En mode stéréo cam D, on redirige l'overlay left_display vers la frame de
+        player_R : video_widget_R (rendu hardware) est masqué et left_display prend
+        sa place le temps que les corrections sont actives.
+        """
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             return
+        cam_R = self.is_stereo and self.btn_cam_R.isChecked()
         if not self._has_active_corrections():
             self.left_display.setCurrentIndex(0)
+            # Cam D sans corrections : restaurer vue hardware
+            if cam_R:
+                self.left_display.setVisible(False)
+                self.video_widget_R.setVisible(True)
             return
         frame = self._grab_frame_opencv()
         if frame is None:
@@ -809,6 +823,10 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         out_img = QtGui.QImage(rgb.data, w, h, 3 * w,
                                QtGui.QImage.Format.Format_RGB888).copy()
         self.correction_overlay.set_image(out_img)
+        # Cam D avec corrections : basculer de video_widget_R vers l'overlay
+        if cam_R:
+            self.video_widget_R.setVisible(False)
+            self.left_display.setVisible(True)
         self.left_display.setCurrentIndex(1)
 
     def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
@@ -1131,6 +1149,9 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
     def update_frame_label(self, position_ms: int):
         """Met à jour le label de numéro de frame courant."""
+        # En stéréo cam D, la position du player_R est plus représentative de la frame affichée
+        if self.is_stereo and self.btn_cam_R.isChecked():
+            position_ms = self.player_R.position()
         prefix = self.translate("Image", "Frame")
         if self.video_fps and self.video_fps > 0:
             self.lbl_frame_number.setText(
@@ -1182,6 +1203,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                 self.video_widget_R.setVisible(False)
                 self.video_fps = self._get_video_fps(path_l)
                 self.current_video_path = path_l
+                self.current_video_path_R = path_r
                 self.player.setSource(QtCore.QUrl.fromLocalFile(path_l))
                 self.player_R.setSource(QtCore.QUrl.fromLocalFile(path_r))
                 has_video = True
@@ -1199,6 +1221,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.video_widget_R.setVisible(False)
             self.cam_bar.setVisible(False)
             path = video_data[0] if isinstance(video_data, list) else video_data
+            self.current_video_path_R = None
             if path and os.path.exists(path):
                 self.video_fps = self._get_video_fps(path)
                 self.current_video_path = path
@@ -1351,6 +1374,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.btn_cam_R.blockSignals(False)
         self.video_widget_R.setVisible(False)
         self.left_display.setVisible(True)
+        self._refresh_corrections()
 
     def _on_cam_R_toggled(self, checked: bool):
         """Bascule sur la caméra droite — exclusif avec la gauche (une seule vue affichée)."""
@@ -1363,8 +1387,14 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.btn_cam_L.blockSignals(True)
             self.btn_cam_L.setChecked(False)
             self.btn_cam_L.blockSignals(False)
-        self.left_display.setVisible(False)
-        self.video_widget_R.setVisible(True)
+        if self._has_active_corrections():
+            # Afficher la frame corrigée de cam D dans l'overlay existant
+            self.left_display.setVisible(True)
+            self.video_widget_R.setVisible(False)
+            self._refresh_corrections()
+        else:
+            self.left_display.setVisible(False)
+            self.video_widget_R.setVisible(True)
 
     def release_video_file(self, path: str):
         """Stop and clear source if this player holds a file from the same directory as path."""

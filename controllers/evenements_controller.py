@@ -423,9 +423,11 @@ class EvenementsController:
             self._sector_worker = None
             self._sector_view_active = False
 
+            # Bouton overlay rattaché au conteneur parent (pas à event_player) pour
+            # rester visible quand event_player est masqué (vue secteurs active).
             self.btn_toggle_sector_view = QtWidgets.QPushButton(
                 self.translate("📷 Vue des secteurs", "📷 Sector view"),
-                self.event_player)          # enfant du player → overlay sans barre
+                self.player_container_events)
             self.btn_toggle_sector_view.setStyleSheet(BTN_PRIMARY)
             self.btn_toggle_sector_view.clicked.connect(self._toggle_sector_view)
             self.btn_toggle_sector_view.setEnabled(False)
@@ -437,7 +439,7 @@ class EvenementsController:
                 bw = max(btn.sizeHint().width(), 140)
                 bh = btn.sizeHint().height()
                 btn.setFixedSize(bw, bh)
-                btn.move(self.event_player.width() - bw - 8, 6)
+                btn.move(self.player_container_events.width() - bw - 8, 6)
                 btn.raise_()
 
             class _SectorBtnWatcher(QtCore.QObject):
@@ -446,8 +448,8 @@ class EvenementsController:
                         _pos_sector_btn()
                     return False
 
-            self._sector_btn_watcher = _SectorBtnWatcher(self.event_player)
-            self.event_player.installEventFilter(self._sector_btn_watcher)
+            self._sector_btn_watcher = _SectorBtnWatcher(self.player_container_events)
+            self.player_container_events.installEventFilter(self._sector_btn_watcher)
 
             layout.addWidget(self.event_player)
 
