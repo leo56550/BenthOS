@@ -2009,7 +2009,14 @@ class AppController(QtCore.QObject):
         """Intercepte +/- au niveau application pour changer la vitesse du player de la
         page actuellement affichée, sans dépendre du focus précis d'un widget — ça marche
         dès l'arrivée sur la page, pas seulement après avoir cliqué dedans."""
-        if event.type() == QtCore.QEvent.Type.KeyPress:
+        # PyQt6 + Python 3.12 : event.type() appelle l'enum _missing_ pour les types Qt
+        # non référencés (custom events du renderer vidéo), ce qui recurse infiniment.
+        # On attrape l'erreur ici — ce n'est jamais un KeyPress dans ce cas.
+        try:
+            etype = event.type()
+        except RecursionError:
+            return super().eventFilter(obj, event)
+        if etype == QtCore.QEvent.Type.KeyPress:
             direction = self._SPEED_KEYS.get(event.key())
             if direction is not None:
                 focus_w = QtWidgets.QApplication.focusWidget()
