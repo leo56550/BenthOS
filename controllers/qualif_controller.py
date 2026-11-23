@@ -1518,10 +1518,10 @@ class QualifController:
             vp = item.data(QtCore.Qt.ItemDataRole.UserRole) if item else None
             if not vp:
                 continue
-            n_total += 1
             json_path = get_temp_json_path(str(vp))
             if not os.path.isfile(json_path):
-                continue
+                continue  # pas de JSON → non comptabilisé (ne peut pas bloquer le vert)
+            n_total += 1
             try:
                 with open(json_path, 'r', encoding='utf-8') as _f:
                     survey = json.load(_f).get("survey", {})
@@ -1550,7 +1550,14 @@ class QualifController:
                     "border-radius: 8px; border: 1px solid #152d42;")
             return
 
-        if self._campaign_videos_filled:
+        # Retour visuel immédiat : si tous les widgets affichent une valeur, on
+        # considère "rempli" sans attendre editingFinished → sync → lecture JSON.
+        widgets_all_filled = all(
+            bool(w.text().strip()) for w in self.campaign_fields.values()
+        )
+        is_filled = self._campaign_videos_filled or widgets_all_filled
+
+        if is_filled:
             title_text  = self.translate("✓ Propriétés de campagne", "✓ Campaign Properties")
             title_color = "#4caf50"
             border      = "2px solid #4caf50"
