@@ -273,6 +273,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.current_language = 'fr'
         self._duration_txt_L = 0
         self._duration_txt_R = 0
+        self._pts_L: list = []   # PTS de chaque frame cam G (depuis .txt)
+        self._pts_R: list = []   # PTS de chaque frame cam D (depuis .txt)
 
         # Legacy compat
         self.apply_dehaze = False
@@ -566,7 +568,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.telemetry_dialog = TelemetryDialog(self)
         self.telemetry_dialog.finished.connect(lambda _: self.btn_telemetry.setChecked(False))
         self.telemetry_dialog.time_clicked.connect(
-            lambda t_s: self.player.setPosition(int(t_s * 1000)))
+            lambda t_s: self.player.setPosition(self._pts_to_qt(int(t_s * 1000))))
 
         # ── Splitter ──────────────────────────────────────────────────────
         self.splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
@@ -1037,27 +1039,34 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.player_R.setPosition(0)
         self.center_scroll_on_cursor()
 
-    def _start_seek(self, target_ms: int):
-        """Prépare le filtre anti-positionChanged-périmé et cale l'interpolation sur la cible."""
-        self._seek_source_ms = self.timeline.current_pos
-        self._seek_target_ms = target_ms
-        self._interp_pos_ms  = target_ms
+    def _start_seek(self, target_qt_ms: int):
+        """Prépare le filtre anti-positionChanged-périmé et cale l'interpolation sur la cible.
+        target_qt_ms est en position Qt (pas en PTS réel)."""
+        self._seek_source_ms = self.player.position()
+        self._seek_target_ms = target_qt_ms
+        self._interp_pos_ms  = target_qt_ms
         self._interp_time_ms = int(time.monotonic() * 1000)
 
     def on_timeline_pressed(self, target_ms: int):
         """Met le lecteur en pause au début du drag timeline et se positionne sur target_ms."""
+        qt_ms = self._pts_to_qt(target_ms)
         if self.timeline.is_dragging and not self.slider_was_playing:
             if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
                 self.slider_was_playing = True
                 self.player.pause()
-        self._start_seek(target_ms)
-        self.player.setPosition(target_ms)
+        self._start_seek(qt_ms)
+        self.player.setPosition(qt_ms)
+        if self.is_stereo:
+            self.player_R.setPosition(qt_ms)
         self.center_scroll_on_cursor(target_ms)
 
     def on_timeline_released(self, target_ms: int):
         """Reprend la lecture si elle était active avant le drag timeline."""
-        self._start_seek(target_ms)
-        self.player.setPosition(target_ms)
+        qt_ms = self._pts_to_qt(target_ms)
+        self._start_seek(qt_ms)
+        self.player.setPosition(qt_ms)
+        if self.is_stereo:
+            self.player_R.setPosition(qt_ms)
         if self.slider_was_playing:
             self.player.play()
             self.slider_was_playing = False
@@ -1090,14 +1099,15 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self._interp_time_ms = int(time.monotonic() * 1000)
             return
 
+        pts_ms = self._qt_to_pts(position_ms)
         if not self.timeline.is_dragging:
-            self.timeline.set_current_position(position_ms)
-            self.center_scroll_on_cursor()
+            self.timeline.set_current_position(pts_ms)
+            self.center_scroll_on_cursor(pts_ms)
 
-        self.update_top_time_label(position_ms, self._effective_duration())
-        self.update_frame_label(position_ms)
+        self.update_top_time_label(pts_ms, self._effective_duration())
+        self.update_frame_label(pts_ms)
         if hasattr(self, 'telemetry_dialog') and self.telemetry_dialog.isVisible():
-            self.telemetry_dialog.set_cursor(position_ms / 1000.0)
+            self.telemetry_dialog.set_cursor(pts_ms / 1000.0)
             self._tel_cursor_ms = int(time.monotonic() * 1000)
 
     def _smooth_position_update(self):
@@ -1105,24 +1115,26 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         if self.timeline.is_dragging:
             return
         now_ms = int(time.monotonic() * 1000)
-        # Interpolation linéaire entre les mises à jour Qt (~50 ms) pour un curseur continu à 50 fps
+        # Interpolation linéaire en position Qt (ms) entre les mises à jour ~50 ms
+        qt_dur = self.player.duration()
         if self._interp_time_ms > 0:
-            pos = min(self._interp_pos_ms + (now_ms - self._interp_time_ms),
-                      self._effective_duration())
+            pos_qt = min(self._interp_pos_ms + (now_ms - self._interp_time_ms),
+                         qt_dur if qt_dur > 0 else self._interp_pos_ms)
         else:
-            pos = self.player.position()
-        self.timeline.set_current_position(pos)
-        self.center_scroll_on_cursor(pos)
+            pos_qt = self.player.position()
+        pts_ms = self._qt_to_pts(pos_qt)
+        self.timeline.set_current_position(pts_ms)
+        self.center_scroll_on_cursor(pts_ms)
         # Labels mis à jour à ~8 fps pour limiter les redraws texte
         if now_ms - self._label_update_ms >= 120:
             self._label_update_ms = now_ms
-            self.update_top_time_label(pos, self._effective_duration())
-            self.update_frame_label(pos)
+            self.update_top_time_label(pts_ms, self._effective_duration())
+            self.update_frame_label(pts_ms)
         # Curseur télémétrie synchronisé à ~50 fps (coalescing Qt évite les repaints redondants)
         if (hasattr(self, 'telemetry_dialog') and self.telemetry_dialog.isVisible()
                 and now_ms - self._tel_cursor_ms >= 20):
             self._tel_cursor_ms = now_ms
-            self.telemetry_dialog.set_cursor(pos / 1000.0)
+            self.telemetry_dialog.set_cursor(pts_ms / 1000.0)
 
     def center_scroll_on_cursor(self, pos_ms: int | None = None):
         """Fait défiler la timeline pour garder le curseur de lecture visible au centre."""
@@ -1130,32 +1142,65 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         if duration <= 0:
             return
         if pos_ms is None:
-            pos_ms = self.player.position()
+            pos_ms = self.timeline.current_pos
         ratio = pos_ms / duration
         # Utiliser min_zoomed_width() car timeline.width() n'est pas encore à jour après set_zoom()
         cursor_x = int(ratio * self.timeline.min_zoomed_width())
         scrollbar = self.scroll_area_timeline.horizontalScrollBar()
         scrollbar.setValue(cursor_x - (self.scroll_area_timeline.width() // 2))
 
-    def _read_txt_last_pts(self, video_path: str) -> int:
-        """Retourne le dernier PTS (ms) du fichier .txt de timestamps associé à video_path.
-        Retourne 0 si absent ou illisible."""
+    def _load_pts_full(self, video_path: str) -> list:
+        """Charge tous les PTS (ms) du fichier .txt associé à video_path."""
         from services.motor_service import find_video_txt
         txt_path = find_video_txt(video_path)
         if not os.path.isfile(txt_path):
-            return 0
+            return []
+        pts = []
         try:
-            with open(txt_path, 'rb') as f:
-                f.seek(0, 2)
-                size = f.tell()
-                f.seek(max(0, size - 128))
-                tail = f.read().decode('utf-8', errors='ignore')
-            lines = [ln.strip() for ln in tail.splitlines() if ln.strip()]
-            if lines:
-                return int(float(lines[-1]))
+            with open(txt_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        pts.append(float(line))
         except Exception:
             pass
-        return 0
+        return pts
+
+    @staticmethod
+    def _find_pts_index(pts: list, target_ms: float) -> int:
+        """Retourne l'index dans pts dont la valeur est la plus proche de target_ms."""
+        if not pts:
+            return 0
+        lo, hi = 0, len(pts) - 1
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if pts[mid] < target_ms:
+                lo = mid + 1
+            else:
+                hi = mid
+        if lo > 0 and abs(pts[lo - 1] - target_ms) < abs(pts[lo] - target_ms):
+            lo -= 1
+        return lo
+
+    def _qt_to_pts(self, qt_ms: int) -> int:
+        """Convertit une position Qt (ms, N_frames/fps) en PTS réel (ms depuis le .txt).
+        Qt mappe N frames uniformément de 0 à player.duration() ; on retrouve l'index
+        de frame correspondant et on lit son vrai PTS."""
+        pts = self._pts_L
+        qt_dur = self.player.duration()
+        if not pts or qt_dur <= 0:
+            return qt_ms
+        frame_idx = min(int(qt_ms * len(pts) / qt_dur), len(pts) - 1)
+        return int(pts[frame_idx])
+
+    def _pts_to_qt(self, pts_ms: int) -> int:
+        """Convertit un PTS réel (ms) en position Qt (ms) via recherche binaire dans le .txt."""
+        pts = self._pts_L
+        qt_dur = self.player.duration()
+        if not pts or qt_dur <= 0:
+            return pts_ms
+        idx = self._find_pts_index(pts, float(pts_ms))
+        return int(idx * qt_dur / len(pts))
 
     def _effective_duration(self) -> int:
         """Durée effective à afficher.
@@ -1192,17 +1237,20 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             f"{self.timeline._format_ms(position_ms)} / {self.timeline._format_ms(duration_ms)}"
         )
 
-    def update_frame_label(self, position_ms: int):
-        """Met à jour le label de numéro de frame courant."""
-        # En stéréo cam D, la position du player_R est plus représentative de la frame affichée
-        if self.is_stereo and self.btn_cam_R.isChecked():
-            position_ms = self.player_R.position()
+    def update_frame_label(self, pts_ms: int):
+        """Met à jour le label de numéro de frame courant (pts_ms = timestamp PTS réel)."""
         prefix = self.translate("Image", "Frame")
-        if self.video_fps and self.video_fps > 0:
-            self.lbl_frame_number.setText(
-                f"{prefix}: {int(position_ms * self.video_fps / 1000.0) + 1}")
+        # Trouver l'index de frame via les PTS du .txt (correspondance par timestamp réel)
+        if self.is_stereo and self.btn_cam_R.isChecked() and self._pts_R:
+            frame_idx = self._find_pts_index(self._pts_R, float(pts_ms))
+        elif self._pts_L:
+            frame_idx = self._find_pts_index(self._pts_L, float(pts_ms))
+        elif self.video_fps and self.video_fps > 0:
+            frame_idx = int(pts_ms * self.video_fps / 1000.0)
         else:
             self.lbl_frame_number.setText(f"{prefix}: -")
+            return
+        self.lbl_frame_number.setText(f"{prefix}: {frame_idx + 1}")
 
     def _get_video_fps(self, video_path: str) -> float:
         """Lit le FPS de video_path via OpenCV, retourne 0.0 en cas d'échec."""
@@ -1249,8 +1297,10 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                 self.video_fps = self._get_video_fps(path_l)
                 self.current_video_path = path_l
                 self.current_video_path_R = path_r
-                self._duration_txt_L = self._read_txt_last_pts(path_l)
-                self._duration_txt_R = self._read_txt_last_pts(path_r)
+                self._pts_L = self._load_pts_full(path_l)
+                self._pts_R = self._load_pts_full(path_r)
+                self._duration_txt_L = int(self._pts_L[-1]) if self._pts_L else 0
+                self._duration_txt_R = int(self._pts_R[-1]) if self._pts_R else 0
                 self.player.setSource(QtCore.QUrl.fromLocalFile(path_l))
                 self.player_R.setSource(QtCore.QUrl.fromLocalFile(path_r))
                 has_video = True
@@ -1272,7 +1322,10 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             if path and os.path.exists(path):
                 self.video_fps = self._get_video_fps(path)
                 self.current_video_path = path
-                self._duration_txt_L = self._read_txt_last_pts(path)
+                self._pts_L = self._load_pts_full(path)
+                self._pts_R = []
+                self._duration_txt_L = int(self._pts_L[-1]) if self._pts_L else 0
+                self._duration_txt_R = 0
                 self.player.setSource(QtCore.QUrl.fromLocalFile(path))
                 has_video = True
 
@@ -1378,16 +1431,17 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.timeline.update()
 
     def seek_to_ms(self, target_ms: int):
-        """Seek le player vers target_ms et met en pause — même logique 2-phases que load_video_and_events."""
+        """Seek le player vers target_ms (en PTS ms) et met en pause — même logique 2-phases que load_video_and_events."""
         if target_ms <= 0:
             return
+        qt_ms = self._pts_to_qt(target_ms)
         _state = [0]
 
         def _on_pos(pos):
             if _state[0] == 0 and pos > 0:
                 _state[0] = 1
-                self.player.setPosition(target_ms)
-            elif _state[0] == 1 and pos >= target_ms - 80:
+                self.player.setPosition(qt_ms)
+            elif _state[0] == 1 and pos >= qt_ms - 80:
                 _state[0] = 2
                 try:
                     self.player.positionChanged.disconnect(_on_pos)
