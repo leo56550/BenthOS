@@ -42,8 +42,11 @@ from PyQt6 import QtCore
 def _qt_message_handler(msg_type, context, message):
     """Filtre les warnings Qt bénins liés au renderer vidéo.
     QBackingStore::endPaint — faux positif quand QVideoWidget rend des frames
-    pendant qu'un autre widget déclenche un repaint ; aucun impact visuel."""
+    pendant qu'un autre widget déclenche un repaint ; aucun impact visuel.
+    QFFmpeg disconnect — nettoyage interne du pipeline FFmpeg, bénin."""
     if "QBackingStore::endPaint" in message:
+        return
+    if "wildcard call disconnects from destroyed signal of QFFmpeg" in message:
         return
     sys.__stderr__.write(message + "\n")
 

@@ -741,12 +741,14 @@ class EvenementsController:
     def _seek_to_event(self, event_dict):
         """Double-clic sur un événement : positionne le lecteur au début de l'événement."""
         if event_dict is not None and hasattr(self, 'event_player') and self.event_player is not None:
-            self.event_player.player.setPosition(int(event_dict.get("start", 0)))
+            pts = int(event_dict.get("start", 0))
+            self.event_player.player.setPosition(self.event_player._pts_to_qt(pts))
 
     def on_timeline_event_selected(self, event_dict):
         """Positionne le lecteur à l'événement cliqué et propage la sélection vers l'arbre."""
         if event_dict is not None and hasattr(self, 'event_player') and self.event_player is not None:
-            self.event_player.player.setPosition(int(event_dict.get("start", 0)))
+            pts = int(event_dict.get("start", 0))
+            self.event_player.player.setPosition(self.event_player._pts_to_qt(pts))
 
         if not hasattr(self, 'tree_captures') or self.tree_captures is None:
             return
