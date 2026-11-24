@@ -1,4 +1,6 @@
 import os
+import shutil
+import subprocess
 import time
 import cv2
 import numpy as np
@@ -239,6 +241,30 @@ class _VideoLabel(QtWidgets.QWidget):
             y = (self.height() - scaled.height()) // 2
             painter.drawImage(QtCore.QRect(x, y, scaled.width(), scaled.height()), self._image)
         painter.end()
+
+
+class _VideoRepairWorker(QtCore.QThread):
+    """Lance ffmpeg -c copy pour reconstruire l'index d'un MP4 à header incomplet."""
+    finished = QtCore.pyqtSignal(str, bool)   # output_path, success
+
+    def __init__(self, input_path: str, output_path: str):
+        super().__init__()
+        self._input = input_path
+        self._output = output_path
+
+    def run(self):
+        ffmpeg = shutil.which("ffmpeg")
+        if not ffmpeg:
+            self.finished.emit("", False)
+            return
+        try:
+            result = subprocess.run(
+                [ffmpeg, "-y", "-i", self._input, "-c", "copy", self._output],
+                capture_output=True, timeout=600
+            )
+            self.finished.emit(self._output, result.returncode == 0)
+        except Exception:
+            self.finished.emit("", False)
 
 
 class EmbeddedVideoPlayer(QtWidgets.QWidget):
@@ -1135,6 +1161,100 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         scrollbar = self.scroll_area_timeline.horizontalScrollBar()
         scrollbar.setValue(cursor_x - (self.scroll_area_timeline.width() // 2))
 
+    def _read_txt_last_pts(self, video_path: str) -> int:
+        """Retourne le dernier PTS (ms) du fichier .txt de timestamps associé à video_path.
+        Retourne 0 si absent ou illisible."""
+        from services.motor_service import find_video_txt
+        txt_path = find_video_txt(video_path)
+        if not os.path.isfile(txt_path):
+            return 0
+        try:
+            with open(txt_path, 'rb') as f:
+                f.seek(0, 2)
+                size = f.tell()
+                f.seek(max(0, size - 128))
+                tail = f.read().decode('utf-8', errors='ignore')
+            lines = [ln.strip() for ln in tail.splitlines() if ln.strip()]
+            if lines:
+                return int(float(lines[-1]))
+        except Exception:
+            pass
+        return 0
+
+    def _repair_video_if_needed(self, video_path: str) -> str:
+        """Détecte un header MP4 incomplet et lance ffmpeg pour le réparer.
+
+        Compare le dernier PTS du .txt (frames réellement enregistrées) avec la
+        durée estimée par OpenCV (index du container). Si l'écart dépasse 2 s,
+        ffmpeg reconstruit l'index dans un fichier _fixed.mp4 et ce chemin est
+        retourné. Si le _fixed.mp4 existe déjà, il est retourné directement sans
+        relancer ffmpeg. Retourne video_path inchangé si aucune réparation n'est
+        nécessaire ou possible."""
+        if not video_path or not os.path.isfile(video_path):
+            return video_path
+
+        stem, ext = os.path.splitext(video_path)
+        fixed_path = stem + "_fixed" + ext
+
+        if os.path.isfile(fixed_path):
+            return fixed_path
+
+        last_pts = self._read_txt_last_pts(video_path)
+        if last_pts <= 0:
+            return video_path
+
+        cap = cv2.VideoCapture(video_path)
+        cv_duration_ms = 0
+        if cap.isOpened():
+            fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+            fc = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+            cv_duration_ms = int(fc / fps * 1000) if fc > 0 else 0
+            cap.release()
+
+        if last_pts <= cv_duration_ms + 2000:
+            return video_path
+
+        if not shutil.which("ffmpeg"):
+            print(f"[REPAIR] ffmpeg introuvable — impossible de réparer {os.path.basename(video_path)}")
+            return video_path
+
+        print(f"[REPAIR] Header incomplet détecté : last_pts={last_pts}ms cv_dur={cv_duration_ms}ms "
+              f"→ réparation de {os.path.basename(video_path)}")
+
+        progress = QtWidgets.QProgressDialog(
+            f"Réparation du fichier vidéo détectée\n{os.path.basename(video_path)}\n\n"
+            "Reconstruction de l'index en cours…",
+            None, 0, 0, self
+        )
+        progress.setWindowTitle("KOSMOS — Réparation vidéo")
+        progress.setWindowModality(QtCore.Qt.WindowModality.ApplicationModal)
+        progress.setMinimumDuration(0)
+        progress.show()
+        QtWidgets.QApplication.processEvents()
+
+        worker = _VideoRepairWorker(video_path, fixed_path)
+        loop = QtCore.QEventLoop()
+        result_holder = [video_path]
+
+        def _on_finished(out_path, success):
+            if success and os.path.isfile(out_path):
+                result_holder[0] = out_path
+                print(f"[REPAIR] Succès → {os.path.basename(out_path)}")
+            else:
+                print(f"[REPAIR] Échec réparation {os.path.basename(video_path)}")
+                if os.path.isfile(fixed_path):
+                    try:
+                        os.remove(fixed_path)
+                    except Exception:
+                        pass
+            loop.quit()
+
+        worker.finished.connect(_on_finished)
+        worker.start()
+        loop.exec()
+        progress.close()
+        return result_holder[0]
+
     def _effective_duration(self) -> int:
         """Durée effective à afficher : max des deux players en stéréo.
         Les deux caméras peuvent avoir des durées légèrement différentes
@@ -1219,6 +1339,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         if is_stereo and isinstance(video_data, list) and len(video_data) >= 2:
             path_l, path_r = video_data[0], video_data[1]
             if os.path.exists(path_l) and os.path.exists(path_r):
+                path_l = self._repair_video_if_needed(path_l)
+                path_r = self._repair_video_if_needed(path_r)
                 # Gauche affichée par défaut, droite chargée mais masquée (bascule exclusive
                 # via btn_cam_L/btn_cam_R) — les deux flux restent synchronisés en arrière-plan
                 # pour une bascule instantanée.
@@ -1246,6 +1368,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             path = video_data[0] if isinstance(video_data, list) else video_data
             self.current_video_path_R = None
             if path and os.path.exists(path):
+                path = self._repair_video_if_needed(path)
                 self.video_fps = self._get_video_fps(path)
                 self.current_video_path = path
                 self.player.setSource(QtCore.QUrl.fromLocalFile(path))
