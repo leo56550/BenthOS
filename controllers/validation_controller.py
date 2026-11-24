@@ -743,9 +743,6 @@ class ValidationController:
             _ar = self._get_aruco_result(selected_video_path)
             if _ar:
                 _aruco_start_fn = _ar.get("frame_number", 0)
-                print(f"[SEEK] Clic vidéo → QRcode détecté frame {_aruco_start_fn} ({_ar.get('frame_ms', '?')} ms)")
-            else:
-                print(f"[SEEK] Clic vidéo → pas de QRcode détecté")
 
         self.player.load_video_and_events(video_to_load, detected_events, is_stereo=is_stereo,
                                           start_frame_number=_aruco_start_fn)

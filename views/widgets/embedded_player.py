@@ -972,7 +972,6 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
     def _on_playback_state_changed(self, state):
         """Met à jour l'état des corrections et émet playback_state_changed lors d'un changement d'état."""
         is_playing = (state == QMediaPlayer.PlaybackState.PlayingState)
-        print(f"[SEEK] _on_playback_state_changed is_playing={is_playing} left_display.index={self.left_display.currentIndex()}")
         if is_playing:
             # Reprendre la lecture : repasser au rendu hardware, purger la frame brute
             self.left_display.setCurrentIndex(0)
@@ -1337,7 +1336,6 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             # On stocke l'image et on l'affiche seulement APRÈS la pause finale.
             _qr_img: QtGui.QImage | None = None
             if _seek_fn > 0 and self.current_video_path:
-                print(f"[SEEK] Extraction OpenCV frame #{_seek_fn} depuis {os.path.basename(self.current_video_path)}")
                 _cv = cv2.VideoCapture(self.current_video_path)
                 if _cv.isOpened():
                     _fps_cv = _cv.get(cv2.CAP_PROP_FPS) or 25.0
@@ -1350,14 +1348,12 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                         _ok, _fr = _cv.read()
                         _iterations += 1
                         if not _ok:
-                            print(f"[SEEK] cap.read() échoué après {_iterations} itérations")
                             break
                         _shown = _fr
                         if _cur_fn >= _seek_fn:
-                            print(f"[SEEK] Frame trouvée en {_iterations} itérations, fn={_cur_fn}")
                             break
                     else:
-                        print(f"[SEEK] Limite 30 itérations atteinte, prise de la dernière frame")
+                        pass
                     # Calculer _seek_pos (ms) depuis la frame pour le player Qt
                     if _seek_pos == 0:
                         _seek_pos = int(_seek_fn / _fps_cv * 1000)
@@ -1369,21 +1365,14 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                         _qr_img = QtGui.QImage(
                             _rgb.data, _w, _h, 3 * _w,
                             QtGui.QImage.Format.Format_RGB888).copy()
-                        print(f"[SEEK] _qr_img créé ({_w}×{_h})")
-                    else:
-                        print(f"[SEEK] _qr_img=None, _shown est None")
                 else:
-                    print(f"[SEEK] Impossible d'ouvrir la vidéo via OpenCV")
-            elif _seek_pos == 0:
-                print(f"[SEEK] Pas de frame ArUco — ouverture à frame 0")
+                    pass
 
             def _show_qr_overlay():
                 """Affiche l'overlay OpenCV — appelé après pause_all() pour ne pas être écrasé."""
-                print(f"[SEEK] _show_qr_overlay() appelé — _qr_img={'OK' if _qr_img is not None else 'None'}, left_display.currentIndex={self.left_display.currentIndex()}")
                 if _qr_img is not None:
                     self.correction_overlay.set_image(_qr_img)
                     self.left_display.setCurrentIndex(1)
-                    print(f"[SEEK] left_display basculé à index 1 (overlay)")
                 # Forcer les labels et le curseur timeline à _seek_pos :
                 # pendant la lecture, on_player_position_changed early-return et le smooth_timer
                 # s'arrête à pause → les labels restent à leur dernière valeur (souvent 0ms).
@@ -1394,21 +1383,17 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                 # Donner le focus au player pour que les raccourcis clavier fonctionnent
                 self.setFocus()
 
-            print(f"[SEEK] Appel play_all()")
             self.play_all()
             if _seek_pos > 0:
                 # Phase 1 : attendre pos > 0 (media chargé), lancer le seek.
                 # Phase 2 : attendre pos >= _seek_pos, mettre en pause et afficher l'overlay.
                 _state = [0]
                 def _on_pos_seek(pos, _p=_seek_pos):
-                    print(f"[SEEK] positionChanged pos={pos}ms state={_state[0]}")
                     if _state[0] == 0 and pos > 0:
                         _state[0] = 1
-                        print(f"[SEEK] Phase1→setPosition({_p}ms)")
                         self.player.setPosition(_p)
                     elif _state[0] == 1 and pos >= _p - 80:
                         _state[0] = 2
-                        print(f"[SEEK] Phase2→pause+overlay à pos={pos}ms")
                         try:
                             self.player.positionChanged.disconnect(_on_pos_seek)
                         except Exception:
@@ -1418,7 +1403,6 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                 self.player.positionChanged.connect(_on_pos_seek)
 
                 def _safety_pause():
-                    print(f"[SEEK] _safety_pause() state={_state[0]}")
                     if _state[0] < 2:
                         _state[0] = 2
                         try:
