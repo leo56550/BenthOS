@@ -1077,9 +1077,6 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
     def on_player_position_changed(self, position_ms: int):
         """Synchronise le flux R et la timeline quand le lecteur est en pause ou en scrub."""
-        if self.is_stereo and abs(self.player_R.position() - position_ms) > 50:
-            self.player_R.setPosition(position_ms)
-
         # Filtre les positionChanged périmés (émis par player.pause() juste avant le seek)
         if self._seek_target_ms >= 0:
             target = self._seek_target_ms
@@ -1098,6 +1095,10 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self._interp_pos_ms = position_ms
             self._interp_time_ms = int(time.monotonic() * 1000)
             return
+
+        # En pause/scrub uniquement : resynchronise le flux R si dérive > 50 ms
+        if self.is_stereo and abs(self.player_R.position() - position_ms) > 50:
+            self.player_R.setPosition(position_ms)
 
         pts_ms = self._qt_to_pts(position_ms)
         if not self.timeline.is_dragging:
