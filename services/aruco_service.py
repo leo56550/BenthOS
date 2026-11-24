@@ -69,6 +69,10 @@ def detect_aruco_in_video(video_path: str,
                                    corners[j][1] - corners[(j+1)%4][1])
                         for j in range(4))
             score = min(100, int(perim / fw * 400))
+            if score < 50:
+                print(f"[ARUCO] Marqueur ignoré (score={score}<50) : frame {frame_num}  ({name})")
+                frame_num += step_frames
+                continue
             result = {
                 "frame_number": frame_num,
                 "frame_ms":     ms,
