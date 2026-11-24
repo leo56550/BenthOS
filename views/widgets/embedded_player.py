@@ -271,8 +271,6 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.current_video_path_R = None
         self.video_fps = 0.0
         self.current_language = 'fr'
-        self._duration_txt_L = 0
-        self._duration_txt_R = 0
 
         # Legacy compat
         self.apply_dehaze = False
@@ -1044,39 +1042,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self._interp_pos_ms  = target_ms
         self._interp_time_ms = int(time.monotonic() * 1000)
 
-    def _seek_beyond_qt_duration(self, target_ms: int):
-        """Extrait et affiche la frame à target_ms via OpenCV quand Qt ne peut pas l'atteindre.
-        Qt clampe setPosition() à player.duration() — pour les frames enregistrées au-delà
-        du header MP4 incomplet, on passe par OpenCV directement."""
-        video_path = (self.current_video_path_R
-                      if (self.is_stereo and self.btn_cam_R.isChecked())
-                      else self.current_video_path)
-        self.pause_all()
-        self.timeline.set_current_position(target_ms)
-        self.update_top_time_label(target_ms, self._effective_duration())
-        self.update_frame_label(target_ms)
-        self.center_scroll_on_cursor(target_ms)
-        if not video_path:
-            return
-        cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            return
-        cap.set(cv2.CAP_PROP_POS_MSEC, float(target_ms))
-        ok, frame = cap.read()
-        cap.release()
-        if ok and frame is not None:
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            h, w = rgb.shape[:2]
-            img = QtGui.QImage(rgb.data, w, h, 3 * w,
-                               QtGui.QImage.Format.Format_RGB888).copy()
-            self.correction_overlay.set_image(img)
-            self.left_display.setCurrentIndex(1)
-
     def on_timeline_pressed(self, target_ms: int):
         """Met le lecteur en pause au début du drag timeline et se positionne sur target_ms."""
-        if target_ms > self.player.duration() > 0:
-            self._seek_beyond_qt_duration(target_ms)
-            return
         if self.timeline.is_dragging and not self.slider_was_playing:
             if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
                 self.slider_was_playing = True
@@ -1087,10 +1054,6 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
     def on_timeline_released(self, target_ms: int):
         """Reprend la lecture si elle était active avant le drag timeline."""
-        if target_ms > self.player.duration() > 0:
-            self._seek_beyond_qt_duration(target_ms)
-            self.slider_was_playing = False
-            return
         self._start_seek(target_ms)
         self.player.setPosition(target_ms)
         if self.slider_was_playing:
@@ -1172,37 +1135,14 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         scrollbar = self.scroll_area_timeline.horizontalScrollBar()
         scrollbar.setValue(cursor_x - (self.scroll_area_timeline.width() // 2))
 
-    def _read_txt_last_pts(self, video_path: str) -> int:
-        """Retourne le dernier PTS (ms) du fichier .txt de timestamps associé à video_path.
-        Qt peut sous-estimer la durée si le header MP4 est incomplet (arrêt brutal de la caméra).
-        Le dernier PTS du .txt est la vraie durée enregistrée. Retourne 0 si absent."""
-        from services.motor_service import find_video_txt
-        txt_path = find_video_txt(video_path)
-        if not os.path.isfile(txt_path):
-            return 0
-        try:
-            with open(txt_path, 'rb') as f:
-                f.seek(0, 2)
-                size = f.tell()
-                f.seek(max(0, size - 128))
-                tail = f.read().decode('utf-8', errors='ignore')
-            lines = [ln.strip() for ln in tail.splitlines() if ln.strip()]
-            if lines:
-                return int(float(lines[-1]))
-        except Exception:
-            pass
-        return 0
-
     def _effective_duration(self) -> int:
         """Durée effective à afficher : max des deux players en stéréo.
         Les deux caméras peuvent avoir des durées légèrement différentes
         (perte de frames). On prend la plus longue pour que la timeline
-        couvre l'intégralité du contenu.
-        Qt peut sous-estimer la durée si le header MP4 est incomplet ; on
-        prend alors la durée issue du fichier .txt (dernier PTS enregistré)."""
-        dur_L = max(self.player.duration(), self._duration_txt_L)
+        couvre l'intégralité du contenu."""
+        dur_L = self.player.duration()
         if self.is_stereo:
-            dur_R = max(self.player_R.duration(), self._duration_txt_R)
+            dur_R = self.player_R.duration()
             return max(dur_L, dur_R) if dur_R > 0 else dur_L
         return dur_L
 
@@ -1276,9 +1216,6 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         _seek_pos = start_position_ms  # ms pour le player Qt
         _seek_fn = start_frame_number   # frame number pour l'extraction OpenCV (plus fiable sur H.264)
 
-        self._duration_txt_L = 0
-        self._duration_txt_R = 0
-
         if is_stereo and isinstance(video_data, list) and len(video_data) >= 2:
             path_l, path_r = video_data[0], video_data[1]
             if os.path.exists(path_l) and os.path.exists(path_r):
@@ -1290,8 +1227,6 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                 self.video_fps = self._get_video_fps(path_l)
                 self.current_video_path = path_l
                 self.current_video_path_R = path_r
-                self._duration_txt_L = self._read_txt_last_pts(path_l)
-                self._duration_txt_R = self._read_txt_last_pts(path_r)
                 self.player.setSource(QtCore.QUrl.fromLocalFile(path_l))
                 self.player_R.setSource(QtCore.QUrl.fromLocalFile(path_r))
                 has_video = True
@@ -1313,7 +1248,6 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             if path and os.path.exists(path):
                 self.video_fps = self._get_video_fps(path)
                 self.current_video_path = path
-                self._duration_txt_L = self._read_txt_last_pts(path)
                 self.player.setSource(QtCore.QUrl.fromLocalFile(path))
                 has_video = True
 
@@ -1542,7 +1476,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                 df.drop(columns=['pression'], inplace=True)
 
             self.df_telemetry = df
-            dur_s = self._effective_duration() / 1000.0
+            dur_s = self.player.duration() / 1000.0
             self.telemetry_dialog.update_data(df, video_duration_s=dur_s)
             self.btn_telemetry.setEnabled(True)
 
