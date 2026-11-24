@@ -1056,7 +1056,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self._start_seek(qt_ms)
         self.player.setPosition(qt_ms)
         if self.is_stereo:
-            self.player_R.setPosition(qt_ms)
+            self.player_R.setPosition(self._pts_to_qt_R(target_ms))
         self.center_scroll_on_cursor(target_ms)
 
     def on_timeline_released(self, target_ms: int):
@@ -1065,7 +1065,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self._start_seek(qt_ms)
         self.player.setPosition(qt_ms)
         if self.is_stereo:
-            self.player_R.setPosition(qt_ms)
+            self.player_R.setPosition(self._pts_to_qt_R(target_ms))
         if self.slider_was_playing:
             self.player.play()
             self.slider_was_playing = False
@@ -1183,9 +1183,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         return lo
 
     def _qt_to_pts(self, qt_ms: int) -> int:
-        """Convertit une position Qt (ms, N_frames/fps) en PTS réel (ms depuis le .txt).
-        Qt mappe N frames uniformément de 0 à player.duration() ; on retrouve l'index
-        de frame correspondant et on lit son vrai PTS."""
+        """Convertit une position Qt (ms, N_frames/fps) en PTS réel (ms depuis le .txt) pour cam G."""
         pts = self._pts_L
         qt_dur = self.player.duration()
         if not pts or qt_dur <= 0:
@@ -1193,12 +1191,30 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         frame_idx = min(int(qt_ms * len(pts) / qt_dur), len(pts) - 1)
         return int(pts[frame_idx])
 
+    def _qt_to_pts_R(self, qt_ms: int) -> int:
+        """Convertit une position Qt (ms) en PTS réel (ms) pour cam D (_pts_R)."""
+        pts = self._pts_R
+        qt_dur = self.player_R.duration() if self.player_R else 0
+        if not pts or qt_dur <= 0:
+            return self._qt_to_pts(qt_ms)
+        frame_idx = min(int(qt_ms * len(pts) / qt_dur), len(pts) - 1)
+        return int(pts[frame_idx])
+
     def _pts_to_qt(self, pts_ms: int) -> int:
-        """Convertit un PTS réel (ms) en position Qt (ms) via recherche binaire dans le .txt."""
+        """Convertit un PTS réel (ms) en position Qt (ms) via recherche binaire dans le .txt (cam G)."""
         pts = self._pts_L
         qt_dur = self.player.duration()
         if not pts or qt_dur <= 0:
             return pts_ms
+        idx = self._find_pts_index(pts, float(pts_ms))
+        return int(idx * qt_dur / len(pts))
+
+    def _pts_to_qt_R(self, pts_ms: int) -> int:
+        """Convertit un PTS réel (ms) en position Qt (ms) pour cam D (_pts_R)."""
+        pts = self._pts_R
+        qt_dur = self.player_R.duration() if self.player_R else 0
+        if not pts or qt_dur <= 0:
+            return self._pts_to_qt(pts_ms)
         idx = self._find_pts_index(pts, float(pts_ms))
         return int(idx * qt_dur / len(pts))
 
@@ -1240,9 +1256,10 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
     def update_frame_label(self, pts_ms: int):
         """Met à jour le label de numéro de frame courant (pts_ms = timestamp PTS réel)."""
         prefix = self.translate("Image", "Frame")
-        # Trouver l'index de frame via les PTS du .txt (correspondance par timestamp réel)
-        if self.is_stereo and self.btn_cam_R.isChecked() and self._pts_R:
-            frame_idx = self._find_pts_index(self._pts_R, float(pts_ms))
+        if self.is_stereo and self.btn_cam_R.isChecked() and self._pts_R and self.player_R:
+            # Cam D : on lit la position réelle de player_R, pas celle de player (cam G)
+            pts_R_ms = self._qt_to_pts_R(self.player_R.position())
+            frame_idx = self._find_pts_index(self._pts_R, float(pts_R_ms))
         elif self._pts_L:
             frame_idx = self._find_pts_index(self._pts_L, float(pts_ms))
         elif self.video_fps and self.video_fps > 0:

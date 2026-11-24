@@ -645,6 +645,8 @@ class ValidationController:
         if event_dict is not None and hasattr(self, 'player') and self.player is not None:
             pts = int(event_dict.get("start", 0))
             self.player.player.setPosition(self.player._pts_to_qt(pts))
+            if self.player.is_stereo:
+                self.player.player_R.setPosition(self.player._pts_to_qt_R(pts))
 
     def on_video_selected(self, index: QtCore.QModelIndex):
         """Charge la vidéo sélectionnée, les événements moteur et la télémétrie CSV."""

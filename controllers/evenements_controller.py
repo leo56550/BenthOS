@@ -743,12 +743,16 @@ class EvenementsController:
         if event_dict is not None and hasattr(self, 'event_player') and self.event_player is not None:
             pts = int(event_dict.get("start", 0))
             self.event_player.player.setPosition(self.event_player._pts_to_qt(pts))
+            if self.event_player.is_stereo:
+                self.event_player.player_R.setPosition(self.event_player._pts_to_qt_R(pts))
 
     def on_timeline_event_selected(self, event_dict):
         """Positionne le lecteur à l'événement cliqué et propage la sélection vers l'arbre."""
         if event_dict is not None and hasattr(self, 'event_player') and self.event_player is not None:
             pts = int(event_dict.get("start", 0))
             self.event_player.player.setPosition(self.event_player._pts_to_qt(pts))
+            if self.event_player.is_stereo:
+                self.event_player.player_R.setPosition(self.event_player._pts_to_qt_R(pts))
 
         if not hasattr(self, 'tree_captures') or self.tree_captures is None:
             return
