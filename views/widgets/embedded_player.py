@@ -271,6 +271,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.current_video_path_R = None
         self.video_fps = 0.0
         self.current_language = 'fr'
+        self._duration_txt_L = 0
+        self._duration_txt_R = 0
 
         # Legacy compat
         self.apply_dehaze = False
@@ -1135,14 +1137,37 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         scrollbar = self.scroll_area_timeline.horizontalScrollBar()
         scrollbar.setValue(cursor_x - (self.scroll_area_timeline.width() // 2))
 
+    def _read_txt_last_pts(self, video_path: str) -> int:
+        """Retourne le dernier PTS (ms) du fichier .txt de timestamps associé à video_path.
+        Qt peut sous-estimer la durée si le header MP4 est incomplet (arrêt brutal de la caméra).
+        Le dernier PTS du .txt est la vraie durée enregistrée. Retourne 0 si absent."""
+        from services.motor_service import find_video_txt
+        txt_path = find_video_txt(video_path)
+        if not os.path.isfile(txt_path):
+            return 0
+        try:
+            with open(txt_path, 'rb') as f:
+                f.seek(0, 2)
+                size = f.tell()
+                f.seek(max(0, size - 128))
+                tail = f.read().decode('utf-8', errors='ignore')
+            lines = [ln.strip() for ln in tail.splitlines() if ln.strip()]
+            if lines:
+                return int(float(lines[-1]))
+        except Exception:
+            pass
+        return 0
+
     def _effective_duration(self) -> int:
         """Durée effective à afficher : max des deux players en stéréo.
         Les deux caméras peuvent avoir des durées légèrement différentes
         (perte de frames). On prend la plus longue pour que la timeline
-        couvre l'intégralité du contenu."""
-        dur_L = self.player.duration()
+        couvre l'intégralité du contenu.
+        Qt peut sous-estimer la durée si le header MP4 est incomplet ; on
+        prend alors la durée issue du fichier .txt (dernier PTS enregistré)."""
+        dur_L = max(self.player.duration(), self._duration_txt_L)
         if self.is_stereo:
-            dur_R = self.player_R.duration()
+            dur_R = max(self.player_R.duration(), self._duration_txt_R)
             return max(dur_L, dur_R) if dur_R > 0 else dur_L
         return dur_L
 
@@ -1216,6 +1241,9 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         _seek_pos = start_position_ms  # ms pour le player Qt
         _seek_fn = start_frame_number   # frame number pour l'extraction OpenCV (plus fiable sur H.264)
 
+        self._duration_txt_L = 0
+        self._duration_txt_R = 0
+
         if is_stereo and isinstance(video_data, list) and len(video_data) >= 2:
             path_l, path_r = video_data[0], video_data[1]
             if os.path.exists(path_l) and os.path.exists(path_r):
@@ -1227,6 +1255,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                 self.video_fps = self._get_video_fps(path_l)
                 self.current_video_path = path_l
                 self.current_video_path_R = path_r
+                self._duration_txt_L = self._read_txt_last_pts(path_l)
+                self._duration_txt_R = self._read_txt_last_pts(path_r)
                 self.player.setSource(QtCore.QUrl.fromLocalFile(path_l))
                 self.player_R.setSource(QtCore.QUrl.fromLocalFile(path_r))
                 has_video = True
@@ -1248,6 +1278,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             if path and os.path.exists(path):
                 self.video_fps = self._get_video_fps(path)
                 self.current_video_path = path
+                self._duration_txt_L = self._read_txt_last_pts(path)
                 self.player.setSource(QtCore.QUrl.fromLocalFile(path))
                 has_video = True
 
