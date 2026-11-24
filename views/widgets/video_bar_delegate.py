@@ -261,10 +261,13 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
         is_selected = bool(option.state & QtWidgets.QStyle.StateFlag.State_Selected)
         painter.setPen(QtGui.QColor("#ffffff" if is_selected else "#d4e8f5"))
         name_rect = QtCore.QRect(text_left, rect.top() + 4, text_w, half_h - 4)
+        name_fm = QtGui.QFontMetrics(name_font)
+        display_name = (name_fm.elidedText(name_text, QtCore.Qt.TextElideMode.ElideRight, text_w)
+                        if text_w > 0 else name_text)
         painter.drawText(
             name_rect,
             QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
-            name_text,
+            display_name,
         )
         _raw_pt = (index.data(QtCore.Qt.ItemDataRole.UserRole + 3) or "") if self.show_point_number else ""
         point_number = "" if str(_raw_pt).strip().lower() in ("", "none", "null") else str(_raw_pt).strip()
