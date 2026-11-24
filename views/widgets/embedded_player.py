@@ -634,6 +634,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
         self.player.positionChanged.connect(self.on_player_position_changed)
         self.player.durationChanged.connect(self.on_player_duration_changed)
+        self.player_R.durationChanged.connect(self._on_player_R_duration_changed)
         self.timeline.timeChanged.connect(self.on_timeline_pressed)
         self.timeline.sliderMoved.connect(self.on_timeline_released)
         self.player.playbackStateChanged.connect(self._on_playback_state_changed)
@@ -740,7 +741,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             "Mark the annotation end at the current position"))
         if hasattr(self, 'telemetry_dialog'):
             self.telemetry_dialog.set_language(language)
-        self.update_top_time_label(self.player.position(), self.player.duration())
+        self.update_top_time_label(self.player.position(), self._effective_duration())
         self.update_frame_label(self.player.position())
 
     # ── Frame rendering ───────────────────────────────────────────────────
@@ -1091,7 +1092,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.timeline.set_current_position(position_ms)
             self.center_scroll_on_cursor()
 
-        self.update_top_time_label(position_ms, self.player.duration())
+        self.update_top_time_label(position_ms, self._effective_duration())
         self.update_frame_label(position_ms)
         if hasattr(self, 'telemetry_dialog') and self.telemetry_dialog.isVisible():
             self.telemetry_dialog.set_cursor(position_ms / 1000.0)
@@ -1105,7 +1106,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         # Interpolation linéaire entre les mises à jour Qt (~50 ms) pour un curseur continu à 50 fps
         if self._interp_time_ms > 0:
             pos = min(self._interp_pos_ms + (now_ms - self._interp_time_ms),
-                      self.player.duration())
+                      self._effective_duration())
         else:
             pos = self.player.position()
         self.timeline.set_current_position(pos)
@@ -1113,7 +1114,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         # Labels mis à jour à ~8 fps pour limiter les redraws texte
         if now_ms - self._label_update_ms >= 120:
             self._label_update_ms = now_ms
-            self.update_top_time_label(pos, self.player.duration())
+            self.update_top_time_label(pos, self._effective_duration())
             self.update_frame_label(pos)
         # Curseur télémétrie synchronisé à ~50 fps (coalescing Qt évite les repaints redondants)
         if (hasattr(self, 'telemetry_dialog') and self.telemetry_dialog.isVisible()
@@ -1123,7 +1124,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
     def center_scroll_on_cursor(self, pos_ms: int | None = None):
         """Fait défiler la timeline pour garder le curseur de lecture visible au centre."""
-        duration = self.player.duration()
+        duration = self._effective_duration()
         if duration <= 0:
             return
         if pos_ms is None:
@@ -1134,13 +1135,34 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         scrollbar = self.scroll_area_timeline.horizontalScrollBar()
         scrollbar.setValue(cursor_x - (self.scroll_area_timeline.width() // 2))
 
+    def _effective_duration(self) -> int:
+        """Durée effective à afficher : max des deux players en stéréo.
+        Les deux caméras peuvent avoir des durées légèrement différentes
+        (perte de frames). On prend la plus longue pour que la timeline
+        couvre l'intégralité du contenu."""
+        dur_L = self.player.duration()
+        if self.is_stereo:
+            dur_R = self.player_R.duration()
+            return max(dur_L, dur_R) if dur_R > 0 else dur_L
+        return dur_L
+
     def on_player_duration_changed(self, duration_ms: int):
         """Propage la durée totale à la timeline et rafraîchit les labels."""
         if duration_ms <= 0:
             return
-        self.timeline.set_total_duration(duration_ms)
-        self.update_top_time_label(self.player.position(), duration_ms)
+        effective = self._effective_duration()
+        self.timeline.set_total_duration(effective)
+        self.update_top_time_label(self.player.position(), effective)
         self.update_frame_label(self.player.position())
+
+    def _on_player_R_duration_changed(self, duration_ms: int):
+        """En stéréo, recalibrer la timeline si la cam D est plus longue que la cam G."""
+        if not self.is_stereo or duration_ms <= 0:
+            return
+        effective = self._effective_duration()
+        if effective > self.timeline.total_duration:
+            self.timeline.set_total_duration(effective)
+            self.update_top_time_label(self.player.position(), effective)
 
     def update_top_time_label(self, position_ms: int, duration_ms: int):
         """Met à jour le label de temps position/durée au format MM:SS."""
@@ -1286,7 +1308,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                 # Forcer les labels et le curseur timeline à _seek_pos :
                 # pendant la lecture, on_player_position_changed early-return et le smooth_timer
                 # s'arrête à pause → les labels restent à leur dernière valeur (souvent 0ms).
-                self.update_top_time_label(_seek_pos, self.player.duration())
+                self.update_top_time_label(_seek_pos, self._effective_duration())
                 self.update_frame_label(_seek_pos)
                 self.timeline.set_current_position(_seek_pos)
                 self.center_scroll_on_cursor(_seek_pos)
@@ -1613,7 +1635,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                            QtGui.QImage.Format.Format_RGB888).copy()
         self.correction_overlay.set_image(img)
         self.left_display.setCurrentIndex(1)
-        self.update_top_time_label(target_ms, self.player.duration())
+        self.update_top_time_label(target_ms, self._effective_duration())
         self.update_frame_label(target_ms)
         self.timeline.set_current_position(target_ms)
         self.center_scroll_on_cursor(target_ms)
