@@ -3468,10 +3468,7 @@ class EvenementsController:
                     "background-color: #111a24; border-radius: 6px; border: 1px solid #555555;")
                 _ph_layout_nr = QtWidgets.QVBoxLayout(_w_photo_nr)
                 _ph_layout_nr.setContentsMargins(0, 0, 0, 0)
-                _ph_lbl_nr = QtWidgets.QLabel("⏳")
-                _ph_lbl_nr.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-                _ph_lbl_nr.setStyleSheet("color: #405060; font-size: 22px; background: transparent;")
-                _ph_layout_nr.addWidget(_ph_lbl_nr)
+                _ph_layout_nr.addStretch()
 
                 self._sector_pixmaps.append(None)
                 self._sector_slot_labels[0] = (_w_photo_nr, 0, _mid_sec)
@@ -3515,10 +3512,7 @@ class EvenementsController:
                         "background-color: #111a24; border-radius: 6px; border: 1px solid #555555;")
                     ph_layout = QtWidgets.QVBoxLayout(w_photo)
                     ph_layout.setContentsMargins(0, 0, 0, 0)
-                    ph_lbl = QtWidgets.QLabel("⏳")
-                    ph_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-                    ph_lbl.setStyleSheet("color: #405060; font-size: 22px; background: transparent;")
-                    ph_layout.addWidget(ph_lbl)
+                    ph_layout.addStretch()
 
                     self._sector_pixmaps.append(None)
                     self._sector_slot_labels[slot_id] = (w_photo, angle, mid_ts)
