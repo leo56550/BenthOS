@@ -22,7 +22,7 @@ QPushButton {
     background-color: #1b2c3d;
     color: #607080;
     font-weight: bold;
-    border: 2px solid #D94F38;
+    border: 2px solid #3a4a5a;
     border-radius: 5px;
     padding: 4px 20px;
     font-size: 11px;
@@ -37,7 +37,7 @@ QPushButton:checked {
 QPushButton:hover:!checked {
     background-color: #25384d;
     color: #b0c8d8;
-    border-color: #a83020;
+    border-color: #4a6070;
 }
 QPushButton:hover:checked {
     background-color: #3290c2;
