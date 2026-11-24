@@ -1044,8 +1044,39 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self._interp_pos_ms  = target_ms
         self._interp_time_ms = int(time.monotonic() * 1000)
 
+    def _seek_beyond_qt_duration(self, target_ms: int):
+        """Extrait et affiche la frame à target_ms via OpenCV quand Qt ne peut pas l'atteindre.
+        Qt clampe setPosition() à player.duration() — pour les frames enregistrées au-delà
+        du header MP4 incomplet, on passe par OpenCV directement."""
+        video_path = (self.current_video_path_R
+                      if (self.is_stereo and self.btn_cam_R.isChecked())
+                      else self.current_video_path)
+        self.pause_all()
+        self.timeline.set_current_position(target_ms)
+        self.update_top_time_label(target_ms, self._effective_duration())
+        self.update_frame_label(target_ms)
+        self.center_scroll_on_cursor(target_ms)
+        if not video_path:
+            return
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            return
+        cap.set(cv2.CAP_PROP_POS_MSEC, float(target_ms))
+        ok, frame = cap.read()
+        cap.release()
+        if ok and frame is not None:
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            h, w = rgb.shape[:2]
+            img = QtGui.QImage(rgb.data, w, h, 3 * w,
+                               QtGui.QImage.Format.Format_RGB888).copy()
+            self.correction_overlay.set_image(img)
+            self.left_display.setCurrentIndex(1)
+
     def on_timeline_pressed(self, target_ms: int):
         """Met le lecteur en pause au début du drag timeline et se positionne sur target_ms."""
+        if target_ms > self.player.duration() > 0:
+            self._seek_beyond_qt_duration(target_ms)
+            return
         if self.timeline.is_dragging and not self.slider_was_playing:
             if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
                 self.slider_was_playing = True
@@ -1056,6 +1087,10 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
     def on_timeline_released(self, target_ms: int):
         """Reprend la lecture si elle était active avant le drag timeline."""
+        if target_ms > self.player.duration() > 0:
+            self._seek_beyond_qt_duration(target_ms)
+            self.slider_was_playing = False
+            return
         self._start_seek(target_ms)
         self.player.setPosition(target_ms)
         if self.slider_was_playing:
