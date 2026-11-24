@@ -1542,7 +1542,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                 df.drop(columns=['pression'], inplace=True)
 
             self.df_telemetry = df
-            dur_s = self.player.duration() / 1000.0
+            dur_s = self._effective_duration() / 1000.0
             self.telemetry_dialog.update_data(df, video_duration_s=dur_s)
             self.btn_telemetry.setEnabled(True)
 
