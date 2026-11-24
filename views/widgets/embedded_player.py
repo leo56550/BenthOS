@@ -364,12 +364,6 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Expanding,
         )
-        # WA_NativeWindow : force un HWND natif dédié au widget vidéo. Sans ça, Qt6 rend
-        # les frames directement sur le QBackingStore partagé de la fenêtre ; quand un autre
-        # widget déclenche un repaint (ex. survol souris), QBackingStore::endPaint() est appelé
-        # alors que le painter interne du renderer vidéo est encore actif → warning en boucle.
-        self.video_widget.setAttribute(
-            QtCore.Qt.WidgetAttribute.WA_NativeWindow, True)
         self.correction_overlay = _VideoLabel()
         self.left_display = QtWidgets.QStackedWidget()
         self.left_display.addWidget(self.video_widget)      # index 0 → lecture hardware
@@ -384,8 +378,6 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Expanding,
         )
-        self.video_widget_R.setAttribute(
-            QtCore.Qt.WidgetAttribute.WA_NativeWindow, True)
         self.video_widget_R.setVisible(False)
 
         vc_layout.addWidget(self.left_display)

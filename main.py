@@ -38,6 +38,17 @@ sys.stdout = _FilteredStdout(sys.stdout)
 from PyQt6.QtGui import QFont
 from PyQt6 import QtCore
 
+
+def _qt_message_handler(msg_type, context, message):
+    """Filtre les warnings Qt bénins liés au renderer vidéo.
+    QBackingStore::endPaint — faux positif quand QVideoWidget rend des frames
+    pendant qu'un autre widget déclenche un repaint ; aucun impact visuel."""
+    if "QBackingStore::endPaint" in message:
+        return
+    sys.__stderr__.write(message + "\n")
+
+QtCore.qInstallMessageHandler(_qt_message_handler)
+
 from views.main_window import MainWindow
 from controllers.app_controller import AppController
 from views.style import APP_STYLESHEET
