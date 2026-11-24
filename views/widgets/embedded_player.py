@@ -1099,7 +1099,10 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         if self.is_stereo and abs(self.player_R.position() - position_ms) > 50:
             self.player_R.setPosition(position_ms)
 
-        pts_ms = self._qt_to_pts(position_ms)
+        if self.is_stereo and self.btn_cam_R.isChecked() and self._pts_R and self.player_R:
+            pts_ms = self._qt_to_pts_R(self.player_R.position())
+        else:
+            pts_ms = self._qt_to_pts(position_ms)
         if not self.timeline.is_dragging:
             self.timeline.set_current_position(pts_ms)
             self.center_scroll_on_cursor(pts_ms)
@@ -1122,7 +1125,11 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                          qt_dur if qt_dur > 0 else self._interp_pos_ms)
         else:
             pos_qt = self.player.position()
-        pts_ms = self._qt_to_pts(pos_qt)
+        # Quand cam D est affichée, le curseur suit sa position réelle
+        if self.is_stereo and self.btn_cam_R.isChecked() and self._pts_R and self.player_R:
+            pts_ms = self._qt_to_pts_R(self.player_R.position())
+        else:
+            pts_ms = self._qt_to_pts(pos_qt)
         self.timeline.set_current_position(pts_ms)
         self.center_scroll_on_cursor(pts_ms)
         # Labels mis à jour à ~8 fps pour limiter les redraws texte
