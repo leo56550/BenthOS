@@ -354,8 +354,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         cam_bar_layout.setSpacing(10)
         cam_bar_layout.addStretch()
         cam_bar_layout.addWidget(self.btn_cam_L)
-        cam_bar_layout.addWidget(self.btn_cam_R)
         cam_bar_layout.addWidget(self.btn_cam_both)
+        cam_bar_layout.addWidget(self.btn_cam_R)
         cam_bar_layout.addStretch()
         self.cam_bar.setVisible(False)
 
@@ -1499,7 +1499,6 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
     def _on_cam_L_toggled(self, checked: bool):
         """Bascule sur la caméra gauche — exclusif avec la droite (une seule vue affichée)."""
         if not checked:
-            # Pas de désélection au clic : on reste sur Gauche tant que Droite n'est pas choisie.
             self.btn_cam_L.blockSignals(True)
             self.btn_cam_L.setChecked(True)
             self.btn_cam_L.blockSignals(False)
@@ -1508,6 +1507,10 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             btn.blockSignals(True)
             btn.setChecked(False)
             btn.blockSignals(False)
+        layout = self.video_container.layout()
+        if layout:
+            layout.setStretch(0, 1)
+            layout.setStretch(1, 0)
         self.video_widget_R.setVisible(False)
         self.left_display.setVisible(True)
         self._refresh_corrections()
@@ -1523,8 +1526,11 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             btn.blockSignals(True)
             btn.setChecked(False)
             btn.blockSignals(False)
+        layout = self.video_container.layout()
+        if layout:
+            layout.setStretch(0, 0)
+            layout.setStretch(1, 1)
         if self._has_active_corrections():
-            # Afficher la frame corrigée de cam D dans l'overlay existant
             self.left_display.setVisible(True)
             self.video_widget_R.setVisible(False)
             self._refresh_corrections()
@@ -1544,8 +1550,13 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             btn.setChecked(False)
             btn.blockSignals(False)
         self.left_display.setCurrentIndex(0)
+        layout = self.video_container.layout()
+        if layout:
+            layout.setStretch(0, 1)
+            layout.setStretch(1, 1)
         self.left_display.setVisible(True)
         self.video_widget_R.setVisible(True)
+        self.player_R.setVideoOutput(self.video_widget_R)
 
     def release_video_file(self, path: str):
         """Stop and clear source if this player holds a file from the same directory as path."""
