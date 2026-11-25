@@ -414,13 +414,17 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.lbl_top_time.setFixedWidth(160)
         self.time_layout.addWidget(self.lbl_top_time)
 
+        _lbl_style = "color: #b0c8d8; font-size: 12px; margin-left: 12px; border: none;"
         self.lbl_frame_number = QtWidgets.QLabel("Frame: -")
-        self.lbl_frame_number.setStyleSheet(
-            f"color: #b0c8d8; font-size: 12px; margin-left: 12px; border: none;")
-        # Largeur fixe : évite que la croissance du numéro de frame élargisse le widget
-        # et rétrécisse les panneaux voisins via le splitter
+        self.lbl_frame_number.setStyleSheet(_lbl_style)
         self.lbl_frame_number.setFixedWidth(130)
         self.time_layout.addWidget(self.lbl_frame_number)
+
+        self.lbl_frame_number_R = QtWidgets.QLabel("Image D: -")
+        self.lbl_frame_number_R.setStyleSheet(_lbl_style)
+        self.lbl_frame_number_R.setFixedWidth(130)
+        self.lbl_frame_number_R.setVisible(False)
+        self.time_layout.addWidget(self.lbl_frame_number_R)
         self.time_layout.addStretch()
 
         # Timeline
@@ -1271,20 +1275,28 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         )
 
     def update_frame_label(self, pts_ms: int):
-        """Met à jour le label de numéro de frame courant (pts_ms = timestamp PTS réel)."""
-        prefix = self.translate("Image", "Frame")
-        if self.is_stereo and self.btn_cam_R.isChecked() and self._pts_R and self.player_R:
-            # Cam D : on lit la position réelle de player_R, pas celle de player (cam G)
-            pts_R_ms = self._qt_to_pts_R(self.player_R.position())
-            frame_idx = self._find_pts_index(self._pts_R, float(pts_R_ms))
-        elif self._pts_L:
-            frame_idx = self._find_pts_index(self._pts_L, float(pts_ms))
+        """Met à jour le label de numéro de frame courant (pts_ms = timestamp PTS réel cam G)."""
+        prefix_L = self.translate("Image G", "Frame L") if self.is_stereo else self.translate("Image", "Frame")
+        prefix_R = self.translate("Image D", "Frame R")
+
+        # ── Cam G ────────────────────────────────────────────────────────────
+        if self._pts_L:
+            idx_L = self._find_pts_index(self._pts_L, float(pts_ms))
+            self.lbl_frame_number.setText(f"{prefix_L}: {idx_L + 1}")
         elif self.video_fps and self.video_fps > 0:
-            frame_idx = int(pts_ms * self.video_fps / 1000.0)
+            idx_L = int(pts_ms * self.video_fps / 1000.0)
+            self.lbl_frame_number.setText(f"{prefix_L}: {idx_L + 1}")
         else:
-            self.lbl_frame_number.setText(f"{prefix}: -")
-            return
-        self.lbl_frame_number.setText(f"{prefix}: {frame_idx + 1}")
+            self.lbl_frame_number.setText(f"{prefix_L}: -")
+
+        # ── Cam D (stéréo uniquement) ─────────────────────────────────────────
+        if self.is_stereo and self._pts_R and self.player_R:
+            pts_R_ms = self._qt_to_pts_R(self.player_R.position())
+            idx_R = self._find_pts_index(self._pts_R, float(pts_R_ms))
+            self.lbl_frame_number_R.setText(f"{prefix_R}: {idx_R + 1}")
+            self.lbl_frame_number_R.setVisible(True)
+        else:
+            self.lbl_frame_number_R.setVisible(False)
 
     def _get_video_fps(self, video_path: str) -> float:
         """Lit le FPS de video_path via OpenCV, retourne 0.0 en cas d'échec."""
