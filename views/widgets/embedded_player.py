@@ -341,6 +341,11 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.btn_cam_R.setChecked(False)
         self.btn_cam_R.setStyleSheet(_CAM_BTN_STYLE)
 
+        self.btn_cam_both = QtWidgets.QPushButton("Cam G/D")
+        self.btn_cam_both.setCheckable(True)
+        self.btn_cam_both.setChecked(False)
+        self.btn_cam_both.setStyleSheet(_CAM_BTN_STYLE)
+
         self.cam_bar = QtWidgets.QWidget()
         self.cam_bar.setFixedHeight(36)
         self.cam_bar.setStyleSheet(f"background-color: {C_BG_DARK}; border-bottom: 1px solid {C_BORDER_SUB};")
@@ -350,6 +355,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         cam_bar_layout.addStretch()
         cam_bar_layout.addWidget(self.btn_cam_L)
         cam_bar_layout.addWidget(self.btn_cam_R)
+        cam_bar_layout.addWidget(self.btn_cam_both)
         cam_bar_layout.addStretch()
         self.cam_bar.setVisible(False)
 
@@ -635,6 +641,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
         self.btn_cam_L.toggled.connect(self._on_cam_L_toggled)
         self.btn_cam_R.toggled.connect(self._on_cam_R_toggled)
+        self.btn_cam_both.toggled.connect(self._on_cam_both_toggled)
 
         self.player.positionChanged.connect(self.on_player_position_changed)
         self.player.durationChanged.connect(self.on_player_duration_changed)
@@ -717,6 +724,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.btn_cam_L.setToolTip(self.translate("Afficher/masquer caméra gauche", "Show/hide left camera"))
         self.btn_cam_R.setText(self.translate("Cam D", "Cam R"))
         self.btn_cam_R.setToolTip(self.translate("Afficher/masquer caméra droite", "Show/hide right camera"))
+        self.btn_cam_both.setText(self.translate("Cam G/D", "Cam L/R"))
+        self.btn_cam_both.setToolTip(self.translate("Afficher les deux caméras côte-à-côte", "Show both cameras side-by-side"))
         self.lbl_corrections_title.setText(self.translate("Corrections :", "Corrections:"))
         self.btn_corr_he.setToolTip(self.translate(
             "Égalisation d'histogramme (améliore le contraste global)",
@@ -870,13 +879,14 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
         win.speed_up.connect(_on_speed_up)
         win.speed_down.connect(_on_speed_down)
-        # Respecte la même sélection exclusive Gauche/Droite qu'en vue normale.
+        # Respecte la même sélection exclusive Gauche/Droite/Les deux qu'en vue normale.
+        show_both  = self.is_stereo and self.btn_cam_both.isChecked()
         show_right = self.is_stereo and self.btn_cam_R.isChecked()
         win.video_L.setVisible(not show_right)
         self.player.setVideoOutput(win.video_L)
         if self.is_stereo:
             self.player_R.setVideoOutput(win.video_R)
-            win.video_R.setVisible(show_right)
+            win.video_R.setVisible(show_right or show_both)
         # Repasser en rendu hardware (pas de corrections en plein écran)
         self.left_display.setCurrentIndex(0)
         win.showFullScreen()
@@ -1479,10 +1489,10 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.btn_cam_L.setChecked(True)
             self.btn_cam_L.blockSignals(False)
             return
-        if self.btn_cam_R.isChecked():
-            self.btn_cam_R.blockSignals(True)
-            self.btn_cam_R.setChecked(False)
-            self.btn_cam_R.blockSignals(False)
+        for btn in (self.btn_cam_R, self.btn_cam_both):
+            btn.blockSignals(True)
+            btn.setChecked(False)
+            btn.blockSignals(False)
         self.video_widget_R.setVisible(False)
         self.left_display.setVisible(True)
         self._refresh_corrections()
@@ -1494,10 +1504,10 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.btn_cam_R.setChecked(True)
             self.btn_cam_R.blockSignals(False)
             return
-        if self.btn_cam_L.isChecked():
-            self.btn_cam_L.blockSignals(True)
-            self.btn_cam_L.setChecked(False)
-            self.btn_cam_L.blockSignals(False)
+        for btn in (self.btn_cam_L, self.btn_cam_both):
+            btn.blockSignals(True)
+            btn.setChecked(False)
+            btn.blockSignals(False)
         if self._has_active_corrections():
             # Afficher la frame corrigée de cam D dans l'overlay existant
             self.left_display.setVisible(True)
@@ -1506,6 +1516,21 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         else:
             self.left_display.setVisible(False)
             self.video_widget_R.setVisible(True)
+
+    def _on_cam_both_toggled(self, checked: bool):
+        """Affiche les deux caméras côte-à-côte."""
+        if not checked:
+            self.btn_cam_both.blockSignals(True)
+            self.btn_cam_both.setChecked(True)
+            self.btn_cam_both.blockSignals(False)
+            return
+        for btn in (self.btn_cam_L, self.btn_cam_R):
+            btn.blockSignals(True)
+            btn.setChecked(False)
+            btn.blockSignals(False)
+        self.left_display.setCurrentIndex(0)
+        self.left_display.setVisible(True)
+        self.video_widget_R.setVisible(True)
 
     def release_video_file(self, path: str):
         """Stop and clear source if this player holds a file from the same directory as path."""
