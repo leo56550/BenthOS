@@ -3509,7 +3509,7 @@ class EvenementsController:
                 for idx, evt in enumerate(rotation_events):
                     ts, angle, evt_type = evt["timestamp"], evt["angle"], evt["type"]
                     # Image à rotation_début + 3 secondes
-                    mid_ts = ts + 3.0
+                    mid_ts = ts + 10.0
                     w_photo = QtWidgets.QFrame()
                     w_photo.setFixedSize(240, 180)
                     w_photo.setStyleSheet(
