@@ -3,6 +3,28 @@ import cv2
 import numpy as np
 
 
+def extract_frame_at_index(video_path: str, frame_index: int) -> np.ndarray:
+    """Extrait une frame RGB depuis une vidéo par numéro de frame (précis pour vidéo VFR).
+
+    Préférer cette fonction à extract_frame_at_time pour les vidéos avec frames droppées,
+    car CAP_PROP_POS_FRAMES est exact alors que CAP_PROP_POS_MSEC suppose un FPS constant.
+    """
+    import os
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print(f"[IMAGE] Impossible d'ouvrir : {os.path.basename(video_path)}")
+        return None
+    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+    success, frame = cap.read()
+    cap.release()
+    if success and frame is not None:
+        actual_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
+        print(f"[IMAGE] extrait frame={frame_index} → pos={actual_ms/1000:.3f}s  vidéo={os.path.basename(video_path)}")
+        return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    print(f"[IMAGE] ÉCHEC extraction frame={frame_index}  vidéo={os.path.basename(video_path)}")
+    return None
+
+
 def extract_frame_at_time(video_path: str, timestamp_seconds: float) -> np.ndarray:
     """Extrait une frame RGB depuis une vidéo à un timestamp donné.
 

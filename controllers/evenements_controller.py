@@ -3506,10 +3506,12 @@ class EvenementsController:
                 else:
                     _avg_interval = 6.0
 
+                # PTS list pour conversion PTS → index de frame (seek précis VFR)
+                _pts_L = getattr(self.event_player, '_pts_L', None) or []
+
                 for idx, evt in enumerate(rotation_events):
                     ts, angle, evt_type = evt["timestamp"], evt["angle"], evt["type"]
-                    # Image à rotation_début + 3 secondes
-                    mid_ts = ts + 10.0
+                    mid_ts = ts + 10.0  # PTS en secondes
                     w_photo = QtWidgets.QFrame()
                     w_photo.setFixedSize(240, 180)
                     w_photo.setStyleSheet(
@@ -3520,7 +3522,12 @@ class EvenementsController:
 
                     self._sector_pixmaps.append(None)
                     self._sector_slot_labels[slot_id] = (w_photo, angle, mid_ts)
-                    tasks.append((slot_id, video_path, mid_ts))
+                    if _pts_L:
+                        # Seek par index de frame : précis même en VFR (frames droppées)
+                        frame_idx = self.event_player._find_pts_index(_pts_L, float(mid_ts * 1000))
+                        tasks.append((slot_id, video_path, frame_idx))
+                    else:
+                        tasks.append((slot_id, video_path, mid_ts))
                     slot_id += 1
                     hbox.addWidget(w_photo)
 

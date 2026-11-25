@@ -20,7 +20,7 @@ from services.campaign_service import (
 )
 from services.migration_service import initialise_temp_json_if_needed, update_temp_json_paths
 from services.motor_service import get_motor_stable_timestamps, find_system_event_csv
-from services.image_service import extract_frame_at_time
+from services.image_service import extract_frame_at_time, extract_frame_at_index
 from services.thumbnail_service import ThumbnailWorkerMulti, THUMB_W, THUMB_H
 from services.sound_service import get_sound_service
 from views.dialogs.map_dialog import MapDialog, MapBridge
@@ -139,8 +139,12 @@ class _CameraFrameWorker(QtCore.QThread):
 
         def _extract(task):
             slot_id, video_path, ts = task
-            print(f"[SECTOR-WORKER]   slot={slot_id} ts={ts:.3f}s  vidéo={__import__('os').path.basename(video_path)}")
-            frame = extract_frame_at_time(video_path, ts)
+            if isinstance(ts, int):
+                print(f"[SECTOR-WORKER]   slot={slot_id} frame={ts}  vidéo={__import__('os').path.basename(video_path)}")
+                frame = extract_frame_at_index(video_path, ts)
+            else:
+                print(f"[SECTOR-WORKER]   slot={slot_id} ts={ts:.3f}s  vidéo={__import__('os').path.basename(video_path)}")
+                frame = extract_frame_at_time(video_path, ts)
             ok = frame is not None
             print(f"[SECTOR-WORKER]   slot={slot_id} → {'OK' if ok else 'ÉCHEC'}")
             return slot_id, frame
