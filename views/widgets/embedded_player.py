@@ -650,6 +650,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.player.positionChanged.connect(self.on_player_position_changed)
         self.player.durationChanged.connect(self.on_player_duration_changed)
         self.player_R.durationChanged.connect(self._on_player_R_duration_changed)
+        self.player_R.positionChanged.connect(self._on_player_R_position_changed)
         self.timeline.timeChanged.connect(self.on_timeline_pressed)
         self.timeline.sliderMoved.connect(self.on_timeline_released)
         self.player.playbackStateChanged.connect(self._on_playback_state_changed)
@@ -1267,6 +1268,19 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         if effective > self.timeline.total_duration:
             self.timeline.set_total_duration(effective)
             self.update_top_time_label(self.player.position(), effective)
+
+    def _on_player_R_position_changed(self, qt_pos_ms: int):
+        """Met à jour le label Image D après un seek effectif de player_R (hors lecture)."""
+        if not self.is_stereo or not self._pts_R:
+            return
+        from PyQt6.QtMultimedia import QMediaPlayer
+        if self.player_R.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            return  # géré par le smooth timer pendant la lecture
+        prefix_R = self.translate("Image D", "Frame R")
+        pts_R_ms = self._qt_to_pts_R(qt_pos_ms)
+        idx_R = self._find_pts_index(self._pts_R, float(pts_R_ms))
+        self.lbl_frame_number_R.setText(f"{prefix_R}: {idx_R + 1}")
+        self.lbl_frame_number_R.setVisible(True)
 
     def update_top_time_label(self, position_ms: int, duration_ms: int):
         """Met à jour le label de temps position/durée au format MM:SS."""
