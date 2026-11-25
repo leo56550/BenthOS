@@ -1350,13 +1350,16 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                 self.player.setSource(QtCore.QUrl.fromLocalFile(path_l))
                 self.player_R.setSource(QtCore.QUrl.fromLocalFile(path_r))
                 has_video = True
-            # Reset cam toggles : Gauche sélectionnée, Droite désélectionnée
+            # Reset cam toggles : Gauche sélectionnée, Droite et G/D désélectionnés
             self.btn_cam_L.blockSignals(True)
             self.btn_cam_L.setChecked(True)
             self.btn_cam_L.blockSignals(False)
             self.btn_cam_R.blockSignals(True)
             self.btn_cam_R.setChecked(False)
             self.btn_cam_R.blockSignals(False)
+            self.btn_cam_both.blockSignals(True)
+            self.btn_cam_both.setChecked(False)
+            self.btn_cam_both.blockSignals(False)
             self.cam_bar.setVisible(True)
         else:
             self.is_stereo = False
