@@ -3511,7 +3511,12 @@ class EvenementsController:
 
                 for idx, evt in enumerate(rotation_events):
                     ts, angle, evt_type = evt["timestamp"], evt["angle"], evt["type"]
-                    mid_ts = ts + 10.0  # PTS en secondes
+                    # Utiliser le timestamp brut du début de rotation (clé "start" en ms pour CSV,
+                    # identique à "timestamp" pour les événements JSON).
+                    # "timestamp" (CSV) = début AWB-stable = rotation_start + ~6s → trop tard.
+                    start_s = evt.get("start", int(ts * 1000)) / 1000.0
+                    mid_ts = start_s + 10.0  # début de rotation + 10 s
+                    print(f"[SECTOR] slot={slot_id} evt_ts={ts:.2f}s start_s={start_s:.2f}s mid_ts={mid_ts:.2f}s")
                     w_photo = QtWidgets.QFrame()
                     w_photo.setFixedSize(240, 180)
                     w_photo.setStyleSheet(

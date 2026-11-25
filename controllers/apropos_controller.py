@@ -1,6 +1,11 @@
 import os
 
 from PyQt6 import QtWidgets, QtCore, QtGui
+try:
+    from PyQt6.QtSvgWidgets import QSvgWidget
+    _HAS_SVG = True
+except ImportError:
+    _HAS_SVG = False
 
 APP_VERSION = "1.0.0"
 
@@ -121,23 +126,20 @@ class AProposController:
         outer.setContentsMargins(60, 40, 60, 40)
         outer.setSpacing(0)
 
-        # Logo
-        logo_path = os.path.join(os.path.dirname(__file__), '..', 'img', 'logo_kosmos.png')
-        logo_lbl = QtWidgets.QLabel()
-        logo_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        logo_lbl.setFixedSize(130, 130)
-        if os.path.isfile(logo_path):
-            pix = QtGui.QPixmap(logo_path).scaled(
-                120, 120,
-                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-                QtCore.Qt.TransformationMode.SmoothTransformation,
-            )
-            logo_lbl.setPixmap(pix)
+        # ── Logo BenthOS (SVG) ───────────────────────────────────────────────
+        benthos_svg = os.path.join(os.path.dirname(__file__), '..', 'img', 'logo_benthos.svg')
+        if _HAS_SVG and os.path.isfile(benthos_svg):
+            logo_widget = QSvgWidget(benthos_svg)
+            logo_widget.setFixedSize(130, 130)
+            logo_widget.setStyleSheet("background: transparent;")
+            outer.addWidget(logo_widget)
         else:
-            logo_lbl.setText("K")
+            logo_lbl = QtWidgets.QLabel("B")
+            logo_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            logo_lbl.setFixedSize(130, 130)
             logo_lbl.setStyleSheet(f"color: {_ACCENT}; font-size: 56px; font-weight: bold;")
+            outer.addWidget(logo_lbl)
 
-        outer.addWidget(logo_lbl)
         outer.addSpacing(36)
 
         # Texte central
@@ -145,7 +147,7 @@ class AProposController:
         col.setSpacing(6)
         col.addStretch()
 
-        t_app = QtWidgets.QLabel("KOSMOS IHM")
+        t_app = QtWidgets.QLabel("BenthOS")
         t_app.setStyleSheet(
             f"color: {_SALMON}; font-size: 34px; font-weight: 900;"
             f" font-family: 'Segoe UI Black', 'Segoe UI', sans-serif;"
@@ -172,10 +174,35 @@ class AProposController:
         )
         t_desc.setWordWrap(True)
 
+        # "by KOSMOS" avec logo KOSMOS en bas à droite du texte
+        by_row = QtWidgets.QHBoxLayout()
+        by_row.setSpacing(6)
+        kosmos_path = os.path.join(os.path.dirname(__file__), '..', 'img', 'logo_kosmos.png')
+        if os.path.isfile(kosmos_path):
+            kosmos_lbl = QtWidgets.QLabel()
+            pix = QtGui.QPixmap(kosmos_path).scaled(
+                20, 20,
+                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
+            )
+            kosmos_lbl.setPixmap(pix)
+            kosmos_lbl.setFixedSize(20, 20)
+            kosmos_lbl.setStyleSheet("background: transparent;")
+            by_row.addWidget(kosmos_lbl)
+        by_lbl = QtWidgets.QLabel("by KOSMOS")
+        by_lbl.setStyleSheet(
+            f"color: {_MUTED}; font-size: 11px;"
+            f" font-family: 'Segoe UI', sans-serif; background: transparent;"
+        )
+        by_row.addWidget(by_lbl)
+        by_row.addStretch()
+
         col.addWidget(t_app)
         col.addWidget(t_sub)
-        col.addSpacing(8)
+        col.addSpacing(6)
         col.addWidget(t_desc)
+        col.addSpacing(10)
+        col.addLayout(by_row)
         col.addStretch()
 
         outer.addLayout(col, stretch=1)
