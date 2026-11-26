@@ -541,14 +541,14 @@ class MainWindow(QtWidgets.QMainWindow):
         lbl.deleteLater()
         if _HAS_SVG:
             new_widget = _QSvgWidget(svg_path)
-            new_widget.setFixedSize(300, 300)
+            new_widget.setFixedSize(420, 420)
             new_widget.setStyleSheet("background: transparent;")
         else:
             new_widget = QtWidgets.QLabel()
             pix = QtGui.QPixmap(svg_path)
             if not pix.isNull():
                 new_widget.setPixmap(pix.scaled(
-                    300, 300,
+                    420, 420,
                     QtCore.Qt.AspectRatioMode.KeepAspectRatio,
                     QtCore.Qt.TransformationMode.SmoothTransformation,
                 ))
@@ -557,11 +557,31 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.insertWidget(idx, new_widget,
                             alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
 
+        # "by KOSMOS" avec petit logo KOSMOS
+        by_row = QtWidgets.QWidget()
+        by_row.setStyleSheet("background: transparent;")
+        by_layout = QtWidgets.QHBoxLayout(by_row)
+        by_layout.setContentsMargins(0, 0, 0, 0)
+        by_layout.setSpacing(6)
+        by_layout.addStretch()
+        kosmos_path = os.path.join(self.base_path, "img", "logo_kosmos.png")
+        if os.path.isfile(kosmos_path):
+            kosmos_icon = QtWidgets.QLabel()
+            pix_k = QtGui.QPixmap(kosmos_path).scaled(
+                20, 20,
+                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
+            )
+            kosmos_icon.setPixmap(pix_k)
+            kosmos_icon.setFixedSize(20, 20)
+            kosmos_icon.setStyleSheet("background: transparent;")
+            by_layout.addWidget(kosmos_icon)
         by_lbl = QtWidgets.QLabel("by KOSMOS")
-        by_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         by_lbl.setStyleSheet(
             "color: #8aaabb; font-size: 11px;"
             " font-family: 'Segoe UI', sans-serif; background: transparent;"
         )
-        layout.insertWidget(idx + 1, by_lbl,
+        by_layout.addWidget(by_lbl)
+        by_layout.addStretch()
+        layout.insertWidget(idx + 1, by_row,
                             alignment=QtCore.Qt.AlignmentFlag.AlignCenter)

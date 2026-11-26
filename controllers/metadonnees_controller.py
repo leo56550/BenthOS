@@ -390,10 +390,16 @@ _INFOSTATION_FIELD_BLOCKS: dict[str, tuple] = {
 }
 
 
-_FIELD_STYLE = ("background-color: #162433; color: #F2BFB4; border: 1px solid #2a4057;"
-                " border-radius: 3px; padding: 3px 6px; font-family: 'Segoe UI', sans-serif;")
-_EMPTY_STYLE = ("background-color: #162433; color: #5a7a8a; border: 1px solid #1e3448;"
-                " border-radius: 3px; padding: 3px 6px; font-family: 'Segoe UI', sans-serif;")
+_FIELD_STYLE = (
+    "QLineEdit { background-color: #162433; color: #F2BFB4; border: 1px solid #2a4057;"
+    " border-radius: 3px; padding: 3px 6px; font-family: 'Segoe UI', sans-serif; }"
+    "QLineEdit::placeholder { font-style: italic; color: #3a6888; }"
+)
+_EMPTY_STYLE = (
+    "QLineEdit { background-color: #162433; color: #5a7a8a; border: 1px solid #1e3448;"
+    " border-radius: 3px; padding: 3px 6px; font-family: 'Segoe UI', sans-serif; }"
+    "QLineEdit::placeholder { font-style: italic; color: #3a6888; }"
+)
 _LABEL_STYLE  = ("color: #b0c8d8; font-weight: bold; font-size: 11px; border: none;"
                  " min-width: 130px; font-family: 'Segoe UI', sans-serif;")
 _SECTION_TITLE_STYLE = ("font-weight: bold; color: #F2BFB4; font-size: 13px; padding-bottom: 2px;"

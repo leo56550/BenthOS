@@ -330,7 +330,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         logo_layout.setContentsMargins(0, 0, 0, 0)
         if _HAS_SVG and os.path.isfile(logo_path):
             self.logo_label = _QSvgWidget(logo_path)
-            self.logo_label.setFixedSize(300, 300)
+            self.logo_label.setFixedSize(420, 420)
             self.logo_label.setStyleSheet("background: transparent;")
         else:
             self.logo_label = QtWidgets.QLabel()
@@ -338,7 +338,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             pixmap = QtGui.QPixmap(logo_path)
             if not pixmap.isNull():
                 self.logo_label.setPixmap(
-                    pixmap.scaled(300, 300, QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                    pixmap.scaled(420, 420, QtCore.Qt.AspectRatioMode.KeepAspectRatio,
                                   QtCore.Qt.TransformationMode.SmoothTransformation))
             else:
                 self.logo_label.setText("BenthOS")

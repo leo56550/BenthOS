@@ -32,6 +32,10 @@ _BASE_STYLE = """
     QLineEdit:focus {
         border: 2px solid #4a9fcf;
     }
+    QLineEdit::placeholder {
+        font-style: italic;
+        color: #3a6888;
+    }
     QLineEdit[valid="false"] {
         border: 1px solid #c0392b;
     }

@@ -130,13 +130,13 @@ class AProposController:
         benthos_svg = os.path.join(os.path.dirname(__file__), '..', 'img', 'logo_benthos.svg')
         if _HAS_SVG and os.path.isfile(benthos_svg):
             logo_widget = QSvgWidget(benthos_svg)
-            logo_widget.setFixedSize(130, 130)
+            logo_widget.setFixedSize(180, 180)
             logo_widget.setStyleSheet("background: transparent;")
             outer.addWidget(logo_widget)
         else:
             logo_lbl = QtWidgets.QLabel("B")
             logo_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-            logo_lbl.setFixedSize(130, 130)
+            logo_lbl.setFixedSize(180, 180)
             logo_lbl.setStyleSheet(f"color: {_ACCENT}; font-size: 56px; font-weight: bold;")
             outer.addWidget(logo_lbl)
 

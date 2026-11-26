@@ -10,6 +10,11 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from PyQt6 import QtCore, QtGui, QtWidgets
+try:
+    from PyQt6.QtSvgWidgets import QSvgWidget as _QSvgWidget
+    _HAS_SVG = True
+except ImportError:
+    _HAS_SVG = False
 from PyQt6.QtWebChannel import QWebChannel
 
 from services.video_service import get_all_mp4_files, get_sequential_segments, check_stereo_status, get_system_name
@@ -263,6 +268,10 @@ class QualifController:
             self.lbl_videos_title.setText(self.translate("Vidéos de campagne", "Campaign Videos"))
         if hasattr(self, 'lbl_trash_title'):
             self.lbl_trash_title.setText(self.translate("Vidéos supprimées", "Removed Videos"))
+        if hasattr(self, '_ph_hint'):
+            self._ph_hint.setText(self.translate(
+                "Sélectionnez une vidéo pour afficher les secteurs",
+                "Select a video to display sectors"))
         header_labels = [
             self.translate("Fichier", "File"),
             self.translate("Durée", "Duration"),
@@ -887,6 +896,40 @@ class QualifController:
         self.scroll_layout = QtWidgets.QVBoxLayout(scroll_content)
         self.scroll_layout.setContentsMargins(10, 10, 10, 10)
         self.scroll_layout.setSpacing(15)
+
+        # Placeholder logo BenthOS (caché dès qu'une vidéo est chargée)
+        _svg_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "img", "logo_benthos.svg")
+        _placeholder = QtWidgets.QWidget()
+        _placeholder.setStyleSheet("background: transparent;")
+        _ph_layout = QtWidgets.QVBoxLayout(_placeholder)
+        _ph_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        _ph_layout.setContentsMargins(0, 0, 0, 0)
+        _ph_layout.setSpacing(12)
+        if _HAS_SVG and os.path.isfile(_svg_path):
+            _logo = _QSvgWidget(_svg_path)
+            _logo.setFixedSize(220, 220)
+            _logo.setStyleSheet("background: transparent;")
+        else:
+            _logo = QtWidgets.QLabel()
+            _pix = QtGui.QPixmap(_svg_path)
+            if not _pix.isNull():
+                _logo.setPixmap(_pix.scaled(220, 220,
+                    QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                    QtCore.Qt.TransformationMode.SmoothTransformation))
+            _logo.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            _logo.setStyleSheet("background: transparent;")
+        _ph_layout.addWidget(_logo, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+        _hint = QtWidgets.QLabel(self.translate(
+            "Sélectionnez une vidéo pour afficher les secteurs",
+            "Select a video to display sectors"))
+        _hint.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        _hint.setStyleSheet(
+            "color: #4a7a9a; font-size: 12px;"
+            " font-family: 'Segoe UI', sans-serif; background: transparent;")
+        self._ph_hint = _hint
+        _ph_layout.addWidget(_hint, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.scroll_layout.addStretch()
+        self.scroll_layout.addWidget(_placeholder, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
         self.scroll_layout.addStretch()
 
         scroll_area.setWidget(scroll_content)
