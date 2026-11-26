@@ -603,7 +603,7 @@ _MASK_CONFIGS: dict[str, dict] = {
         },
     },
     "NC": {
-        "label": "Tropical Coralien",
+        "label": "Tropical Corallien",
         "schema": _SCHEMA_NC,
         "total_sources": _TOTAL_SOURCES_NC,
         "json_section": _JSON_SECTION_NC,
@@ -699,7 +699,7 @@ _EN: dict[str, str] = {
         "Fields have already been filled for this video.\n\nChanging the mask will erase all entered data.\nDo you want to continue?",
     "Tempéré Atlantique":            "Temperate Atlantic",
     "Méditerranéen":                 "Mediterranean",
-    "Tropical Coralien":             "Tropical Coral",
+    "Tropical Corallien":             "Tropical Coral",
     # ATL — labels manquants
     "Sable":                         "Sand",
     "Vase":                          "Mud",
@@ -3574,7 +3574,7 @@ class AnalyseHabitatController(QtCore.QObject):
                 continue
             vpath_str = str(vpath)
             expl = _get_exploitability_value(vpath_str)
-            if expl not in {"oui", "habitat"}:
+            if expl == "non":
                 continue
             code = _get_codestation(vpath_str)
             display = code or item.text() or "—"
@@ -3593,8 +3593,10 @@ class AnalyseHabitatController(QtCore.QObject):
             list_item.setData(QtCore.Qt.ItemDataRole.UserRole, vpath_str)
             if expl == "oui":
                 list_item.setForeground(QtGui.QBrush(QtGui.QColor("#4ade80")))
-            else:
+            elif expl == "habitat":
                 list_item.setForeground(QtGui.QBrush(QtGui.QColor("#fb923c")))
+            else:
+                list_item.setForeground(QtGui.QBrush(QtGui.QColor("#a0b8cc")))
             if has_mask:
                 font = list_item.font()
                 font.setItalic(True)
