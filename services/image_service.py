@@ -3,22 +3,49 @@ import cv2
 import numpy as np
 
 
-def extract_frame_at_index(video_path: str, frame_index: int) -> np.ndarray:
-    """Extrait une frame RGB depuis une vidéo par numéro de frame (précis pour vidéo VFR).
+def _seek_and_read(cap, target_ms: float) -> tuple[bool, np.ndarray | None]:
+    """Seek précis : positionne sur le keyframe précédent puis avance via grab() jusqu'à target_ms.
 
-    Préférer cette fonction à extract_frame_at_time pour les vidéos avec frames droppées,
-    car CAP_PROP_POS_FRAMES est exact alors que CAP_PROP_POS_MSEC suppose un FPS constant.
+    OpenCV positionne cap.set(POS_MSEC/POS_FRAMES) sur le keyframe précédent, et cap.read()
+    retourne ce keyframe — pas la frame demandée. grab() avance sans décoder complètement ;
+    retrieve() décode uniquement la dernière frame, ce qui donne la frame la plus proche
+    de target_ms sans décalage lié aux GOP (particulièrement long en vidéo stéréo).
     """
+    cap.set(cv2.CAP_PROP_POS_MSEC, target_ms)
+    pos_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
+
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    half_frame_ms = 500.0 / fps          # tolérance = demi-frame
+    limit = max(300, int(fps * 12))       # max 12 s de grab() (couvre GOP > 250 frames)
+
+    while pos_ms < target_ms - half_frame_ms and limit > 0:
+        if not cap.grab():
+            break
+        pos_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
+        limit -= 1
+
+    ret, frame = cap.retrieve()
+    if not ret or frame is None:
+        ret, frame = cap.read()
+    return ret, frame
+
+
+def extract_frame_at_index(video_path: str, frame_index: int) -> np.ndarray:
+    """Extrait une frame RGB depuis une vidéo par numéro de frame, avec seek précis."""
     import os
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         print(f"[IMAGE] Impossible d'ouvrir : {os.path.basename(video_path)}")
         return None
-    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
-    success, frame = cap.read()
+
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    target_ms = frame_index * 1000.0 / fps
+
+    success, frame = _seek_and_read(cap, target_ms)
+    actual_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
     cap.release()
+
     if success and frame is not None:
-        actual_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
         print(f"[IMAGE] extrait frame={frame_index} → pos={actual_ms/1000:.3f}s  vidéo={os.path.basename(video_path)}")
         return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     print(f"[IMAGE] ÉCHEC extraction frame={frame_index}  vidéo={os.path.basename(video_path)}")
@@ -26,38 +53,26 @@ def extract_frame_at_index(video_path: str, frame_index: int) -> np.ndarray:
 
 
 def extract_frame_at_time(video_path: str, timestamp_seconds: float) -> np.ndarray:
-    """Extrait une frame RGB depuis une vidéo à un timestamp donné.
-
-    Args:
-        video_path: Chemin vers le fichier vidéo.
-        timestamp_seconds: Position en secondes dans le flux.
-
-    Returns:
-        Tableau numpy RGB, ou None si l'extraction échoue.
-    """
+    """Extrait une frame RGB depuis une vidéo à un timestamp donné, avec seek précis."""
     import os
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         print(f"[IMAGE] Impossible d'ouvrir : {os.path.basename(video_path)}")
         return None
 
-    time_in_ms = int(timestamp_seconds * 1000)
-    cap.set(cv2.CAP_PROP_POS_MSEC, time_in_ms)
-
-    # Vérifier la position réellement atteinte par OpenCV
+    target_ms = timestamp_seconds * 1000.0
+    success, frame = _seek_and_read(cap, target_ms)
     actual_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
-    success, frame = cap.read()
     cap.release()
 
     if success and frame is not None:
-        delta_ms = abs(actual_ms - time_in_ms)
+        delta_ms = abs(actual_ms - target_ms)
         print(f"[IMAGE] extrait ts={timestamp_seconds:.3f}s → pos_réelle={actual_ms/1000:.3f}s "
               f"(delta={delta_ms:.0f}ms) vidéo={os.path.basename(video_path)}")
         return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    else:
-        print(f"[IMAGE] ÉCHEC extraction ts={timestamp_seconds:.3f}s ({time_in_ms}ms) "
-              f"vidéo={os.path.basename(video_path)}")
-        return None
+    print(f"[IMAGE] ÉCHEC extraction ts={timestamp_seconds:.3f}s ({int(target_ms)}ms) "
+          f"vidéo={os.path.basename(video_path)}")
+    return None
 
 
 # ============================================================================

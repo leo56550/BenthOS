@@ -1427,6 +1427,11 @@ class QualifController:
                 )
                 if meta.get("example"):
                     input_field.setPlaceholderText(str(meta["example"]))
+                # Qt ne supporte pas font-style italic via ::placeholder QSS → toggle via setFont
+                def _sync_italic(text, f=input_field):
+                    ft = f.font(); ft.setItalic(not bool(text)); f.setFont(ft)
+                input_field.textChanged.connect(_sync_italic)
+                _sync_italic(value_str)
                 if value_str:
                     input_field.setToolTip(value_str)
                 self.campaign_fields[key] = input_field
@@ -2522,10 +2527,6 @@ class QualifController:
                     "background-color: #111a24; border-radius: 6px; border: 1px solid #555555;")
                 _ph_layout_nr = QtWidgets.QVBoxLayout(_w_photo_nr)
                 _ph_layout_nr.setContentsMargins(0, 0, 0, 0)
-                _ph_lbl_nr = QtWidgets.QLabel("⏳")
-                _ph_lbl_nr.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-                _ph_lbl_nr.setStyleSheet("color: #405060; font-size: 22px; background: transparent;")
-                _ph_layout_nr.addWidget(_ph_lbl_nr)
 
                 self._miniature_pixmaps.append(None)
                 self._camera_slot_labels[0] = (_w_photo_nr, 0, _mid_sec)
@@ -2570,12 +2571,6 @@ class QualifController:
 
                     ph_layout = QtWidgets.QVBoxLayout(w_photo)
                     ph_layout.setContentsMargins(0, 0, 0, 0)
-                    ph_lbl = QtWidgets.QLabel("⏳")
-                    ph_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-                    ph_lbl.setStyleSheet(
-                        "color: #405060; font-size: 22px; background: transparent;"
-                    )
-                    ph_layout.addWidget(ph_lbl)
 
                     self._miniature_pixmaps.append(None)
                     self._camera_slot_labels[slot_id] = (w_photo, angle, mid_ts)

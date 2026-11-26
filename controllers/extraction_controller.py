@@ -5,6 +5,7 @@ import cv2
 from PyQt6 import QtWidgets, QtCore, QtGui
 
 from services.thumbnail_service import THUMB_W, THUMB_H
+from services.image_service import _seek_and_read
 from services.video_service import check_stereo_status
 from services.export_service import VideoSegmentationWorker
 from services.sound_service import get_sound_service
@@ -405,8 +406,7 @@ class ExtractionController:
 
         if is_image:
             cap = cv2.VideoCapture(self.current_video_path)
-            cap.set(cv2.CAP_PROP_POS_MSEC, start_ms)
-            ret, frame = cap.read()
+            ret, frame = _seek_and_read(cap, float(start_ms))
             cap.release()
             if not ret:
                 return
@@ -799,8 +799,7 @@ class ExtractionController:
             suffix = "_R"
 
         cap = cv2.VideoCapture(target_path)
-        cap.set(cv2.CAP_PROP_POS_MSEC, pos)
-        ret, frame = cap.read()
+        ret, frame = _seek_and_read(cap, float(pos))
         cap.release()
 
         if ret:

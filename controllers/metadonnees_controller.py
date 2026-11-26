@@ -10,6 +10,7 @@ from PyQt6 import QtWidgets, QtCore, QtGui
 
 from services.weather_service import WeatherWorker
 from services.thumbnail_service import THUMB_W, THUMB_H
+from services.image_service import _seek_and_read
 from services.motor_service import find_video_csv
 from services.campaign_service import (
     get_video_json_path, _find_first_json_in_folder,
@@ -5161,8 +5162,9 @@ class MetadonneesController:
                 self.translate("Erreur", "Error"),
                 self.translate("Impossible d'ouvrir le fichier vidéo.", "Unable to open video file."))
             return
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number - 1)
-        ret, frame = cap.read()
+        fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        target_ms = (frame_number - 1) * 1000.0 / fps
+        ret, frame = _seek_and_read(cap, target_ms)
         cap.release()
         if not ret:
             QtWidgets.QMessageBox.warning(self.widget,

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <!-- V badge -->
+  <rect width="48" height="48" rx="8" fill="#0d2a3e"/>
+  <!-- V shape -->
+  <polyline points="8,10 24,38 40,10" fill="none" stroke="#3ecff5" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- small dot accent -->
+  <circle cx="24" cy="38" r="3" fill="#3ecff5"/>
+</svg>

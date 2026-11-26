@@ -590,7 +590,7 @@ class EvenementsController:
             self.btn_finir.setText(self.translate("⏹ FIN D'ÉVÉNEMENT", "⏹ END EVENT"))
         self._rebuild_event_buttons()
         if hasattr(self, 'export_button'):
-            self.export_button.setText(self.translate("EXPORTER VERS VIAME", "EXPORT TO VIAME"))
+            self.export_button.setText(self.translate("  EXPORTER", "  EXPORT"))
         if hasattr(self, '_viame_labels'):
             for w, fr, en in self._viame_labels:
                 w.setText(fr if self.current_language == 'fr' else en)
@@ -2481,14 +2481,27 @@ class EvenementsController:
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
 
-        self.export_button = QtWidgets.QPushButton("EXPORTER VERS VIAME", self.export_container)
+        self.export_button = QtWidgets.QPushButton("  EXPORTER", self.export_container)
+        for _viame_ext in ('logo_viame.png', 'logo_viame.svg'):
+            _viame_icon_path = os.path.join(os.path.dirname(__file__), '..', 'img', _viame_ext)
+            if os.path.isfile(_viame_icon_path):
+                self.export_button.setIcon(QtGui.QIcon(_viame_icon_path))
+                self.export_button.setIconSize(QtCore.QSize(90, 35))
+                break
         self.export_button.setStyleSheet(
-            "QPushButton { background-color: #e68c14; color: white; font-weight: bold; "
-            "font-size: 13px; border: 1px solid #f09624; border-radius: 6px; padding: 8px 10px; }"
-            "QPushButton:hover { background-color: #f09624; }"
-            "QPushButton[no_video='true'] { background-color: #7a5a1a; color: #aaaaaa; "
-            "border: 1px solid #5a4010; }"
-            "QPushButton[no_video='true']:hover { background-color: #8a6a2a; }"
+            "QPushButton { background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            " stop:0 #0a1a2e, stop:1 #0f3550);"
+            " color: #3ecff5; font-weight: bold; font-size: 13px;"
+            " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif;"
+            " border: 1px solid #1e6080; border-radius: 7px; padding: 6px 16px 6px 8px;"
+            " letter-spacing: 1px; }"
+            "QPushButton:hover { background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            " stop:0 #122f47, stop:1 #1a4a68);"
+            " border-color: #3ecff5; color: #7de8ff; }"
+            "QPushButton:pressed { background: #0a1e2d; }"
+            "QPushButton[no_video='true'] { background: #07111e; color: #1e4a60;"
+            " border: 1px solid #0a1a2a; }"
+            "QPushButton[no_video='true']:hover { background: #090f1a; }"
         )
         self.export_button.setProperty('no_video', True)
 

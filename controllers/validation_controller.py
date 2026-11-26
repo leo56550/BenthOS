@@ -984,10 +984,6 @@ class ValidationController:
                     )
                     ph_layout = QtWidgets.QVBoxLayout(w_photo)
                     ph_layout.setContentsMargins(0, 0, 0, 0)
-                    ph_lbl = QtWidgets.QLabel("⏳")
-                    ph_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-                    ph_lbl.setStyleSheet("color: #405060; font-size: 22px; background: transparent;")
-                    ph_layout.addWidget(ph_lbl)
 
                     self._sector_pixmaps.append(None)
                     self._sector_slot_labels[slot_id] = (w_photo, angle, mid_ts)
@@ -1013,7 +1009,11 @@ class ValidationController:
 
     def _on_sector_frame_ready(self, slot_id: int, frame_data):
         """Remplace le placeholder par la frame extraite (identique à la page Qualification)."""
-        if frame_data is None or slot_id not in self._sector_slot_labels:
+        if slot_id not in self._sector_slot_labels:
+            return
+        if frame_data is None:
+            w_photo, _angle, _ts = self._sector_slot_labels[slot_id]
+            w_photo.hide()
             return
         w_photo, angle, ts = self._sector_slot_labels[slot_id]
 
