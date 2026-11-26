@@ -1060,7 +1060,11 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         target = max(0, min(self.player.position() + ms, self.player.duration()))
         self.player.setPosition(target)
         if self.is_stereo:
-            self.player_R.setPosition(target)
+            if self._pts_R and self.player_R:
+                pts_target = self._qt_to_pts(target)
+                self.player_R.setPosition(self._pts_to_qt_R(pts_target))
+            else:
+                self.player_R.setPosition(target)
         if self.left_display.currentIndex() == 1:
             QtCore.QTimer.singleShot(80, lambda: self._step_frame_overlay(target))
 
@@ -1128,8 +1132,13 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self._interp_time_ms = int(time.monotonic() * 1000)
             return
 
-        # En pause/scrub uniquement : resynchronise le flux R si dérive > 50 ms
-        if self.is_stereo and abs(self.player_R.position() - position_ms) > 50:
+        # En pause/scrub uniquement : resynchronise le flux R via PTS réels (pas Qt brut)
+        if self.is_stereo and self._pts_R and self.player_R:
+            pts_L_now   = self._qt_to_pts(position_ms)
+            qt_R_target = self._pts_to_qt_R(pts_L_now)
+            if abs(self.player_R.position() - qt_R_target) > 50:
+                self.player_R.setPosition(qt_R_target)
+        elif self.is_stereo and abs(self.player_R.position() - position_ms) > 50:
             self.player_R.setPosition(position_ms)
 
         if self.is_stereo and self.btn_cam_R.isChecked() and self._pts_R and self.player_R:
@@ -1504,13 +1513,16 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         """Seek le player vers target_ms (en PTS ms) et met en pause — même logique 2-phases que load_video_and_events."""
         if target_ms <= 0:
             return
-        qt_ms = self._pts_to_qt(target_ms)
+        qt_ms   = self._pts_to_qt(target_ms)
+        qt_ms_R = self._pts_to_qt_R(target_ms) if (self.is_stereo and self._pts_R) else qt_ms
         _state = [0]
 
         def _on_pos(pos):
             if _state[0] == 0 and pos > 0:
                 _state[0] = 1
                 self.player.setPosition(qt_ms)
+                if self.is_stereo and self.player_R:
+                    self.player_R.setPosition(qt_ms_R)
             elif _state[0] == 1 and pos >= qt_ms - 80:
                 _state[0] = 2
                 try:

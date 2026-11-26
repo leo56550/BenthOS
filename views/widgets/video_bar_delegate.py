@@ -25,6 +25,18 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
         "?": "#aaaaaa",
     }
 
+    # Couleur de la barre gauche par valeur d'exploitabilité (page Validation uniquement)
+    # Synchronisée avec les couleurs border des _ToggleFrame dans validation_controller.py
+    _EXPLOITABLE_BAR_COLORS = {
+        "oui":       "#4CAF50",
+        "yes":       "#4CAF50",
+        "non":       "#D94F38",
+        "no":        "#D94F38",
+        "partielle": "#E8A838",
+        "partial":   "#E8A838",
+        "?":         "#777777",
+    }
+
     def __init__(self, parent=None, highlight_short_light: bool = False):
         super().__init__(parent)
         self._working_dir = ""
@@ -90,6 +102,13 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
         # codestation : lit codeObs d'abord, reconstruit depuis point_name si absent
         codestation = compute_codestation(surv, obs)
         has_station = bool(codestation)
+
+        # Page Validation : barre = couleur du bouton d'exploitabilité sélectionné
+        if self.show_exploitable_status and expl_val:
+            hex_col = self._EXPLOITABLE_BAR_COLORS.get(
+                expl_val.lower().strip(), "#4a9fcf"
+            )
+            return QtGui.QColor(hex_col), expl_val, codestation
 
         if has_station and has_status:
             color = QtGui.QColor("#5DBB63")   # vert  : numéro de station + exploitabilité

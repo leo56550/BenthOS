@@ -1234,6 +1234,7 @@ class ValidationController:
                     item = self.video_model.itemFromIndex(source_index.siblingAtColumn(0))
                     if item:
                         self.refresh_item_indicator(item, self.current_video_path)
+                self.video_tree.viewport().update()
         except Exception:
             pass
 
