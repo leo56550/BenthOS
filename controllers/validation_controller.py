@@ -3,7 +3,7 @@ import json
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from services.motor_service import get_motor_stable_timestamps, find_system_event_csv, find_video_csv
+from services.motor_service import get_motor_stable_timestamps, find_system_event_csv, find_video_csv, nearest_pts_ms
 from services.video_service import check_stereo_status
 from services.campaign_service import get_video_json_path, resolve_video_json_path, compute_codestation
 from services.sound_service import get_sound_service
@@ -973,10 +973,11 @@ class ValidationController:
 
                 for idx, evt in enumerate(rotation_events):
                     ts, angle, evt_type = evt["timestamp"], evt["angle"], evt["type"]
-                    # Image à début de rotation + 10s
+                    # Image au PTS réel le plus proche de début rotation + 10 s
                     start_s = evt.get("start", int(ts * 1000)) / 1000.0
-                    mid_ts = start_s + 10.0
-                    print(f"[VALIDATION] secteur={idx} rot_ts={ts:.2f}s start_s={start_s:.2f}s mid_ts={mid_ts:.2f}s")
+                    real_ms = nearest_pts_ms(video_path, (start_s + 10.0) * 1000.0)
+                    mid_ts  = real_ms / 1000.0
+                    print(f"[VALIDATION] secteur={idx} rot_ts={ts:.2f}s start_s={start_s:.2f}s PTS réel={mid_ts:.3f}s")
                     w_photo = QtWidgets.QFrame()
                     w_photo.setFixedSize(240, 180)
                     w_photo.setStyleSheet(

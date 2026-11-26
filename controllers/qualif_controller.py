@@ -24,7 +24,7 @@ from services.campaign_service import (
     get_temp_json_path, compute_codestation,
 )
 from services.migration_service import initialise_temp_json_if_needed, update_temp_json_paths
-from services.motor_service import get_motor_stable_timestamps, find_system_event_csv
+from services.motor_service import get_motor_stable_timestamps, find_system_event_csv, nearest_pts_ms
 from services.image_service import extract_frame_at_time, extract_frame_at_index
 from services.thumbnail_service import ThumbnailWorkerMulti, THUMB_W, THUMB_H
 from services.sound_service import get_sound_service
@@ -2540,10 +2540,12 @@ class QualifController:
                 self._cam_worker.start()
                 return
 
-            # ── 3. Timestamp miniature = début rotation + 10 secondes ────────
+            # ── 3. Timestamp miniature = PTS réel le plus proche de début rotation + 10 s ──
             for evt in motor_events:
                 start_s = evt.get("start", int(evt["timestamp"] * 1000)) / 1000.0
-                evt["mid_ts"] = start_s + 10.0
+                target_ms = (start_s + 10.0) * 1000.0
+                real_ms = nearest_pts_ms(video_path, target_ms)
+                evt["mid_ts"] = real_ms / 1000.0
 
             # ── 4. Construction de la grille ──────────────────────────────────
             tasks = []

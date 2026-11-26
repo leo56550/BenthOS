@@ -7,7 +7,7 @@ import uuid
 import cv2
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from services.motor_service import get_motor_stable_timestamps, find_system_event_csv, find_video_csv
+from services.motor_service import get_motor_stable_timestamps, find_system_event_csv, find_video_csv, nearest_pts_ms
 from services.motor_rotation_detection_service import (
     MotorRotationDetectionWorker, MotorRotationBatchWorker, _timecode_to_ms,
 )
@@ -3531,9 +3531,6 @@ class EvenementsController:
                 else:
                     _avg_interval = 6.0
 
-                # PTS list pour conversion PTS → index de frame (seek précis VFR)
-                _pts_L = getattr(self.event_player, '_pts_L', None) or []
-
                 for idx, evt in enumerate(rotation_events):
                     ts, angle, evt_type = evt["timestamp"], evt["angle"], evt["type"]
                     # Utiliser le timestamp brut du début de rotation (clé "start" en ms pour CSV,
@@ -3541,23 +3538,20 @@ class EvenementsController:
                     # "timestamp" (CSV) = début AWB-stable = rotation_start + ~6s → trop tard.
                     start_s = evt.get("start", int(ts * 1000)) / 1000.0
                     mid_ts = start_s + 10.0  # début de rotation + 10 s
-                    print(f"[SECTOR] slot={slot_id} evt_ts={ts:.2f}s start_s={start_s:.2f}s mid_ts={mid_ts:.2f}s")
+                    # Ajuster au PTS réel le plus proche (gère VFR et frames droppées)
+                    real_ms = nearest_pts_ms(video_path, mid_ts * 1000.0)
+                    real_s  = real_ms / 1000.0
+                    print(f"[SECTOR] slot={slot_id} mid_ts={mid_ts:.3f}s → PTS réel={real_s:.3f}s")
                     w_photo = QtWidgets.QFrame()
                     w_photo.setFixedSize(240, 180)
                     w_photo.setStyleSheet(
                         "background-color: #111a24; border-radius: 6px; border: 1px solid #555555;")
                     ph_layout = QtWidgets.QVBoxLayout(w_photo)
                     ph_layout.setContentsMargins(0, 0, 0, 0)
-                    ph_layout.addStretch()
 
                     self._sector_pixmaps.append(None)
-                    self._sector_slot_labels[slot_id] = (w_photo, angle, mid_ts)
-                    if _pts_L:
-                        # Seek par index de frame : précis même en VFR (frames droppées)
-                        frame_idx = self.event_player._find_pts_index(_pts_L, float(mid_ts * 1000))
-                        tasks.append((slot_id, video_path, frame_idx))
-                    else:
-                        tasks.append((slot_id, video_path, mid_ts))
+                    self._sector_slot_labels[slot_id] = (w_photo, angle, real_s)
+                    tasks.append((slot_id, video_path, real_s))
                     slot_id += 1
                     hbox.addWidget(w_photo)
 

@@ -2,7 +2,7 @@ from datetime import datetime
 
 from PyQt6 import QtCore, QtWidgets
 
-from services.recent_campaigns_service import load_recents, remove_recent_campaign
+from services.recent_campaigns_service import load_recents, remove_recent_campaign, clear_recents
 
 _LABEL_STYLE = "background: transparent; font-family: 'Segoe UI', sans-serif;"
 
@@ -96,6 +96,8 @@ class RecentCampaignsDialog(QtWidgets.QDialog):
         self._list.setVerticalScrollMode(QtWidgets.QAbstractItemView.ScrollMode.ScrollPerPixel)
         self._list.itemDoubleClicked.connect(self._open_selected)
         self._list.currentRowChanged.connect(self._on_row_changed)
+        self._list.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self._list.customContextMenuRequested.connect(self._on_context_menu)
 
         self._populate_list()
         lay.addWidget(self._list)
@@ -225,6 +227,28 @@ class RecentCampaignsDialog(QtWidgets.QDialog):
         QtWidgets.QApplication.processEvents()
         self.campaign_selected.emit(folder, wdir, derus)
 
+    def _on_context_menu(self, pos):
+        if self._list is None:
+            return
+        menu = QtWidgets.QMenu(self._list)
+        menu.setStyleSheet(
+            "QMenu { background-color: #111f2e; color: #a0c4d8; border: 1px solid #2778A2; }"
+            "QMenu::item:selected { background-color: #1e3448; color: #d4e8f5; }"
+            "QMenu::separator { height: 1px; background: #1e3448; margin: 2px 8px; }"
+        )
+        row = self._list.currentRow()
+        act_remove = menu.addAction(self.translate("Retirer de la liste", "Remove from list"))
+        act_remove.setEnabled(0 <= row < len(self._recents))
+        menu.addSeparator()
+        act_clear = menu.addAction(self.translate("Retirer tout", "Remove all"))
+        act_clear.setEnabled(bool(self._recents))
+
+        chosen = menu.exec(self._list.mapToGlobal(pos))
+        if chosen == act_remove:
+            self._remove_selected()
+        elif chosen == act_clear:
+            self._remove_all()
+
     def _remove_selected(self):
         if self._list is None:
             return
@@ -234,9 +258,12 @@ class RecentCampaignsDialog(QtWidgets.QDialog):
         remove_recent_campaign(self._recents[row].get('campaign_folder', ''))
         self._recents.pop(row)
         self._populate_list()
-        has = bool(self._recents)
         self.btn_open.setEnabled(False)
         self.btn_remove.setEnabled(False)
-        if not has:
-            self.btn_open.setEnabled(False)
-            self.btn_remove.setEnabled(False)
+
+    def _remove_all(self):
+        clear_recents()
+        self._recents.clear()
+        self._populate_list()
+        self.btn_open.setEnabled(False)
+        self.btn_remove.setEnabled(False)

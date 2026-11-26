@@ -43,3 +43,7 @@ def remove_recent_campaign(campaign_folder: str) -> None:
     recents = load_recents()
     recents = [r for r in recents if r.get('campaign_folder') != campaign_folder]
     _save_recents(recents)
+
+
+def clear_recents() -> None:
+    _save_recents([])

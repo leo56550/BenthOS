@@ -91,6 +91,20 @@ def find_video_txt(video_path: str) -> str:
     return stem_txt
 
 
+def load_pts_for_video(video_path: str) -> list:
+    """Retourne la liste des PTS (ms) depuis le fichier .txt associé à video_path, ou [] si absent."""
+    return _load_frame_pts(find_video_txt(video_path))
+
+
+def nearest_pts_ms(video_path: str, target_ms: float) -> float:
+    """Retourne le PTS réel (ms) le plus proche de target_ms pour la vidéo donnée.
+
+    Si le fichier .txt de PTS n'existe pas, retourne target_ms inchangé.
+    """
+    pts = load_pts_for_video(video_path)
+    return _find_nearest_pts(pts, target_ms)
+
+
 def get_motor_stable_timestamps(csv_path: str, delay: float = 6.0, start_track_id: int = 6,
                                  txt_path: str = None, video_filename: str = None) -> list:
     """Calcule les timestamps stables depuis un fichier systemEvent.csv.
