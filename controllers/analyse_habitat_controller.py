@@ -3252,7 +3252,22 @@ class AnalyseHabitatController(QtCore.QObject):
             landing_tc = str((vobs.get("timecode_landing") or {}).get("value") or "").strip()
             if landing_tc:
                 self._landing_ms = self._tc_to_ms(landing_tc)
-            raw = data.get("video_observation", {}).get("events_motor") or []
+            raw = vobs.get("events_motor") or []
+            # Fallback : chercher atterrissage dans events_motor si timecode_landing absent
+            if self._landing_ms is None:
+                _LAND_KW = ("atterrissage", "atterissage", "landing")
+                for _entry in raw:
+                    if not isinstance(_entry, dict):
+                        continue
+                    _desc = str(_entry.get("description_fr") or _entry.get("value", "")).strip().lower()
+                    if any(kw in _desc for kw in _LAND_KW):
+                        _ms = int(_entry.get("start_ms") or 0)
+                        _fn = int(_entry.get("frame_number") or 0)
+                        if _ms == 0 and _fn:
+                            _ms = int((_fn / 25.0) * 1000)
+                        if _ms > 0:
+                            self._landing_ms = _ms
+                        break
 
             events = []
             for entry in raw:
@@ -3404,6 +3419,21 @@ class AnalyseHabitatController(QtCore.QObject):
                     has_end = True
                 if has_start and has_end:
                     return True
+
+            # Option 4 : atterrissage/décollage dans events_motor (sélectionnés depuis la liste)
+            _LAND_KW    = ("atterrissage", "atterissage", "landing")
+            _TAKEOFF_KW = ("décollage", "decollage", "takeoff", "take_off")
+            has_land = has_take = False
+            for item in (vobs.get("events_motor") or []):
+                if not isinstance(item, dict):
+                    continue
+                val = str(item.get("description_fr") or item.get("value", "")).strip().lower()
+                if not has_land and any(kw in val for kw in _LAND_KW):
+                    has_land = True
+                if not has_take and any(kw in val for kw in _TAKEOFF_KW):
+                    has_take = True
+            if has_land and has_take:
+                return True
         except Exception:
             pass
         return False
