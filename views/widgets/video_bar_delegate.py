@@ -253,7 +253,13 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
         text_w    = rect.right() - text_left - 4
         half_h    = rect.height() // 2
 
-        name_text = index.data(QtCore.Qt.ItemDataRole.DisplayRole) or ""
+        raw_name = index.data(QtCore.Qt.ItemDataRole.DisplayRole) or ""
+        if codestation and codestation.strip():
+            _parts = raw_name.split("  ", 1)
+            _suffix = "  " + _parts[1] if len(_parts) > 1 else ""
+            name_text = codestation.strip() + _suffix
+        else:
+            name_text = raw_name
         station_time = index.data(QtCore.Qt.ItemDataRole.UserRole + 2) or ""
         if station_time == "99:99":
             station_time = ""
