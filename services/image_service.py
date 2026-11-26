@@ -14,24 +14,40 @@ def _seek_and_read(cap, target_ms: float) -> tuple[bool, np.ndarray | None]:
 
 
 def extract_frame_at_index(video_path: str, frame_index: int) -> np.ndarray:
-    """Extrait une frame RGB depuis une vidéo par numéro de frame, avec seek précis."""
+    """Extrait une frame RGB à l'index absolu donné avec seek précis.
+
+    Seek au keyframe précédent puis avance via grab() jusqu'à frame_index :
+    c'est la seule méthode fiable pour les vidéos H.264/H.265 où le seek
+    MSEC atterrit sur le keyframe et non sur la frame demandée.
+    """
     import os
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         print(f"[IMAGE] Impossible d'ouvrir : {os.path.basename(video_path)}")
         return None
 
-    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-    target_ms = frame_index * 1000.0 / fps
+    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+    seeked_to = int(cap.get(cv2.CAP_PROP_POS_FRAMES))   # keyframe atterri
 
-    success, frame = _seek_and_read(cap, target_ms)
-    actual_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
+    # Forward-grab sans décodage jusqu'à frame_index
+    limit = 500
+    advanced = 0
+    while seeked_to + advanced < frame_index and limit > 0:
+        if not cap.grab():
+            break
+        advanced += 1
+        limit -= 1
+
+    if advanced > 0:
+        ret, frame = cap.retrieve()   # décode uniquement la dernière frame grabbée
+    else:
+        ret, frame = cap.read()       # seek déjà exact (ou overshoot minimal)
+
     cap.release()
-
-    if success and frame is not None:
-        print(f"[IMAGE] extrait frame={frame_index} → pos={actual_ms/1000:.3f}s  vidéo={os.path.basename(video_path)}")
+    if ret and frame is not None:
+        print(f"[IMAGE] extrait index={frame_index} (avancé {advanced} frames) vidéo={os.path.basename(video_path)}")
         return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    print(f"[IMAGE] ÉCHEC extraction frame={frame_index}  vidéo={os.path.basename(video_path)}")
+    print(f"[IMAGE] ÉCHEC extraction index={frame_index} vidéo={os.path.basename(video_path)}")
     return None
 
 

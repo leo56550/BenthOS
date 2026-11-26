@@ -3,7 +3,7 @@ import json
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from services.motor_service import get_motor_stable_timestamps, find_system_event_csv, find_video_csv, nearest_pts_ms
+from services.motor_service import get_motor_stable_timestamps, find_system_event_csv, find_video_csv, find_pts_frame_index
 from services.video_service import check_stereo_status
 from services.campaign_service import get_video_json_path, resolve_video_json_path, compute_codestation
 from services.sound_service import get_sound_service
@@ -952,6 +952,12 @@ class ValidationController:
 
             tasks = []
             slot_id = 0
+            # FPS natif pour le fallback sans fichier PTS
+            import cv2 as _cv2_v
+            _cap_v = _cv2_v.VideoCapture(video_path)
+            _fps_v = _cap_v.get(_cv2_v.CAP_PROP_FPS) or 25.0
+            _cap_v.release()
+
             rotation_groups = [motor_events[i:i + 6] for i in range(0, len(motor_events), 6)]
 
             for g_idx, rotation_events in enumerate(rotation_groups):
@@ -964,20 +970,15 @@ class ValidationController:
                 hbox.setContentsMargins(15, 10, 15, 10)
                 hbox.setSpacing(15)
 
-                # Intervalle moyen entre évènements (pour extrapoler le dernier)
-                _ts_list = [e["timestamp"] for e in rotation_events]
-                if len(_ts_list) >= 2:
-                    _avg_interval = (_ts_list[-1] - _ts_list[0]) / (len(_ts_list) - 1)
-                else:
-                    _avg_interval = 6.0
-
                 for idx, evt in enumerate(rotation_events):
                     ts, angle, evt_type = evt["timestamp"], evt["angle"], evt["type"]
-                    # Image au PTS réel le plus proche de début rotation + 10 s
-                    start_s = evt.get("start", int(ts * 1000)) / 1000.0
-                    real_ms = nearest_pts_ms(video_path, (start_s + 10.0) * 1000.0)
-                    mid_ts  = real_ms / 1000.0
-                    print(f"[VALIDATION] secteur={idx} rot_ts={ts:.2f}s start_s={start_s:.2f}s PTS réel={mid_ts:.3f}s")
+                    start_s   = evt.get("start", int(ts * 1000)) / 1000.0
+                    target_ms = (start_s + 10.0) * 1000.0
+                    frame_idx = find_pts_frame_index(video_path, target_ms)
+                    if frame_idx is None:
+                        frame_idx = int(target_ms * _fps_v / 1000.0)
+                    mid_ts = start_s + 10.0
+                    print(f"[VALIDATION] secteur={idx} +10s={mid_ts:.3f}s → frame={frame_idx}")
                     w_photo = QtWidgets.QFrame()
                     w_photo.setFixedSize(240, 180)
                     w_photo.setStyleSheet(
@@ -988,7 +989,7 @@ class ValidationController:
 
                     self._sector_pixmaps.append(None)
                     self._sector_slot_labels[slot_id] = (w_photo, angle, mid_ts)
-                    tasks.append((slot_id, video_path, mid_ts))
+                    tasks.append((slot_id, video_path, frame_idx))   # int → extract_frame_at_index
                     slot_id += 1
                     hbox.addWidget(w_photo)
 

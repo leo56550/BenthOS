@@ -96,13 +96,25 @@ def load_pts_for_video(video_path: str) -> list:
     return _load_frame_pts(find_video_txt(video_path))
 
 
-def nearest_pts_ms(video_path: str, target_ms: float) -> float:
-    """Retourne le PTS réel (ms) le plus proche de target_ms pour la vidéo donnée.
+def find_pts_frame_index(video_path: str, target_ms: float) -> int | None:
+    """Retourne l'index de frame le plus proche de target_ms (ms) depuis le fichier PTS.
 
-    Si le fichier .txt de PTS n'existe pas, retourne target_ms inchangé.
+    Retourne None si le fichier .txt est absent ou vide — le caller doit
+    calculer l'index théorique depuis le FPS (int(target_s * fps)).
     """
     pts = load_pts_for_video(video_path)
-    return _find_nearest_pts(pts, target_ms)
+    if not pts:
+        return None
+    lo, hi = 0, len(pts) - 1
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if pts[mid] < target_ms:
+            lo = mid + 1
+        else:
+            hi = mid
+    if lo > 0 and abs(pts[lo - 1] - target_ms) < abs(pts[lo] - target_ms):
+        lo -= 1
+    return lo
 
 
 def get_motor_stable_timestamps(csv_path: str, delay: float = 6.0, start_track_id: int = 6,

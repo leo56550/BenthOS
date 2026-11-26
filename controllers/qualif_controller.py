@@ -24,7 +24,7 @@ from services.campaign_service import (
     get_temp_json_path, compute_codestation,
 )
 from services.migration_service import initialise_temp_json_if_needed, update_temp_json_paths
-from services.motor_service import get_motor_stable_timestamps, find_system_event_csv, nearest_pts_ms
+from services.motor_service import get_motor_stable_timestamps, find_system_event_csv, find_pts_frame_index
 from services.image_service import extract_frame_at_time, extract_frame_at_index
 from services.thumbnail_service import ThumbnailWorkerMulti, THUMB_W, THUMB_H
 from services.sound_service import get_sound_service
@@ -2540,12 +2540,19 @@ class QualifController:
                 self._cam_worker.start()
                 return
 
-            # ── 3. Timestamp miniature = PTS réel le plus proche de début rotation + 10 s ──
+            # ── 3. Index de frame = début rotation + 10 s, via PTS si disponible ────
+            import cv2 as _cv2_q
+            _cap_q = _cv2_q.VideoCapture(str(video_path))
+            _fps_q = _cap_q.get(_cv2_q.CAP_PROP_FPS) or 25.0
+            _cap_q.release()
             for evt in motor_events:
-                start_s = evt.get("start", int(evt["timestamp"] * 1000)) / 1000.0
+                start_s   = evt.get("start", int(evt["timestamp"] * 1000)) / 1000.0
                 target_ms = (start_s + 10.0) * 1000.0
-                real_ms = nearest_pts_ms(video_path, target_ms)
-                evt["mid_ts"] = real_ms / 1000.0
+                frame_idx = find_pts_frame_index(video_path, target_ms)
+                if frame_idx is None:
+                    frame_idx = int(target_ms * _fps_q / 1000.0)
+                evt["mid_ts"]   = start_s + 10.0   # pour l'affichage du timestamp
+                evt["frame_idx"] = frame_idx
 
             # ── 4. Construction de la grille ──────────────────────────────────
             tasks = []
@@ -2563,8 +2570,9 @@ class QualifController:
                 hbox.setSpacing(15)
 
                 for evt in rotation_events:
-                    angle = evt["angle"]
-                    mid_ts = evt["mid_ts"]
+                    angle     = evt["angle"]
+                    mid_ts    = evt["mid_ts"]
+                    frame_idx = evt["frame_idx"]
                     w_photo = QtWidgets.QFrame()
                     w_photo.setFixedSize(240, 180)
                     w_photo.setStyleSheet(
@@ -2576,7 +2584,7 @@ class QualifController:
 
                     self._miniature_pixmaps.append(None)
                     self._camera_slot_labels[slot_id] = (w_photo, angle, mid_ts)
-                    tasks.append((slot_id, video_path, mid_ts))
+                    tasks.append((slot_id, video_path, frame_idx))   # int → extract_frame_at_index
                     slot_id += 1
                     hbox.addWidget(w_photo)
 

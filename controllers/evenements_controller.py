@@ -7,7 +7,7 @@ import uuid
 import cv2
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from services.motor_service import get_motor_stable_timestamps, find_system_event_csv, find_video_csv, nearest_pts_ms
+from services.motor_service import get_motor_stable_timestamps, find_system_event_csv, find_video_csv, find_pts_frame_index
 from services.motor_rotation_detection_service import (
     MotorRotationDetectionWorker, MotorRotationBatchWorker, _timecode_to_ms,
 )
@@ -3531,17 +3531,26 @@ class EvenementsController:
                 else:
                     _avg_interval = 6.0
 
+                # PTS du player (cam G) pour conversion timecode → index de frame précis
+                _pts_L = getattr(self.event_player, '_pts_L', None) or []
+
                 for idx, evt in enumerate(rotation_events):
                     ts, angle, evt_type = evt["timestamp"], evt["angle"], evt["type"]
-                    # Utiliser le timestamp brut du début de rotation (clé "start" en ms pour CSV,
-                    # identique à "timestamp" pour les événements JSON).
-                    # "timestamp" (CSV) = début AWB-stable = rotation_start + ~6s → trop tard.
                     start_s = evt.get("start", int(ts * 1000)) / 1000.0
-                    mid_ts = start_s + 10.0  # début de rotation + 10 s
-                    # Ajuster au PTS réel le plus proche (gère VFR et frames droppées)
-                    real_ms = nearest_pts_ms(video_path, mid_ts * 1000.0)
-                    real_s  = real_ms / 1000.0
-                    print(f"[SECTOR] slot={slot_id} mid_ts={mid_ts:.3f}s → PTS réel={real_s:.3f}s")
+                    mid_ts  = start_s + 10.0   # début de rotation + 10 s
+                    target_ms = mid_ts * 1000.0
+
+                    if _pts_L:
+                        # Index exact via la liste PTS du player (même logique que le curseur)
+                        frame_idx = self.event_player._find_pts_index(_pts_L, target_ms)
+                        display_s = _pts_L[frame_idx] / 1000.0
+                    else:
+                        # Fallback : index théorique depuis le FPS natif
+                        _fps = getattr(self.event_player, '_fps', None) or 25.0
+                        frame_idx = int(target_ms * _fps / 1000.0)
+                        display_s = mid_ts
+                    print(f"[SECTOR] slot={slot_id} +10s={mid_ts:.3f}s → frame={frame_idx} ({display_s:.3f}s)")
+
                     w_photo = QtWidgets.QFrame()
                     w_photo.setFixedSize(240, 180)
                     w_photo.setStyleSheet(
@@ -3550,8 +3559,8 @@ class EvenementsController:
                     ph_layout.setContentsMargins(0, 0, 0, 0)
 
                     self._sector_pixmaps.append(None)
-                    self._sector_slot_labels[slot_id] = (w_photo, angle, real_s)
-                    tasks.append((slot_id, video_path, real_s))
+                    self._sector_slot_labels[slot_id] = (w_photo, angle, display_s)
+                    tasks.append((slot_id, video_path, frame_idx))   # int → extract_frame_at_index
                     slot_id += 1
                     hbox.addWidget(w_photo)
 
