@@ -283,11 +283,11 @@ _INFOSTATION_CSV_SCHEMA: list[tuple] = [
     ("video_observation", "exploitable",               "Exploitable"),            # col 24
     ("video_observation", "protectionStatus1",         "Codestatut"),             # col 25
     ("video_observation", "protectionStatus2",         "Codestatut2"),            # col 26
-    (None,                "statutprotection",          "Statutprotection"),       # col 27 – non mappé
-    ("video_observation", "tide",                      "Maree"),                  # col 28
-    ("video_observation", "moon",                      "Lune"),                   # col 29
-    ("video_observation", "weather",                   "Meteo"),                  # col 30
-    ("video_observation", "wind",                      "Vent"),                   # col 31
+    ("video_observation", "tide",                      "Maree"),                  # col 27
+    ("video_observation", "moon",                      "Lune"),                   # col 28
+    ("video_observation", "weather",                   "Meteo"),                  # col 29
+    ("video_observation", "wind",                      "Vent"),                   # col 30
+    ("video_observation", "wind_direction",            "Direction"),              # col 31
     ("video_observation", "seaState",                  "Mer"),                    # col 32
     ("video_observation", "swell_height",              "Houle"),                  # col 33
     ("survey",            "boat_name",                 "Bateau"),                 # col 34
@@ -334,11 +334,11 @@ _COL_NAME_EN: dict[str, str] = {
     "Exploitable":                          "Exploitable",
     "Codestatut":                           "Status code",
     "Codestatut2":                          "Status code 2",
-    "Statutprotection":                     "Protection status",
     "Maree":                                "Tide",
     "Lune":                                 "Moon",
     "Meteo":                                "Weather",
     "Vent":                                 "Wind",
+    "Direction":                            "Wind direction",
     "Mer":                                  "Sea",
     "Houle":                                "Swell",
     "Bateau":                               "Boat",
