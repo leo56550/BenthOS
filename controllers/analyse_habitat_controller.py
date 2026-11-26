@@ -293,32 +293,37 @@ _SCHEMA_MED: list[tuple[str, str, list]] = [
         ("herbier_clairseme",  "Herbier clairsemé (<25%)", "percent"),
         ("matte_morte",        "Matte morte",              "percent"),
     ]),
-    ("Recouvrement herbier par épibiontes", "", [
-        ("epib_epiphytes", "Épiphytes", "percent"),
-        ("epib_sediment",  "Sédiment",  "percent"),
+    ("Recouvrement herbier par épibiontes", "codage 1–3 : non, un peu, beaucoup", [
+        ("epib_epiphytes", "Épiphytes", "score13"),
+        ("epib_sediment",  "Sédiment",  "score13"),
     ]),
-    ("Recouvrement Algues", "somme à 100 % par secteur", [
-        ("total_algues",           "Total algues",                        "percent"),
-        ("alg_cystoseires",        "Algues brunes – Cystoseires",         "percent"),
-        ("alg_padina",             "Algues brunes – Padina",              "percent"),
-        ("alg_dictyota",           "Algues brunes – Dictyota",            "percent"),
-        ("alg_cladostephus",       "Algues brunes – Cladostephus",        "percent"),
-        ("alg_caulerpa_tax",       "Algues vertes – Caulerpa taxifolia",  "percent"),
-        ("alg_caulerpa_rac",       "Algues vertes – Caulerpa racemosa",   "percent"),
-        ("alg_codium",             "Algues vertes – Codium",              "percent"),
-        ("alg_halimeda",           "Algues vertes – Halimeda",            "percent"),
-        ("alg_udotea",             "Algues vertes – Udotea",              "percent"),
-        ("alg_ulva",               "Algues vertes – Ulva",                "percent"),
-        ("alg_valonia",            "Algues vertes – Valonia",             "percent"),
-        ("alg_asparagopsis",       "Algues rouges – Asparagopsis",        "percent"),
-        ("alg_sphaerococcus",      "Algues rouges – Sphaerococcus",       "percent"),
-        ("alg_gracilaria",         "Algues rouges – Gracilaria",          "percent"),
-        ("alg_jania",              "Algues rouges – Jania (coralline)",   "percent"),
-        ("alg_corallina",          "Algues rouges – Corallina",           "percent"),
-        ("alg_mesophyllum",        "Algues rouges – Mesophyllum",         "percent"),
-        ("alg_pseudolithophyllum", "Algues rouges – Pseudolithophyllum",  "percent"),
-        ("alg_peyssonelia",        "Algues rouges – Peyssonelia",         "percent"),
-        ("alg_tricleocarpa",       "Algues rouges – Tricleocarpa",        "percent"),
+    ("Recouvrement Algues", "% de la surface totale observée", [
+        ("total_algues", "Total algues",  "percent"),
+        ("alg_brunes",   "Algues brunes", "percent"),
+        ("alg_vertes",   "Algues vertes", "percent"),
+        ("alg_rouges",   "Algues rouges", "percent"),
+    ]),
+    ("Présence Algues", "codage 1–3 : absente, abondance faible, abondance élevée", [
+        ("pres_cystoseires",        "Algues brunes – Cystoseires",         "score13"),
+        ("pres_padina",             "Algues brunes – Padina",              "score13"),
+        ("pres_dictyota",           "Algues brunes – Dictyota",            "score13"),
+        ("pres_cladostephus",       "Algues brunes – Cladostephus",        "score13"),
+        ("pres_caulerpa_tax",       "Algues vertes – Caulerpa taxifolia",  "score13"),
+        ("pres_caulerpa_rac",       "Algues vertes – Caulerpa racemosa",   "score13"),
+        ("pres_codium",             "Algues vertes – Codium",              "score13"),
+        ("pres_halimeda",           "Algues vertes – Halimeda",            "score13"),
+        ("pres_udotea",             "Algues vertes – Udotea",              "score13"),
+        ("pres_ulva",               "Algues vertes – Ulva",                "score13"),
+        ("pres_valonia",            "Algues vertes – Valonia",             "score13"),
+        ("pres_asparagopsis",       "Algues rouges – Asparagopsis",        "score13"),
+        ("pres_sphaerococcus",      "Algues rouges – Sphaerococcus",       "score13"),
+        ("pres_gracilaria",         "Algues rouges – Gracilaria",          "score13"),
+        ("pres_jania",              "Algues rouges – Jania (coralline)",   "score13"),
+        ("pres_corallina",          "Algues rouges – Corallina",           "score13"),
+        ("pres_mesophyllum",        "Algues rouges – Mesophyllum",         "score13"),
+        ("pres_pseudolithophyllum", "Algues rouges – Pseudolithophyllum",  "score13"),
+        ("pres_peyssonelia",        "Algues rouges – Peyssonelia",         "score13"),
+        ("pres_tricleocarpa",       "Algues rouges – Tricleocarpa",        "score13"),
     ]),
     ("Espèces remarquables", "nombre d'individus par secteur", [
         ("eponge",       "Éponge",           "count"),
@@ -348,6 +353,7 @@ _JSON_SECTION_MED: dict[str, tuple[str, str | None]] = {
     "Recouvrement Herbier":            ("dict",        "recouvrement_herbier"),
     "Recouvrement herbier par épibiontes": ("flat",   None),
     "Recouvrement Algues":             ("dict",        "recouvrement_algues"),
+    "Présence Algues":                 ("dict",        "presence_algues"),
     "Espèces remarquables":            ("dict_count",  "invertebres"),
 }
 
@@ -381,27 +387,32 @@ _XLSX_LAYOUT_MED: list[tuple[str, list]] = [
         ("epib_sediment",  "Sédiment"),
     ]),
     ("Recouvrement Algues", [
-        ("total_algues",           "Total algues"),
-        ("alg_cystoseires",        "Algues brunes - Cystoseires"),
-        ("alg_padina",             "Algues brunes - Padina"),
-        ("alg_dictyota",           "Algues brunes - Dictyota"),
-        ("alg_cladostephus",       "Algues brunes - Cladostephus"),
-        ("alg_caulerpa_tax",       "Algues vertes - Caulerpa taxifolia"),
-        ("alg_caulerpa_rac",       "Algues vertes - Caulerpa racemosa"),
-        ("alg_codium",             "Algues vertes - Codium"),
-        ("alg_halimeda",           "Algues vertes - Halimeda"),
-        ("alg_udotea",             "Algues vertes - Udotea"),
-        ("alg_ulva",               "Algues vertes - Ulva"),
-        ("alg_valonia",            "Algues vertes - Valonia"),
-        ("alg_asparagopsis",       "Algues rouges - Asparagopsis"),
-        ("alg_sphaerococcus",      "Algues rouges - Sphaerococcus"),
-        ("alg_gracilaria",         "Algues rouges - Gracilaria"),
-        ("alg_jania",              "Algues rouges - Jania (coralline)"),
-        ("alg_corallina",          "Algues rouges - Corallina"),
-        ("alg_mesophyllum",        "Algues rouges - Mesophyllum"),
-        ("alg_pseudolithophyllum", "Algues rouges - Pseudolithophyllum"),
-        ("alg_peyssonelia",        "Algues rouges - Peyssonelia"),
-        ("alg_tricleocarpa",       "Algues rouges - Tricleocarpa"),
+        ("total_algues", "Total algues"),
+        ("alg_brunes",   "Algues brunes"),
+        ("alg_vertes",   "Algues vertes"),
+        ("alg_rouges",   "Algues rouges"),
+    ]),
+    ("Présence Algues", [
+        ("pres_cystoseires",        "Algues brunes - Cystoseires"),
+        ("pres_padina",             "Algues brunes - Padina"),
+        ("pres_dictyota",           "Algues brunes - Dictyota"),
+        ("pres_cladostephus",       "Algues brunes - Cladostephus"),
+        ("pres_caulerpa_tax",       "Algues vertes - Caulerpa taxifolia"),
+        ("pres_caulerpa_rac",       "Algues vertes - Caulerpa racemosa"),
+        ("pres_codium",             "Algues vertes - Codium"),
+        ("pres_halimeda",           "Algues vertes - Halimeda"),
+        ("pres_udotea",             "Algues vertes - Udotea"),
+        ("pres_ulva",               "Algues vertes - Ulva"),
+        ("pres_valonia",            "Algues vertes - Valonia"),
+        ("pres_asparagopsis",       "Algues rouges - Asparagopsis"),
+        ("pres_sphaerococcus",      "Algues rouges - Sphaerococcus"),
+        ("pres_gracilaria",         "Algues rouges - Gracilaria"),
+        ("pres_jania",              "Algues rouges - Jania (coralline)"),
+        ("pres_corallina",          "Algues rouges - Corallina"),
+        ("pres_mesophyllum",        "Algues rouges - Mesophyllum"),
+        ("pres_pseudolithophyllum", "Algues rouges - Pseudolithophyllum"),
+        ("pres_peyssonelia",        "Algues rouges - Peyssonelia"),
+        ("pres_tricleocarpa",       "Algues rouges - Tricleocarpa"),
     ]),
     ("Espèces remarquables", [
         ("eponge",       "Éponge"),
@@ -592,7 +603,7 @@ _MASK_CONFIGS: dict[str, dict] = {
         "recouvrement_types": _RECOUVREMENT_TYPES_MED,
         "recouvrement_section": "Recouvrement Substrat",
         "invert_section": "Espèces remarquables",
-        "presence_section": None,
+        "presence_section": "Présence Algues",
         "theme": {
             "accent":       "#e3c47e",
             "section_bg":   "#3a2e14",
@@ -664,6 +675,7 @@ _EN: dict[str, str] = {
     "Herbier semi-dense":           "Semi-dense seagrass",
     "Herbier clairsemé (<25%)":     "Sparse seagrass (<25%)",
     "Matte morte":                  "Dead mat",
+    "Algues brunes":                "Brown algae",
     "Algues brunes non ID":         "Brown algae unidentified",
     "Algues brunes – Laminariales": "Brown algae – Laminariales",
     "Algues brunes – Fucus":        "Brown algae – Fucus",
@@ -724,6 +736,8 @@ _EN: dict[str, str] = {
     "Espèces remarquables":                     "Notable species",
     # MED — notes
     "% — somme à 100% par secteur":  "% — sum to 100% per sector",
+    "codage 1–3 : non, un peu, beaucoup": "score 1–3: none, a little, a lot",
+    "codage 1–3 : absente, abondance faible, abondance élevée": "score 1–3: absent, low abundance, high abundance",
     # MED — champs
     "Épiphytes":                     "Epiphytes",
     "Sédiment":                      "Sediment",
@@ -2108,7 +2122,6 @@ class AnalyseHabitatController(QtCore.QObject):
         self._section_rec_herbier: _CollapsibleSection | None = None
         self._section_rec_algues: _CollapsibleSection | None = None
         self._section_presence_algues: _CollapsibleSection | None = None
-        self._sv_presence_algues: _PresenceCascade | None = None
         self._sv_inverts: _PresenceCascade | None = None
 
         # Timestamps / thumbnails secteurs
@@ -2600,7 +2613,6 @@ class AnalyseHabitatController(QtCore.QObject):
         self._section_rec_algues     = None
         self._section_presence_algues = None
         self._sv_recouvrement        = None
-        self._sv_presence_algues     = None
         self._sv_inverts             = None
         self._sv_widgets.clear()
         self._section_widgets.clear()
@@ -2650,18 +2662,6 @@ class AnalyseHabitatController(QtCore.QObject):
                 self._sv_recouvrement.data_changed.connect(
                     self._sv_on_recouvrement_changed)
                 inner.addWidget(self._sv_recouvrement)
-                section.set_layout(inner)
-
-            elif pres_section and section_name == pres_section:
-                inner = QtWidgets.QVBoxLayout()
-                inner.setContentsMargins(4, 4, 4, 4)
-                inner.setSpacing(4)
-                items = [(fkey, flabel) for fkey, flabel, _ in fields]
-                self._sv_presence_algues = _PresenceCascade(
-                    items, add_label="+ Ajouter une algue", show_count=False)
-                self._sv_presence_algues.data_changed.connect(
-                    self._sv_on_presence_algues_changed)
-                inner.addWidget(self._sv_presence_algues)
                 section.set_layout(inner)
 
             elif section_name == inv_section:
@@ -2774,17 +2774,6 @@ class AnalyseHabitatController(QtCore.QObject):
                         rec_data[k] = v
                 self._sv_recouvrement.set_data(rec_data)
 
-            if self._sv_presence_algues is not None:
-                algues_data: dict[str, int] = {}
-                for sname, _, fields in self._active_schema:
-                    if sname != self._active_presence_section:
-                        continue
-                    for fkey, _, _ in fields:
-                        v = (d.get(fkey, [0] * 6))[s] if s < len(d.get(fkey, [0] * 6)) else 0
-                        if v:
-                            algues_data[fkey] = v
-                self._sv_presence_algues.set_data(algues_data)
-
             if self._sv_inverts is not None:
                 inverts_data: dict[str, int] = {}
                 for sname, _, fields in self._active_schema:
@@ -2824,21 +2813,6 @@ class AnalyseHabitatController(QtCore.QObject):
         self._sv_refresh_totals()
         self._sv_update_badges()
         self._sv_update_conditional_sections()
-        self._persist_habitat(self._current_video)
-
-    def _sv_on_presence_algues_changed(self):
-        if self._updating or not self._current_video or self._sv_presence_algues is None:
-            return
-        cascade_data = self._sv_presence_algues.get_data()
-        d = self._data.setdefault(self._current_video, {})
-        s = self._current_sector_idx
-        for section_name, _, fields in self._active_schema:
-            if section_name != self._active_presence_section:
-                continue
-            for fkey, _, _ in fields:
-                row = d.setdefault(fkey, [0] * 6)
-                row[s] = cascade_data.get(fkey, 0)
-        self._sv_update_badges()
         self._persist_habitat(self._current_video)
 
     def _sv_on_inverts_changed(self):

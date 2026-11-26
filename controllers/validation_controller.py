@@ -183,7 +183,14 @@ class ValidationController:
                 self.translate("📷 Vue des secteurs", "📷 Sector view"))
             self.btn_toggle_sector_view.setStyleSheet(BTN_PRIMARY)
             self.btn_toggle_sector_view.clicked.connect(self._toggle_sector_view)
-            # Ajouter à droite de la cam_bar (même ligne que Cam G/D)
+            # Extraire cam_bar du player et l'insérer en frère dans player_container :
+            # elle reste visible même quand self.player est caché (vue secteurs)
+            _video_outer = self.player.splitter.widget(0)
+            if _video_outer and _video_outer.layout():
+                _video_outer.layout().removeWidget(self.player.cam_bar)
+            self.player.cam_bar.setParent(self.player_container)
+            layout.insertWidget(layout.indexOf(self.player), self.player.cam_bar)
+            # Ajouter le bouton toggle à droite de Cam G/D dans cam_bar
             self.player.cam_bar.layout().addWidget(self.btn_toggle_sector_view)
             self.player._cam_bar_pinned = True
             self.player.cam_bar.setVisible(True)
@@ -822,6 +829,9 @@ class ValidationController:
         self._sector_view_active = not self._sector_view_active
         self.player.setVisible(not self._sector_view_active)
         self._sector_scroll.setVisible(self._sector_view_active)
+        # Boutons CAM visibles uniquement en mode lecteur
+        for _cam_btn in (self.player.btn_cam_L, self.player.btn_cam_both, self.player.btn_cam_R):
+            _cam_btn.setVisible(not self._sector_view_active)
         self.btn_toggle_sector_view.setText(
             self.translate("🎬 Lecteur", "🎬 Player") if self._sector_view_active
             else self.translate("📷 Vue des secteurs", "📷 Sector view")

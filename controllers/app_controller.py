@@ -1906,8 +1906,8 @@ class AppController(QtCore.QObject):
         w.actionValidation.setEnabled(not locked)
         w.actionEvenements.setEnabled(not locked)
         w.actionMetadonnees.setEnabled(not locked)
-        w.actionA_propos.setEnabled(not locked)
         w.actionAnalyseHabitat.setEnabled(not locked)
+        # actionA_propos toujours accessible quelle que soit la campagne
 
     def _release_file_in_all_players(self, path: str):
         """Libère le verrou Windows sur un fichier vidéo dans tous les players embarqués."""
