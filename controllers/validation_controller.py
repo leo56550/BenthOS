@@ -179,17 +179,14 @@ class ValidationController:
             self._sector_worker = None
             self._sector_view_active = False
 
-            toggle_row = QtWidgets.QWidget()
-            toggle_row.setStyleSheet("background: transparent;")
-            toggle_layout = QtWidgets.QHBoxLayout(toggle_row)
-            toggle_layout.setContentsMargins(0, 0, 0, 4)
-            toggle_layout.addStretch()
             self.btn_toggle_sector_view = QtWidgets.QPushButton(
                 self.translate("📷 Vue des secteurs", "📷 Sector view"))
             self.btn_toggle_sector_view.setStyleSheet(BTN_PRIMARY)
             self.btn_toggle_sector_view.clicked.connect(self._toggle_sector_view)
-            toggle_layout.addWidget(self.btn_toggle_sector_view)
-            layout.insertWidget(0, toggle_row)
+            # Ajouter à droite de la cam_bar (même ligne que Cam G/D)
+            self.player.cam_bar.layout().addWidget(self.btn_toggle_sector_view)
+            self.player._cam_bar_pinned = True
+            self.player.cam_bar.setVisible(True)
 
             self._sector_scroll = QtWidgets.QScrollArea()
             self._sector_scroll.setWidgetResizable(True)

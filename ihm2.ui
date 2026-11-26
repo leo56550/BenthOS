@@ -269,7 +269,7 @@ QPushButton[actif=&quot;true&quot;] {
               <string/>
              </property>
              <property name="pixmap">
-              <pixmap>img/logo_kosmos.png</pixmap>
+              <pixmap>img/logo_benthos.svg</pixmap>
              </property>
              <property name="alignment">
               <set>Qt::AlignmentFlag::AlignCenter</set>
@@ -282,7 +282,7 @@ QPushButton[actif=&quot;true&quot;] {
               <string/>
              </property>
              <property name="pixmap">
-              <pixmap>../Users/Administrateur/.designer/backup/img/logo_kosmos.png</pixmap>
+              <pixmap>img/logo_benthos.svg</pixmap>
              </property>
              <property name="alignment">
               <set>Qt::AlignmentFlag::AlignCenter</set>

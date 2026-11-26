@@ -3,6 +3,12 @@ import os
 from PyQt6 import QtWidgets, uic, QtCore, QtGui
 from views.widgets.progress_dashboard import ProgressDashboardWidget, ProgressToolbarStrip
 
+try:
+    from PyQt6.QtSvgWidgets import QSvgWidget as _QSvgWidget
+    _HAS_SVG = True
+except ImportError:
+    _HAS_SVG = False
+
 
 class MainWindow(QtWidgets.QMainWindow):
     """Loads the .ui file and exposes all page widgets + navigation toolbar.
@@ -16,6 +22,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.base_path = os.path.dirname(os.path.dirname(__file__))
         ui_path = os.path.join(self.base_path, "ihm2.ui")
         uic.loadUi(ui_path, self)
+        self._patch_welcome_logo()
 
         self.nav_toolbar = self.findChild(QtWidgets.QToolBar, "page_tool_bar")
         self.button_mapping: dict = {}
@@ -506,3 +513,55 @@ class MainWindow(QtWidgets.QMainWindow):
             if btn:
                 btn.setText(label)
                 btn.setToolTip(tip)
+
+    def _patch_welcome_logo(self):
+        """Remplace label_2 (logo d'accueil) par le logo BenthOS SVG ; cache label (duplicata designer)."""
+        svg_path = os.path.join(self.base_path, "img", "logo_benthos.svg")
+        if not os.path.isfile(svg_path):
+            return
+
+        # Cacher label (chemin designer invalide, toujours vide)
+        lbl_dup = self.findChild(QtWidgets.QLabel, "label")
+        if lbl_dup:
+            lbl_dup.hide()
+
+        # Remplacer label_2 par QSvgWidget
+        lbl = self.findChild(QtWidgets.QLabel, "label_2")
+        if not lbl:
+            return
+        parent = lbl.parent()
+        layout = parent.layout() if parent else None
+        if layout is None:
+            return
+        idx = layout.indexOf(lbl)
+        if idx < 0:
+            return
+        layout.removeWidget(lbl)
+        lbl.hide()
+        lbl.deleteLater()
+        if _HAS_SVG:
+            new_widget = _QSvgWidget(svg_path)
+            new_widget.setFixedSize(300, 300)
+            new_widget.setStyleSheet("background: transparent;")
+        else:
+            new_widget = QtWidgets.QLabel()
+            pix = QtGui.QPixmap(svg_path)
+            if not pix.isNull():
+                new_widget.setPixmap(pix.scaled(
+                    300, 300,
+                    QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                    QtCore.Qt.TransformationMode.SmoothTransformation,
+                ))
+            new_widget.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            new_widget.setStyleSheet("background: transparent;")
+        layout.insertWidget(idx, new_widget,
+                            alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+
+        by_lbl = QtWidgets.QLabel("by KOSMOS")
+        by_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        by_lbl.setStyleSheet(
+            "color: #8aaabb; font-size: 11px;"
+            " font-family: 'Segoe UI', sans-serif; background: transparent;"
+        )
+        layout.insertWidget(idx + 1, by_lbl,
+                            alignment=QtCore.Qt.AlignmentFlag.AlignCenter)

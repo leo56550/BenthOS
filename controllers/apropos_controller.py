@@ -174,21 +174,27 @@ class AProposController:
         )
         t_desc.setWordWrap(True)
 
-        # "by KOSMOS" avec logo KOSMOS en bas à droite du texte
+        # "by KOSMOS" avec logo BenthOS en bas à droite du texte
         by_row = QtWidgets.QHBoxLayout()
         by_row.setSpacing(6)
-        kosmos_path = os.path.join(os.path.dirname(__file__), '..', 'img', 'logo_kosmos.png')
-        if os.path.isfile(kosmos_path):
+        benthos_small = os.path.join(os.path.dirname(__file__), '..', 'img', 'logo_benthos.svg')
+        if _HAS_SVG and os.path.isfile(benthos_small):
+            small_svg = QSvgWidget(benthos_small)
+            small_svg.setFixedSize(20, 20)
+            small_svg.setStyleSheet("background: transparent;")
+            by_row.addWidget(small_svg)
+        elif os.path.isfile(benthos_small):
             kosmos_lbl = QtWidgets.QLabel()
-            pix = QtGui.QPixmap(kosmos_path).scaled(
+            pix = QtGui.QPixmap(benthos_small).scaled(
                 20, 20,
                 QtCore.Qt.AspectRatioMode.KeepAspectRatio,
                 QtCore.Qt.TransformationMode.SmoothTransformation,
             )
-            kosmos_lbl.setPixmap(pix)
-            kosmos_lbl.setFixedSize(20, 20)
-            kosmos_lbl.setStyleSheet("background: transparent;")
-            by_row.addWidget(kosmos_lbl)
+            if not pix.isNull():
+                kosmos_lbl.setPixmap(pix)
+                kosmos_lbl.setFixedSize(20, 20)
+                kosmos_lbl.setStyleSheet("background: transparent;")
+                by_row.addWidget(kosmos_lbl)
         by_lbl = QtWidgets.QLabel("by KOSMOS")
         by_lbl.setStyleSheet(
             f"color: {_MUTED}; font-size: 11px;"

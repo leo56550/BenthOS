@@ -49,6 +49,31 @@ def _load_logo_array(logo_path: str, height_px: int = 80) -> np.ndarray | None:
     if not logo_path or not os.path.isfile(logo_path):
         return None
     try:
+        # Rasterisation SVG via Qt si disponible
+        if logo_path.lower().endswith('.svg'):
+            try:
+                from PyQt6.QtSvg import QSvgRenderer
+                from PyQt6.QtGui import QImage, QPainter
+                from PyQt6.QtCore import QSize
+                renderer = QSvgRenderer(logo_path)
+                size = renderer.defaultSize()
+                if size.isValid():
+                    scale = height_px / size.height()
+                    w_px = int(size.width() * scale)
+                else:
+                    w_px = height_px
+                img_q = QImage(w_px, height_px, QImage.Format.Format_ARGB32)
+                img_q.fill(0)
+                painter = QPainter(img_q)
+                renderer.render(painter)
+                painter.end()
+                ptr = img_q.bits()
+                ptr.setsize(img_q.sizeInBytes())
+                arr = np.frombuffer(ptr, dtype=np.uint8).reshape((height_px, w_px, 4)).copy()
+                arr = arr[:, :, [2, 1, 0, 3]]  # ARGB → BGRA (cv2)
+                return arr
+            except Exception:
+                return None
         img = cv2.imread(logo_path, cv2.IMREAD_UNCHANGED)
         if img is None:
             return None
@@ -109,7 +134,7 @@ def _page_cover(pdf: PdfPages, campaign_folder: str, logo_arr: np.ndarray | None
     # Logo
     if logo_arr is not None:
         logo_big = _load_logo_array(
-            os.path.join(os.path.dirname(__file__), '..', 'img', 'logo_kosmos.png'),
+            os.path.join(os.path.dirname(__file__), '..', 'img', 'logo_benthos.svg'),
             height_px=120
         )
         if logo_big is not None:

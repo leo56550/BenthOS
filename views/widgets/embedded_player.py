@@ -4,6 +4,11 @@ import cv2
 import numpy as np
 import pandas as pd
 from PyQt6 import QtCore, QtGui, QtWidgets
+try:
+    from PyQt6.QtSvgWidgets import QSvgWidget as _QSvgWidget
+    _HAS_SVG = True
+except ImportError:
+    _HAS_SVG = False
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 
@@ -316,19 +321,30 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         )
         self.display_stack.setMinimumSize(QtCore.QSize(0, 0))
 
-        self.logo_label = QtWidgets.QLabel()
-        self.logo_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                                 "img", "logo_kosmos.png")
-        pixmap = QtGui.QPixmap(logo_path)
-        if not pixmap.isNull():
-            self.logo_label.setPixmap(
-                pixmap.scaled(400, 400, QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-                              QtCore.Qt.TransformationMode.SmoothTransformation))
+                                 "img", "logo_benthos.svg")
+        logo_container = QtWidgets.QWidget()
+        logo_container.setStyleSheet("background: black;")
+        logo_layout = QtWidgets.QVBoxLayout(logo_container)
+        logo_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        logo_layout.setContentsMargins(0, 0, 0, 0)
+        if _HAS_SVG and os.path.isfile(logo_path):
+            self.logo_label = _QSvgWidget(logo_path)
+            self.logo_label.setFixedSize(300, 300)
+            self.logo_label.setStyleSheet("background: transparent;")
         else:
-            self.logo_label.setText("KOSMOS PLAYER")
-            self.logo_label.setStyleSheet("color: white; font-size: 24px; font-weight: bold;")
-        self.display_stack.addWidget(self.logo_label)
+            self.logo_label = QtWidgets.QLabel()
+            self.logo_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            pixmap = QtGui.QPixmap(logo_path)
+            if not pixmap.isNull():
+                self.logo_label.setPixmap(
+                    pixmap.scaled(300, 300, QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                                  QtCore.Qt.TransformationMode.SmoothTransformation))
+            else:
+                self.logo_label.setText("BenthOS")
+                self.logo_label.setStyleSheet("color: white; font-size: 24px; font-weight: bold;")
+        logo_layout.addWidget(self.logo_label, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.display_stack.addWidget(logo_container)
 
         # Boutons caméra stéréo (barre au-dessus de la vidéo)
         self.btn_cam_L = QtWidgets.QPushButton("Cam G")
@@ -357,6 +373,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         cam_bar_layout.addWidget(self.btn_cam_both)
         cam_bar_layout.addWidget(self.btn_cam_R)
         cam_bar_layout.addStretch()
+        self._cam_bar_right_stretch = cam_bar_layout.addStretch  # slot réservé côté droit
+        self._cam_bar_pinned = False   # True → cam_bar toujours visible même en mono
         self.cam_bar.setVisible(False)
 
         self.video_container = QtWidgets.QWidget()
@@ -1375,11 +1393,15 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.btn_cam_both.setChecked(False)
             self.btn_cam_both.blockSignals(False)
             self.cam_bar.setVisible(True)
+            for b in (self.btn_cam_L, self.btn_cam_both, self.btn_cam_R):
+                b.setVisible(True)
         else:
             self.is_stereo = False
             self.left_display.setVisible(True)
             self.video_widget_R.setVisible(False)
-            self.cam_bar.setVisible(False)
+            for b in (self.btn_cam_L, self.btn_cam_both, self.btn_cam_R):
+                b.setVisible(False)
+            self.cam_bar.setVisible(self._cam_bar_pinned)
             path = video_data[0] if isinstance(video_data, list) else video_data
             self.current_video_path_R = None
             if path and os.path.exists(path):
