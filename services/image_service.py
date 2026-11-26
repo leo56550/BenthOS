@@ -4,30 +4,13 @@ import numpy as np
 
 
 def _seek_and_read(cap, target_ms: float) -> tuple[bool, np.ndarray | None]:
-    """Seek précis : positionne sur le keyframe précédent puis avance via grab() jusqu'à target_ms.
+    """Seek par timestamp MSEC puis lecture.
 
-    OpenCV positionne cap.set(POS_MSEC/POS_FRAMES) sur le keyframe précédent, et cap.read()
-    retourne ce keyframe — pas la frame demandée. grab() avance sans décoder complètement ;
-    retrieve() décode uniquement la dernière frame, ce qui donne la frame la plus proche
-    de target_ms sans décalage lié aux GOP (particulièrement long en vidéo stéréo).
+    Utilise CAP_PROP_POS_MSEC (plus fiable que CAP_PROP_POS_FRAMES pour les vidéos
+    VFR et H.264/H.265, notamment en mode stéréo où le FPS déclaré peut être inexact).
     """
     cap.set(cv2.CAP_PROP_POS_MSEC, target_ms)
-    pos_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
-
-    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-    half_frame_ms = 500.0 / fps          # tolérance = demi-frame
-    limit = max(300, int(fps * 12))       # max 12 s de grab() (couvre GOP > 250 frames)
-
-    while pos_ms < target_ms - half_frame_ms and limit > 0:
-        if not cap.grab():
-            break
-        pos_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
-        limit -= 1
-
-    ret, frame = cap.retrieve()
-    if not ret or frame is None:
-        ret, frame = cap.read()
-    return ret, frame
+    return cap.read()
 
 
 def extract_frame_at_index(video_path: str, frame_index: int) -> np.ndarray:

@@ -1,0 +1,60 @@
+;;;Secteur;;;;;;;;;;ANGLAIS;
+Codestation;Couche;Descripteur;1;2;3;4;5;6;7;Moyenne;%;Commentaire;Layer;Attribute
+;;Topographie (1-5);;;;;;;;0,00;;codage de 1 à 5;;Topography (1-5)
+;;Complexité (1-5);;;;;;;;0,00;;;;Complexity (1-5)
+; Recouvrement Substrat;Sable;;;;;;;;0,00;0;somme à 100% par secteur;Abiotic substrate;Sand
+;;Vase;;;;;;;;0,00;;;;Mud
+;;Débris, petits blocs (<30cm);;;;;;;;0,00;;;;Gravels, small boulders (<30cm)
+;;Moyens blocs (30cm<l<1m);;;;;;;;0,00;;;;Large boulders (30cm<l<1m)
+;;Gros blocs et roche (>1m);;;;;;;;0,00;;;;Big boulders & rocks (>1m)
+;;Dalle;;;;;;;;0,00;;;;Slab
+;Recouvrement Herbier;Total herbier;;;;;;;;0,00;;% de la surface totale observée;Seagrass;Total cover (%)
+;;Posidonia;;;;;;;;0,00;;;;Posidonia
+;;Cymodocea;;;;;;;;0,00;;;;Cymodocea
+;;Zostera;;;;;;;;0,00;;;;Zostera
+;;Herbier court (<20cm);;;;;;;;0,00;0;somme à 100% par secteur;;short seagrass (<20cm)
+;;Herbier haut (>20cm);;;;;;;;0,00;;;;tall seagrass (>20cm)
+;;Herbier dense (sable non visible);;;;;;;;0,00;0;somme à 100% par secteur;;dense seagrass (sand not visible)
+;;Herbier semi-dense;;;;;;;;;;;;semi-dense seagrass
+;;Herbier clairsemé (<25%);;;;;;;;0,00;;;;sparse seagrass (<25%)
+;;Matte morte;;;;;;;;;;;;dead matte
+;Recouv. herbier par épibiontes ou sédiment;épiphytes;;;;;;;;0,00;;codage de 1 à 3 (non, un peu, beaucoup);Seagrass with epiphytes or sediment;epiphytes
+;;sédiment;;;;;;;;0,00;;;;sediment
+;;Total algues;;;;;;;;0,00;;% de la surface totale observée;Macroalgae;Total cover (%)
+;Recouvrement Algues;Algues brunes;;;;;;;;0,00;;somme à 100% par secteur (% relatif au recouvrement total en algues);;
+;;Algues vertes;;;;;;;;0,00;;;;
+;;Algues rouges;;;;;;;;0,00;;;;
+;Présence Algues;Algues brunes - Cystoseires;;;;;;;;0,00;0;Codage de 1 à 3 : absente, abondance faible, abondance élevée;;Phaeophyta - Cystoseira
+;;Algues brunes - Padina;;;;;;;;0,00;;;;Phaeophyta - Padina
+;;Algues brunes - Dictyota;;;;;;;;0,00;;;; Phaeophyta - Dictyota
+;;Algues brunes - Cladostephus;;;;;;;;0,00;;;;Phaeophyta - Cladostephus
+;;Algues vertes - Caulerpa taxifolia;;;;;;;;0,00;;;;Chlorophyta - Caulerpa taxifolia
+;;Algues vertes - Caulerpa racemosa;;;;;;;;0,00;;;;Clorophyta - Caulerpa racemosa
+;;Algues vertes - Codium;;;;;;;;0,00;;;;Chlorophyta - Codium
+;;Algues vertes - Halimeda;;;;;;;;0,00;;;;Chlorophyta - Halimeda
+;;Algues vertes - Udotea;;;;;;;;0,00;;;;Chlorophyta - Udotea
+;;Algues vertes - Ulva;;;;;;;;0,00;;;;Chlorophyta - Ulva
+;;Algues vertes - Valonia;;;;;;;;0,00;;;;Chlorophyta - Valonia
+;;Algues rouges - Asparagopsis;;;;;;;;0,00;;;;Rhodophyta - Asparagopsis
+;;Algues rouges - Sphaerococcus;;;;;;;;0,00;;;;Rhodophyta - Sphaerococcus
+;;Algues rouges - Gracilaria;;;;;;;;0,00;;;;Rhodophyta - Gracilaria
+;;Algues rouges - Jania (coralline);;;;;;;;0,00;;;;Rhodophyta - Jania (coralline)
+;;Algues rouges - Corallina;;;;;;;;0,00;;;;Rhodophyta - Corallina
+;;Algues rouges - Mesophyllum;;;;;;;;0,00;;;;Rhodophyta - Mesophyllum
+;;Algues rouges - Pseudolithophyllum;;;;;;;;0,00;;;;Rhodophyta - Pseudolithophyllum
+;;Algues rouges - Peyssonelia;;;;;;;;0,00;;;;Rhodophyta - Peyssonelia
+;;Algues rouges - Tricleocarpa;;;;;;;;0,00;;;;Rhodophyta - Tricleocarpa
+;Espèces remarquables;Eponge;;;;;;;;0;;Nombre d'individus par secteur;Particular species / taxa;Sponge
+;;Cigale de mer;;;;;;;;0;;;;Scyllarides latus
+;;Grande nacre;;;;;;;;0;;;;Pinna nobilis
+;;Jambonneau de mer;;;;;;;;0;;;;Atrina fragilis
+;;Datte de mer;;;;;;;;0;;;;Lithophaga lithophaga
+;;Oursin;;;;;;;;0;;;;Urchin
+;;Holothurie;;;;;;;;0;;;;Sea cucumber
+;;Crabe;;;;;;;;0;;;;Crab
+;;Acétabulaire;;;;;;;;0;;;;Acetabularia
+;;Gorgone;;;;;;;;0;;;;Gorgonian
+;;Etoile de mer;;;;;;;;0;;;;Starfish
+;;Anémone;;;;;;;;0;;;;Anemone
+;;Ascidie;;;;;;;;0;;;;Ascidian
+;;Corail mou;;;;;;;;0;;;;Soft coral

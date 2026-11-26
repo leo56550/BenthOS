@@ -2624,17 +2624,15 @@ class QualifController:
         pixmap = QtGui.QPixmap.fromImage(q_img)
         self._miniature_pixmaps[slot_id] = pixmap
 
-        # Vider le layout placeholder
-        old = w_photo.layout()
-        if old:
-            while old.count():
-                item = old.takeAt(0)
+        layout = w_photo.layout()
+        if layout is None:
+            layout = QtWidgets.QVBoxLayout(w_photo)
+            layout.setContentsMargins(0, 0, 0, 0)
+        else:
+            while layout.count():
+                item = layout.takeAt(0)
                 if item.widget():
                     item.widget().deleteLater()
-            QtWidgets.QWidget().setLayout(old)
-
-        new_layout = QtWidgets.QVBoxLayout(w_photo)
-        new_layout.setContentsMargins(0, 0, 0, 0)
 
         lbl = QtWidgets.QLabel(w_photo)
         lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -2643,7 +2641,7 @@ class QualifController:
             QtCore.Qt.AspectRatioMode.KeepAspectRatioByExpanding,
             QtCore.Qt.TransformationMode.SmoothTransformation,
         ))
-        new_layout.addWidget(lbl)
+        layout.addWidget(lbl)
 
         minutes = int(ts // 60)
         seconds_i = int(ts % 60)
