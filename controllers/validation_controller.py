@@ -908,8 +908,6 @@ class ValidationController:
                     _desc = _entry.get("description_fr", "")
                     if _desc.strip().lower() in _non_rot:
                         continue
-                    if int(_entry.get("start_ms") or 0) == 0 and int(_entry.get("frame_number") or 0) == 0:
-                        continue
                     if "start_ms" in _entry:
                         _ms = int(_entry["start_ms"])
                     else:
@@ -968,11 +966,10 @@ class ValidationController:
 
                 for idx, evt in enumerate(rotation_events):
                     ts, angle, evt_type = evt["timestamp"], evt["angle"], evt["type"]
-                    # Image au milieu entre cet évènement et le suivant
-                    if idx + 1 < len(rotation_events):
-                        mid_ts = (ts + rotation_events[idx + 1]["timestamp"]) / 2.0
-                    else:
-                        mid_ts = ts + _avg_interval / 2.0
+                    # Image à début de rotation + 10s
+                    start_s = evt.get("start", int(ts * 1000)) / 1000.0
+                    mid_ts = start_s + 10.0
+                    print(f"[VALIDATION] secteur={idx} rot_ts={ts:.2f}s start_s={start_s:.2f}s mid_ts={mid_ts:.2f}s")
                     w_photo = QtWidgets.QFrame()
                     w_photo.setFixedSize(240, 180)
                     w_photo.setStyleSheet(

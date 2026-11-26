@@ -2430,9 +2430,6 @@ class QualifController:
                                    "analysis_start", "analysis_end"}
                     if not _desc.strip() or _desc.strip().lower() in _NON_ROT_KW:
                         continue
-                    # Exclure entrées corrompues à t=0 (start_ms=0 ET frame_number=0)
-                    if int(_entry.get("start_ms") or 0) == 0 and int(_entry.get("frame_number") or 0) == 0:
-                        continue
                     if "start_ms" in _entry:
                         _ms = int(_entry["start_ms"])
                     else:
@@ -2499,9 +2496,10 @@ class QualifController:
                 self._cam_worker.start()
                 return
 
-            # ── 3. Timestamp miniature = début rotation + 3 secondes ─────────
+            # ── 3. Timestamp miniature = début rotation + 10 secondes ────────
             for evt in motor_events:
-                evt["mid_ts"] = evt["timestamp"] + 3.0
+                start_s = evt.get("start", int(evt["timestamp"] * 1000)) / 1000.0
+                evt["mid_ts"] = start_s + 10.0
 
             # ── 4. Construction de la grille ──────────────────────────────────
             tasks = []

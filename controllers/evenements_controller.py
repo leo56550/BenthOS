@@ -3415,9 +3415,6 @@ class EvenementsController:
                     # Exclure atterrissage, décollage et balises non-rotation
                     if not self._is_rotation_motor_label(_desc):
                         continue
-                    # Exclure entrées corrompues à t=0 (start_ms=0 ET frame_number=0)
-                    if int(_entry.get("start_ms") or 0) == 0 and int(_entry.get("frame_number") or 0) == 0:
-                        continue
                     if "start_ms" in _entry:
                         _ms = int(_entry["start_ms"])
                     else:
