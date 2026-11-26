@@ -914,8 +914,13 @@ class EvenementsController:
         if hasattr(self.event_player, 'timeline'):
             already = any(e.get("_json_key") == field_key for e in self.event_player.timeline.events)
             if already:
-                field_label = self.translate("Atterrissage", "Landing") if field_key == "timecode_landing" \
-                              else self.translate("Décollage", "Takeoff")
+                _tc_labels = {
+                    "timecode_landing": self.translate("Atterrissage",       "Landing"),
+                    "timecode_takeoff": self.translate("Décollage",          "Takeoff"),
+                    "timecode_debut":   self.translate("Début annotation",   "Annotation start"),
+                    "timecode_end":     self.translate("Fin annotation",     "Annotation end"),
+                }
+                field_label = _tc_labels.get(field_key, field_key)
                 reply = QtWidgets.QMessageBox.question(
                     self.page,
                     self.translate("Écraser ?", "Overwrite?"),
@@ -941,9 +946,14 @@ class EvenementsController:
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
             # Ajout / mise à jour du marqueur sur la timeline
+            _tc_labels = {
+                "timecode_landing": self.translate("Atterrissage",       "Landing"),
+                "timecode_takeoff": self.translate("Décollage",          "Takeoff"),
+                "timecode_debut":   self.translate("Début annotation",   "Annotation start"),
+                "timecode_end":     self.translate("Fin annotation",     "Annotation end"),
+            }
+            label = _tc_labels.get(field_key, field_key)
             if hasattr(self, 'event_player') and getattr(self.event_player, 'timeline', None):
-                label = self.translate("Atterrissage", "Landing") if field_key == "timecode_landing" \
-                        else self.translate("Décollage", "Takeoff")
                 tl = self.event_player.timeline
                 # Remplace l'ancien marqueur du même champ (unicité)
                 tl.events = [e for e in tl.events if e.get("_json_key") != field_key]
@@ -995,8 +1005,13 @@ class EvenementsController:
             print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← video_observation.{field_key} = {timecode!r}")
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
-            label = self.translate("Atterrissage", "Landing") if field_key == "timecode_landing" \
-                    else self.translate("Décollage", "Takeoff")
+            _tc_labels = {
+                "timecode_landing": self.translate("Atterrissage",       "Landing"),
+                "timecode_takeoff": self.translate("Décollage",          "Takeoff"),
+                "timecode_debut":   self.translate("Début annotation",   "Annotation start"),
+                "timecode_end":     self.translate("Fin annotation",     "Annotation end"),
+            }
+            label = _tc_labels.get(field_key, field_key)
             if hasattr(self, 'event_player') and getattr(self.event_player, 'timeline', None):
                 tl = self.event_player.timeline
                 tl.events = [e for e in tl.events if e.get("_json_key") != field_key]

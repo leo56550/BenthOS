@@ -3408,7 +3408,13 @@ class AnalyseHabitatController(QtCore.QObject):
             if landing and takeoff:
                 return True
 
-            # Option 2 : début annotation + fin annotation dans events_motor
+            # Option 2 : timecode_debut + timecode_end (champs scalaires dans video_observation)
+            debut = str((vobs.get("timecode_debut") or {}).get("value") or "").strip()
+            end   = str((vobs.get("timecode_end")   or {}).get("value") or "").strip()
+            if debut and end:
+                return True
+
+            # Option 3 : début/fin annotation comme événements texte dans events_motor (ancien format)
             _ANNOT_START_KW = ("début annotation", "debut annotation",
                                "annotation start", "debut_analyse", "analysis_start")
             _ANNOT_END_KW   = ("fin annotation", "annotation end",
