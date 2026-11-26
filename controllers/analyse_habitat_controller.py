@@ -2107,6 +2107,7 @@ class AnalyseHabitatController(QtCore.QObject):
         super().__init__()
         self._page = page
         self._language = 'fr'
+        self._working_dir: str = ""
         self._data: dict[str, dict[str, list]] = {}
         self._current_video: str | None = None
         self._video_model = None
@@ -3492,6 +3493,9 @@ class AnalyseHabitatController(QtCore.QObject):
 
     # ── API publique ──────────────────────────────────────────────────────────
 
+    def set_working_dir(self, path: str):
+        self._working_dir = path
+
     def load_campaign_videos(self, model):
         self._video_model = model
         self._rebuild_list()
@@ -3506,10 +3510,14 @@ class AnalyseHabitatController(QtCore.QObject):
                 break
 
     def _mask_csv_exists(self, vpath: str) -> bool:
-        code = _get_codestation(vpath) or os.path.splitext(os.path.basename(vpath))[0]
+        if not self._working_dir:
+            return False
+        code = _get_codestation(vpath)
+        if not code:
+            return False
         safe = "".join(c for c in code if c.isalnum() or c in "-_")
-        folder = os.path.dirname(os.path.normpath(vpath))
-        return os.path.isfile(os.path.join(folder, f"{safe}_habitat.xlsx"))
+        out_dir = os.path.join(self._working_dir, "BenthOS_sorties")
+        return os.path.isfile(os.path.join(out_dir, f"{safe}_masque_saisie.xlsx"))
 
     def _refresh_mask_indicators(self):
         """Met à jour le ✓ sur les items de la liste sans reconstruire toute la liste."""
@@ -3772,10 +3780,23 @@ class AnalyseHabitatController(QtCore.QObject):
             return
 
         vpath = self._current_video
-        code = _get_codestation(vpath) or os.path.splitext(os.path.basename(vpath))[0]
-        folder = os.path.dirname(os.path.normpath(vpath))
+        code = _get_codestation(vpath)
+        if not code:
+            QtWidgets.QMessageBox.warning(
+                self._page,
+                "Codestation manquant" if self._language == 'fr' else "Missing codestation",
+                ("Le codestation de cette vidéo n'est pas renseigné.\n"
+                 "Renseignez-le dans la page Validation avant d'exporter.")
+                if self._language == 'fr' else
+                ("The codestation for this video is not set.\n"
+                 "Set it in the Validation page before exporting."),
+            )
+            return
         safe_code = "".join(c for c in code if c.isalnum() or c in "-_")
-        out_path = os.path.join(folder, f"{safe_code}_habitat.xlsx")
+        base_dir = self._working_dir or os.path.dirname(os.path.normpath(vpath))
+        out_dir = os.path.join(base_dir, "BenthOS_sorties")
+        os.makedirs(out_dir, exist_ok=True)
+        out_path = os.path.join(out_dir, f"{safe_code}_masque_saisie.xlsx")
 
         if os.path.isfile(out_path):
             reply = QtWidgets.QMessageBox.question(
@@ -4008,7 +4029,9 @@ class AnalyseHabitatController(QtCore.QObject):
                 continue
             if _get_exploitability_value(vpath) not in {"oui", "habitat"}:
                 continue
-            code = _get_codestation(vpath) or item.text() or os.path.splitext(os.path.basename(vpath))[0]
+            code = _get_codestation(vpath)
+            if not code:
+                continue
             entries.append((code, vpath))
         entries.sort(key=lambda e: e[0].lower())
 
@@ -4022,12 +4045,15 @@ class AnalyseHabitatController(QtCore.QObject):
 
         total_steps = sum(max(len(fields), 1) for _, fields in self._active_xlsx_layout)
 
+        base_dir = self._working_dir or os.path.dirname(os.path.normpath(entries[0][1]))
+        out_dir = os.path.join(base_dir, "BenthOS_sorties")
+        os.makedirs(out_dir, exist_ok=True)
+
         # Confirmation si des fichiers existent déjà
         existing = []
         for code, vpath in entries:
             safe_code = "".join(c for c in code if c.isalnum() or c in "-_")
-            p = os.path.join(os.path.dirname(os.path.normpath(vpath)),
-                             f"{safe_code}_habitat.xlsx")
+            p = os.path.join(out_dir, f"{safe_code}_masque_saisie.xlsx")
             if os.path.isfile(p):
                 existing.append(code)
         if existing:
@@ -4093,9 +4119,8 @@ class AnalyseHabitatController(QtCore.QObject):
             lbl_local.setText(f"Ligne 0 / {total_steps}")
             QtWidgets.QApplication.processEvents()
 
-            folder = os.path.dirname(os.path.normpath(vpath))
             safe_code = "".join(c for c in code if c.isalnum() or c in "-_")
-            out_path = os.path.join(folder, f"{safe_code}_habitat.xlsx")
+            out_path = os.path.join(out_dir, f"{safe_code}_masque_saisie.xlsx")
             try:
                 wb = openpyxl.Workbook()
                 ws = wb.active

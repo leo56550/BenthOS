@@ -443,7 +443,7 @@ class AppController(QtCore.QObject):
         self.working_dir = path
         # Propager aux controllers
         for ctrl in [self.qualif_ctrl, self.validation_ctrl, self.evenements_ctrl,
-                     self.metadonnees_ctrl, self.extraction_ctrl]:
+                     self.metadonnees_ctrl, self.extraction_ctrl, self.analyse_habitat_ctrl]:
             if hasattr(ctrl, 'set_working_dir'):
                 ctrl.set_working_dir(path)
         # Arrêter le clignotement, passer le bouton en vert
