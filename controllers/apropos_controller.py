@@ -1,4 +1,5 @@
 import os
+import subprocess
 
 from PyQt6 import QtWidgets, QtCore, QtGui
 try:
@@ -8,6 +9,22 @@ except ImportError:
     _HAS_SVG = False
 
 APP_VERSION = "1.0.0"
+
+_CONTACT_EMAIL = "kosmos@imt-atlantique.fr"
+_CONTACT_GITHUB = "https://github.com/leo56550/BenthOS"
+
+
+def _get_last_update() -> str:
+    try:
+        r = subprocess.run(
+            ["git", "log", "-1", "--format=%cd", "--date=format:%d/%m/%Y"],
+            capture_output=True, text=True,
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+        )
+        date = r.stdout.strip()
+        return date if date else "—"
+    except Exception:
+        return "—"
 
 _FEATURES = [
     ("🗂", "Validation",      "Dérusher les vidéos, saisir l'ardoise, gérer l'exploitabilité",
@@ -109,6 +126,7 @@ class AProposController:
         layout.addWidget(self._features_section())
         layout.addWidget(self._tech_section())
         layout.addWidget(self._team_section())
+        layout.addWidget(self._license_section())
         layout.addWidget(self._footer())
 
     # ── Hero ────────────────────────────────────────────────────────────────────
@@ -220,6 +238,7 @@ class AProposController:
         badges.addStretch()
         for label, value, color in [
             (self.translate("Version", "Version"), APP_VERSION, _SALMON),
+            (self.translate("Mise à jour", "Last update"), _get_last_update(), _SUBTLE),
             ("Python", "3.11+", _CYAN),
             ("PyQt6", "6.x", _CYAN),
             (self.translate("Plateforme", "Platform"), "Windows", _SUBTLE),
@@ -415,6 +434,127 @@ class AProposController:
         v.addWidget(l_inst)
         v.addStretch()
         return frame
+
+    # ── Licence & Contact ───────────────────────────────────────────────────────
+
+    def _license_section(self) -> QtWidgets.QWidget:
+        section = QtWidgets.QWidget()
+        section.setStyleSheet(
+            f"background-color: {_BG2}; border-top: 1px solid #1e3448;"
+            f" border-bottom: 1px solid #1e3448;"
+        )
+        outer = QtWidgets.QVBoxLayout(section)
+        outer.setContentsMargins(60, 36, 60, 36)
+        outer.setSpacing(24)
+
+        outer.addWidget(self._section_title(
+            self.translate("Licence & Contact", "License & Contact")
+        ))
+
+        row = QtWidgets.QHBoxLayout()
+        row.setSpacing(40)
+
+        # ── Badge CC-BY-NC-SA ────────────────────────────────────────────────
+        lic_col = QtWidgets.QVBoxLayout()
+        lic_col.setSpacing(10)
+
+        # Logo CC-BY-NC-SA : 4 pastilles colorées
+        badge_row = QtWidgets.QHBoxLayout()
+        badge_row.setSpacing(4)
+        badge_row.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
+        for text, bg, fg in [
+            ("CC",  "#000000", "#ffffff"),
+            ("BY",  "#ffb300", "#000000"),
+            ("NC",  "#e53935", "#ffffff"),
+            ("SA",  "#1e88e5", "#ffffff"),
+        ]:
+            pill = QtWidgets.QLabel(text)
+            pill.setFixedSize(34, 22)
+            pill.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            pill.setStyleSheet(
+                f"background-color: {bg}; color: {fg};"
+                f" font-size: 10px; font-weight: bold;"
+                f" font-family: 'Segoe UI', sans-serif;"
+                f" border-radius: 4px;"
+            )
+            badge_row.addWidget(pill)
+        badge_row.addStretch()
+
+        lic_title = QtWidgets.QLabel("CC BY-NC-SA 4.0")
+        lic_title.setStyleSheet(
+            f"color: {_SALMON}; font-size: 13px; font-weight: bold;"
+            f" font-family: 'Segoe UI', sans-serif; background: transparent;"
+        )
+
+        lic_desc = QtWidgets.QLabel(self.translate(
+            "Ce logiciel est distribué sous licence\n"
+            "Creative Commons Attribution – Non Commercial – Share Alike 4.0.\n"
+            "Utilisation libre à des fins non commerciales, avec attribution\n"
+            "et redistribution sous la même licence.",
+            "This software is distributed under the\n"
+            "Creative Commons Attribution – Non Commercial – Share Alike 4.0 license.\n"
+            "Free to use for non-commercial purposes, with attribution\n"
+            "and redistribution under the same license.",
+        ))
+        lic_desc.setStyleSheet(
+            f"color: {_SUBTLE}; font-size: 11px;"
+            f" font-family: 'Segoe UI', sans-serif; background: transparent;"
+        )
+        lic_desc.setWordWrap(True)
+
+        lic_col.addLayout(badge_row)
+        lic_col.addWidget(lic_title)
+        lic_col.addWidget(lic_desc)
+        lic_col.addStretch()
+
+        # ── Contact ──────────────────────────────────────────────────────────
+        contact_col = QtWidgets.QVBoxLayout()
+        contact_col.setSpacing(10)
+
+        contact_title = QtWidgets.QLabel(self.translate("Contact", "Contact"))
+        contact_title.setStyleSheet(
+            f"color: {_TEXT}; font-size: 13px; font-weight: bold;"
+            f" font-family: 'Segoe UI', sans-serif; background: transparent;"
+        )
+
+        for icon, label, value in [
+            ("✉", self.translate("E-mail", "E-mail"), _CONTACT_EMAIL),
+            ("⌂", "GitHub", _CONTACT_GITHUB),
+        ]:
+            item_row = QtWidgets.QHBoxLayout()
+            item_row.setSpacing(8)
+            lbl_icon = QtWidgets.QLabel(icon)
+            lbl_icon.setStyleSheet(
+                f"color: {_ACCENT}; font-size: 14px; background: transparent;"
+            )
+            lbl_icon.setFixedWidth(20)
+            lbl_key = QtWidgets.QLabel(f"{label} :")
+            lbl_key.setStyleSheet(
+                f"color: {_MUTED}; font-size: 11px;"
+                f" font-family: 'Segoe UI', sans-serif; background: transparent;"
+            )
+            lbl_key.setFixedWidth(60)
+            lbl_val = QtWidgets.QLabel(value)
+            lbl_val.setStyleSheet(
+                f"color: {_CYAN}; font-size: 11px;"
+                f" font-family: 'Segoe UI', sans-serif; background: transparent;"
+            )
+            lbl_val.setTextInteractionFlags(
+                QtCore.Qt.TextInteractionFlag.TextSelectableByMouse
+            )
+            item_row.addWidget(lbl_icon)
+            item_row.addWidget(lbl_key)
+            item_row.addWidget(lbl_val)
+            item_row.addStretch()
+            contact_col.addLayout(item_row)
+
+        contact_col.insertWidget(0, contact_title)
+        contact_col.addStretch()
+
+        row.addLayout(lic_col, stretch=2)
+        row.addLayout(contact_col, stretch=1)
+        outer.addLayout(row)
+        return section
 
     # ── Footer ──────────────────────────────────────────────────────────────────
 
